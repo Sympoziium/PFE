@@ -1,17 +1,43 @@
-# PFE
-**Contexte**
-Projet de fin d'étude robot Zumi
+# PFE - Projet Robot Zumi 🤖
 
-Les inovations en intelligence artificielle sont entrain de boulverser le monde, ce projet est une opportunité de nous initier à ces technologies inovatrices. cette opportunité de mettre en pratique des concepts vue en classe afin de montrer ce dont nous sommes capable.
+Projet de fin d'étude centré sur le robot Zumi et la conception de features d'intelligence artificielle.
 
-Cédric Senécal
-François Gagné
-Alycia-Rose Sévigny
-Olivier Poitras
+## 📚 Documentation Git
 
+Pour les membres de l'équipe qui débutent avec Git, nous avons préparé deux documents :
 
-## Objectifs
+### [📖 Guide Git Complet](GUIDE_GIT.md)
+Guide détaillé avec toutes les procédures Git Bash pour débutants :
+- Introduction et concepts fondamentaux
+- Commandes de base avec exemples
+- Procédures pour créer et gérer les branches
+- Workflows collaboratifs
+- Résolution des problèmes courants
+- Bonnes pratiques
 
-1. Système de vision artificielle intelligent : Perception de l'environement au moyen d'un classificateur.
-2. Implémentation du pont levi : Terminer l'implentation d'un obstacle développé par l'équipe précédente. 
-3. Système de navigation intelligent : Logique décisionelle issue d'un MLP supervisé par une machine à état.
+### [📋 Aide-Mémoire Git](AIDE_MEMOIRE_GIT.md)
+Référence rapide des commandes Git essentielles pour le quotidien.
+
+## 🚀 Démarrage Rapide
+
+```bash
+# Cloner le projet
+git clone https://github.com/Sympoziium/PFE.git
+cd PFE
+
+# Créer une branche pour votre travail
+git checkout -b feature/votre-fonctionnalite
+
+# ... travaillez sur votre code ...
+
+# Enregistrer et envoyer vos modifications
+git add .
+git commit -m "Description de vos modifications"
+git push -u origin feature/votre-fonctionnalite
+```
+
+Pour plus de détails, consultez le [Guide Git Complet](GUIDE_GIT.md).
+
+## 👥 Équipe
+
+Projet réalisé dans le cadre du programme de fin d'études.
