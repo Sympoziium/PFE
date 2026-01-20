@@ -13,10 +13,10 @@ def main():
 
     test_input = ''
 
-    while test_input.lower() != 'esc':
+    while test_input.lower() != 'stop':
         
-        test_input = input("Press ESC to stop or space to capture frames...\n")
-        if test_input == ' ':
+        test_input = input("Press ENTER to capture frames or write stop to exit...\n")
+        if test_input == '':
             frame = camera.get_frame()
             print("Captured frame of shape:", frame.shape)
             
@@ -24,6 +24,9 @@ def main():
             cv2.imwrite(filename, frame)
             print(f"Frame saved as {filename}")
 
-        time.sleep(2) # délais de 2 secondes entre chaque capture
+        time.sleep(1) # délais de 2 secondes entre chaque capture
 
     camera.stop()
+
+if __name__ == "__main__":
+    main()
