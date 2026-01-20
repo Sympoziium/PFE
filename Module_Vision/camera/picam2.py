@@ -1,5 +1,5 @@
 from picamera2 import Picamera2, Preview
-from camera.camera_base import CameraBase
+from .camera_base import CameraBase
 import numpy as np
 import time
 
