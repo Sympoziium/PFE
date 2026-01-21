@@ -11,15 +11,15 @@ class CameraBase(ABC):
     """
 
     @abstractmethod
-    def start(self):
+    def start_camera(self):
         pass
 
     @abstractmethod
-    def stop(self):
+    def close(self):
         pass
 
     @abstractmethod
-    def get_frame(self) -> np.ndarray:
+    def capture(self) -> np.ndarray:
         """
         Retourne une image BGR (OpenCV compatible)
         """
