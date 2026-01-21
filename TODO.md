@@ -29,13 +29,17 @@ PFE/
 ├── core/
 │   ├── camera/
 │   │   ├── camera_base.py
-│   │   ├── picam2_camera.py
-│   │   └── mock_camera.py
+│   │   └── picam2_camera.py
+│   │   
 │   │
 │   ├── vision/
+│   │   ├── detector/
+|   │   │   ├── detector_base.py
+|   │   │   ├── Line_detector.py
+|   │   │   └── Luminosité.py
 │   │   └── vision_pipeline.py
 │   │
-│   └── robot/
+│   └── robot/ # Todo
 │       ├── robot_base.py
 │       ├── zumi_robot.py
 │       └── sim_robot.py

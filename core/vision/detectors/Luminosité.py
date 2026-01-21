@@ -3,7 +3,7 @@
 # Module de détecteur ultra simple pour tester le pipeline de vision
 # Il calcule la luminosité moyenne de l'image capturée
 
-from .base_detecteur import BaseDetector
+from .detector_base import BaseDetector
 import numpy as np
 
 class LuminosityDetector(BaseDetector):
@@ -15,12 +15,10 @@ class LuminosityDetector(BaseDetector):
             frame (np.ndarray): Image capturée par la caméra.
         
         Returns:
-            float: Luminosité moyenne de l'image.
+            dict: Dictionnaire contenant le nom du détecteur et la luminosité moyenne de l'image.
         """ 
         # Calculer la luminosité moyenne
-        luminosity = frame.mean()
-        
-        return luminosity
+        return {"detector": "luminosity", "value": float(frame.mean())}
     
     def preprocess(self, frame):
         """
@@ -34,5 +32,5 @@ class LuminosityDetector(BaseDetector):
         """
         # Pour ce détecteur, aucun prétraitement n'est nécessaire
         # voir si on doit convertir en niveaux de gris
-        
+
         return frame

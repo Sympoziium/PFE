@@ -16,7 +16,10 @@ vision_pipeline = VisionPipeline(camera=camera)
 vision_pipeline.add_detectors(detector)
 vision_pipeline.start()
 
-if __name__ == "__main__":
-
+testing = True
+while testing:
     results = vision_pipeline.step()
     print("Résultats de la détection de luminosité :", results)
+    cmd = input("Appuyez sur Espace pour arrêter...")  # Pause pour chaque étape
+    if cmd == " ":
+        testing = False
