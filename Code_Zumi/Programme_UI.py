@@ -227,8 +227,7 @@ def reverse():
     print("[HTTP] /zumi/reverse reçu") 
     try: 
         zumi.control_motors(-DRIVE_SPEED, -DRIVE_SPEED) 
-        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-DRIVE_SPEED, 
-        DRIVE_SPEED)) 
+        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-DRIVE_SPEED, -DRIVE_SPEED)) 
         return "ok" 
     except Exception as e: 
         print("[ERREUR] zumi.control_motors(reverse):", e) 
@@ -256,8 +255,7 @@ def right():
     print("[HTTP] /zumi/right reçu") 
     try: 
         zumi.control_motors(TURN_SPEED, -TURN_SPEED) 
-        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(TURN_SPEED, 
-        TURN_SPEED)) 
+        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(TURN_SPEED, -TURN_SPEED)) 
         return "ok" 
     except Exception as e: 
         print("[ERREUR] zumi.control_motors(right):", e) 
@@ -472,13 +470,9 @@ def PageWeb(lumiereModeAuto, moteurModeAuto):
             display: grid; 
             /* Définit la disposition en 3x3 */ 
             grid-template-areas: 
-            ".     
-            up     
-            ." 
+            ". up ." 
             "left  center right" 
-            ".     
-            down   
-            ."; 
+            ". down ."; 
             grid-gap: 8px; /* Espace entre les boutons */ 
             width: 180px;  /* Taille réduite pour s'adapter */ 
             height: 180px; /* Taille réduite pour s'adapter */ 
@@ -604,8 +598,8 @@ def PageWeb(lumiereModeAuto, moteurModeAuto):
         html += "<button class='command-button button-light-green disabled'>Vert</button>" 
         html += "<button class='command-button button-light-red disabled'>Rouge</button>" 
     else: 
-        html += "<a href='/vert'><button class='command-button button-lightgreen'>Vert</button></a>" 
-        html += "<a href='/rouge'><button class='command-button button-lightred'>Rouge</button></a>" 
+        html += "<a href='/vert'><button class='command-button button-light-green'>Vert</button></a>" 
+        html += "<a href='/rouge'><button class='command-button button-light-red'>Rouge</button></a>" 
     html += "</div>" 
     
     # Pont 
@@ -618,7 +612,7 @@ def PageWeb(lumiereModeAuto, moteurModeAuto):
         html += "<button class='command-button button-bridge disabled'>Ouvrir</button>" 
         html += "<button class='command-button button-bridge disabled'>Fermer</button>" 
     else: 
-        html += "<a href='/ouvrir'><button class='command-button buttonbridge'>Ouvrir</button></a>" 
+        html += "<a href='/ouvrir'><button class='command-button button-bridge'>Ouvrir</button></a>" 
         html += "<a href='/fermer'><button class='command-button button-bridge'>Fermer</button></a>" 
     
         html += """ 
