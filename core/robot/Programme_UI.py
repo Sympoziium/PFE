@@ -20,7 +20,7 @@ from flask import Flask, Response, request, redirect, url_for, jsonify
 # from zumi.personality import Personality 
 
 # Import des classes pour mocker le Zumi physique
-from Module_Vision.camera.picam2 import PiCam2
+from core.camera.picam2 import PiCam2
 from Code_Zumi.Zumi_mock.SimZumi import mockZumi, mockScreen, mockPersonality
 
 
