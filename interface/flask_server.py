@@ -26,12 +26,21 @@ def attach_pipeline(pipeline):
     vision_pipeline = pipeline
 
 # ----------------------------------------------------------------------------
-#                       Pages principale de l'interface web
+#                       Pages de l'interface web
 # ----------------------------------------------------------------------------
 # Route pour la page d'accueil
 @app.route('/')
 def home():
     return page_accueil()
+
+from interface.TemplateOnglet import render_template_tab
+# @app.route('/mon_onglet')
+# def mon_onglet():
+@app.route('/')
+def home():
+    html = render_template_tab("Mon onglet perso")
+    return html
+
 
 # ----------------------------------------------------------------------------
 #                       Fonctions de callback pour les actions web
