@@ -9,7 +9,7 @@
 # - agréger les résultats
 # - fournir une API simple pour interagir avec le pipeline de vision
 # ------------------
-
+import threading
 import time
 
 
@@ -19,6 +19,7 @@ class VisionPipeline:
         self.detectors = detectors if detectors is not None else []
         self.periode = 1.0 / fps
         self.running = False
+        # self.lock = threading.Lock() # pour la synchronisation des threads
 
     def start(self):
         """ appeler pour démarrer le pipeline de vision """
@@ -47,6 +48,7 @@ class VisionPipeline:
         if not self.running:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
         
+        # with self.lock: # assurer la synchronisation des accès à la caméra
         start_time = time.time()
         
         try:
@@ -77,5 +79,43 @@ class VisionPipeline:
         
         return results
 
-
+    def is_running(self):
+        """ vérifier si le pipeline de vision est en cours d'exécution """
+        return self.running
     
+    def get_periode(self):
+        """ obtenir la période entre chaque cycle de vision en secondes """
+        return self.periode
+
+    def capture_frame(self):
+        """ capturer une image brute de la caméra """
+        if not self.running:
+            raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
+        
+        try:
+        #with self.lock: # assurer la synchronisation des accès à la caméra
+            return self.camera.capture()
+        except Exception as e:
+            print(f"Erreur lors de la capture d'une image brute: {e}")
+            raise e
+
+    def get_detectors(self):
+        """ obtenir la liste des détecteurs ajoutés au pipeline de vision """
+        return self.detectors
+    
+    def get_camera(self):
+        """ obtenir la caméra utilisée dans le pipeline de vision """
+        return self.camera
+    
+    # def run_camera(self):
+    #     """ fonction pour exécuter la boucle de capture de la caméra dans un thread séparé """
+    #     if not self.running:
+    #         raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
+        
+    #     while self.running:
+    #         try:
+    #             time.sleep(0.05)  # Petite pause pour éviter une boucle trop rapide
+    #         except Exception as e:
+    #             print(f"Erreur dans la boucle de la caméra: {e}")
+    #             raise e
+        
