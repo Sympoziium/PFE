@@ -25,11 +25,17 @@ def attach_pipeline(pipeline):
     global vision_pipeline
     vision_pipeline = pipeline
 
-
-# Page principale de l'interface web
+# ----------------------------------------------------------------------------
+#                       Pages principale de l'interface web
+# ----------------------------------------------------------------------------
+# Route pour la page d'accueil
 @app.route('/')
 def home():
     return page_accueil()
+
+# ----------------------------------------------------------------------------
+#                       Fonctions de callback pour les actions web
+# ----------------------------------------------------------------------------
 
 # Fonction pour télécharger une image capturée (Appelé automatiquement après capture)
 @app.route('/download_image/<filename>')
@@ -44,7 +50,6 @@ def download_image(filename):
 # Fonction pour générer la page d'accueil HTML
 @app.route('/capture_image', methods=['POST'])
 def capture_image():
-    print("POST /capture_image reçu") # pour debug
     global vision_pipeline # l'instance du pipeline de vision est déclarée globalement et intialisé dans le main
     
     if vision_pipeline is None or not vision_pipeline.is_running():
@@ -66,22 +71,21 @@ def capture_image():
     # 4. Validation de la sauvegarde
     print("Saved image to:", save_path, "exists?", os.path.exists(save_path))
 
-
     # 5. Génération d'un URL pour accéder à l'image sauvegardée via le PC
     image_url = f'/download_image/{filename}'
     return jsonify({'filename': filename, 'file_url':  image_url})
 
+# Fonction pour vérifier le statut de la caméra 
 @app.route('/status')
 def status():
     return jsonify({
         "camera_running": vision_pipeline.is_running()
     })
 
-
+# Fonction pour le flux vidéo en direct
 @app.route('/video') 
 def video_feed(): 
     global vision_pipeline
-    print("GET /video reçu") # pour debug
 
     if not vision_pipeline or not vision_pipeline.is_running(): 
         print("Video feed requested but video pipeline not running") 
@@ -93,17 +97,10 @@ def video_feed():
 
     # Générateur de flux vidéo Attention: le livefeed consume 1 thread CPU
     def generate(): 
-        print("Générateur de feed started")
         while vision_pipeline.is_running(): 
-            # attend si l'objet camera est activé 
-            # if not vision_pipeline.is_running(): 
-            #     time.sleep(0.1) 
-            #     continue 
             try: 
                 frame_bgr = vision_pipeline.capture_frame() 
             except Exception as e: 
-                # Si erreur de capture pedant startup/shutdown, skip 
-                # CORRECTION: Affiche l'erreur correctement 
                 print("Erreur de capture:", e) 
                 time.sleep(0.1) 
                 break # sortir de la boucle si erreur 
@@ -116,48 +113,34 @@ def video_feed():
             yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n') 
             
             time.sleep(0.05)
-            
-    print("Video feed stopped")
 
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame') 
 
 @app.route('/close_camera', methods=['POST']) 
 def close_camera(): 
-    print("POST /close_camera reçu") # pour debug
     global vision_pipeline
     if not vision_pipeline.is_running():
         print("Camera not active") 
         return redirect(url_for('home')) 
     
-    print("Stopping camera (signal sent)...") 
-    # Set flag to False. The 'run_camera' thread will detect this, 
-    # exit its loop, and call camera.close() safely. 
     vision_pipeline.stop()  
-    # --- REMOVE THE DUPLICATE CLOSE CALL --- 
-    # try:     
-    # camera.close_camera() # THIS CAUSED THE RACE CONDITION 
-    # except Exception as e: 
-    #     
-    # print("Erreur lors de l'arrêt de la caméra :", e) 
-
+   
     print("Camera stop signal accepted.") 
     return redirect(url_for('home')) 
 
 @app.route('/start_camera', methods=['POST']) 
 def start_camera(): 
-    print("POST /start_camera reçu") # pour debug
     global vision_pipeline, vision_thread 
+    
     if vision_pipeline.is_running(): 
         print("Camera already active") 
-        return redirect(url_for('home')) 
-    print("Thread caméra démarré") 
+        return redirect(url_for('home'))
+     
     # --- CREATE A NEW CAMERA OBJECT --- 
     vision_pipeline.start()
-    # vision_thread = threading.Thread(target=vision_pipeline.run_camera) 
-    # vision_thread.daemon = True
-    # vision_thread.start()
     print("Caméra en fonctionnement")
     return redirect(url_for('home'))
+
 
 
 def page_accueil():
