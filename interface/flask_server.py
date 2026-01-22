@@ -8,6 +8,11 @@ import time, cv2
 import threading
 from core.vision.vision_pipeline import VisionPipeline
 
+# Import des autres onglets de l'interface
+from interface.onglet_vision import render_vision_tab
+from interface.TemplateOnglet import render_template_tab # Exemple d'onglet template générique supprimer quand il y en aura d'autres
+
+
 import os, uuid # Pour la sauvegarde des images capturées
 
 # Initialisation de l'instance du serveur Flask
@@ -29,15 +34,20 @@ def attach_pipeline(pipeline):
 #                       Pages de l'interface web
 # ----------------------------------------------------------------------------
 # Route pour la page d'accueil
-@app.route('/')
-def home():
-    return page_accueil()
+# @app.route('/')
+# def home():
+    # return page_accueil()
 
-from interface.TemplateOnglet import render_template_tab
-# @app.route('/mon_onglet')
-# def mon_onglet():
+# Route pour l'onglet de vision
+# @app.route('/onglet_vision')
+# def onglet_vision():
 @app.route('/')
 def home():
+    html = render_vision_tab("Vision du Zumi")
+    return html
+
+@app.route('/onglet_template')
+def onglet_template():
     html = render_template_tab("Mon onglet perso")
     return html
 
