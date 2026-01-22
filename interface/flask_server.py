@@ -29,6 +29,7 @@ def home():
 # Fonction pour générer la page d'accueil HTML
 @app.route('/capture_image', methods=['POST'])
 def capture_image():
+    print("POST /capture_image reçu") # pour debug
     global vision_pipeline # l'instance du pipeline de vision est déclarée globalement et intialisé dans le main
     
     if vision_pipeline is None or not vision_pipeline.is_running():
@@ -55,13 +56,25 @@ def capture_image():
     image_url = url_for('static', filename=f'captured_images/{filename}', _external=True)
     return jsonify({'filename': filename, 'url': image_url})
 
+@app.route('/status')
+def status():
+    return jsonify({
+        "camera_running": vision_pipeline.is_running()
+    })
+
+
 @app.route('/video') 
 def video_feed(): 
     global vision_pipeline
+
+    if vision_pipeline.get_camera() is None:
+        print("Video feed requested but camera not initialized")
+        return "Camera not running", 503
+
     def generate(): 
-        while vision_pipeline.is_running(): 
-            # attend si l'objet camera n'existe pas 
-            if vision_pipeline.get_camera() is None: 
+        while True: 
+            # attend si l'objet camera est activé 
+            if not vision_pipeline.is_running(): 
                 time.sleep(0.1) 
                 continue 
             try: 
@@ -73,17 +86,20 @@ def video_feed():
                 time.sleep(0.1) 
                 continue 
 
-            # Convertie de RGB (camera) à BGR (OpenCV) 
+            # Convertir l'image BGR en JPEG
             ret, jpeg = cv2.imencode('.jpg', frame_bgr) 
             if not ret: 
                 continue 
+
             yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n') 
+            
             time.sleep(0.05)
 
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame') 
 
 @app.route('/close_camera', methods=['POST']) 
 def close_camera(): 
+    print("POST /close_camera reçu") # pour debug
     global vision_pipeline
     if not vision_pipeline.is_running():
         print("Camera not active") 
@@ -105,6 +121,7 @@ def close_camera():
 
 @app.route('/start_camera', methods=['POST']) 
 def start_camera(): 
+    print("POST /start_camera reçu") # pour debug
     global vision_pipeline, vision_thread 
     if vision_pipeline.is_running(): 
         print("Camera already active") 

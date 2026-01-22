@@ -34,10 +34,13 @@ print("Flask server démarré")
 
 
 
-# testing = True
-# while testing:
-#     results = vision_pipeline.step()
-#     print("Résultats de la détection de luminosité :", results)
-#     cmd = input("Appuyez sur Espace pour arrêter...")  # Pause pour chaque étape
-#     if cmd == " ":
-#         testing = False
+testing = True
+while testing:
+    server_thread.join()  # Le serveur Flask gère les requêtes en arrière-plan
+
+
+    # results = vision_pipeline.step()
+    # print("Résultats de la détection de luminosité :", results)
+    # cmd = input("Appuyez sur Espace pour arrêter...")  # Pause pour chaque étape
+    # if cmd == " ":
+    #     testing = False
