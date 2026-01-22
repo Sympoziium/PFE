@@ -67,16 +67,21 @@ def status():
 def video_feed(): 
     global vision_pipeline
 
+    if not vision_pipeline or not vision_pipeline.is_running(): 
+        print("Video feed requested but video pipeline not running") 
+        return "Camera not running", 503
+
     if vision_pipeline.get_camera() is None:
         print("Video feed requested but camera not initialized")
         return "Camera not running", 503
 
+    # Générateur de flux vidéo Attention: le livefeed consume 1 thread CPU
     def generate(): 
-        while True: 
+        while vision_pipeline.is_running(): 
             # attend si l'objet camera est activé 
-            if not vision_pipeline.is_running(): 
-                time.sleep(0.1) 
-                continue 
+            # if not vision_pipeline.is_running(): 
+            #     time.sleep(0.1) 
+            #     continue 
             try: 
                 frame_bgr = vision_pipeline.capture_frame() 
             except Exception as e: 
@@ -84,7 +89,7 @@ def video_feed():
                 # CORRECTION: Affiche l'erreur correctement 
                 print("Erreur de capture:", e) 
                 time.sleep(0.1) 
-                continue 
+                break # sortir de la boucle si erreur 
 
             # Convertir l'image BGR en JPEG
             ret, jpeg = cv2.imencode('.jpg', frame_bgr) 
@@ -94,6 +99,8 @@ def video_feed():
             yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n') 
             
             time.sleep(0.05)
+            
+    print("Video feed stopped")
 
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame') 
 
@@ -129,9 +136,9 @@ def start_camera():
     print("Thread caméra démarré") 
     # --- CREATE A NEW CAMERA OBJECT --- 
     vision_pipeline.start()
-    vision_thread = threading.Thread(target=vision_pipeline.run_camera) 
-    vision_thread.daemon = True
-    vision_thread.start()
+    # vision_thread = threading.Thread(target=vision_pipeline.run_camera) 
+    # vision_thread.daemon = True
+    # vision_thread.start()
     print("Caméra en fonctionnement")
     return redirect(url_for('home'))
 
@@ -248,7 +255,8 @@ def page_accueil():
     
     html += "<button class='capture-btn' id='cameraCaptureBtn' onclick='captureImage()'>📸 Capture Image</button>" 
 
-    html += "<div class='live-feed' id='liveFeed'><img src='/video' alt='Flux vidéo en direct'></div>" 
+    #--- Conteneur pour le flux vidéo en direct (état display:none par défaut) ---
+    html += "<div class='live-feed' id='liveFeed' style = 'display:none;'><img id='videoStream' alt='Flux vidéo en direct'></div>" 
     
     html += "</div>" 
 
@@ -261,15 +269,17 @@ def page_accueil():
         const btn = document.getElementById('cameraToggleBtn'); 
         const img = liveFeed.querySelector('img'); 
 
-        if (liveFeed.style.display === 'none' || liveFeed.style.display === '') {  
-            // 1. Affiche le conteneur et change le bouton (pour la réactivité) 
-            liveFeed.style.display = 'block'; 
+        const isActive = liveFeed.style.display === 'block';
+
+        if (!isActive) {  
+            // 1. Affiche le conteneur et change le bouton (pour la réactivité)  
             btn.textContent = '⛔ Stop Camera'; 
 
             // 2. Envoie la commande de démarrage au serveur 
             fetch('/start_camera', { method: 'POST' }) 
                 .then(() => { 
                 // 3. ATTEND que le serveur ait confirmé le démarrage avant de demander le flux vidéo. 
+                liveFeed.style.display = 'block';
                 img.src = '/video?' + new Date().getTime(); 
             }); 
         
