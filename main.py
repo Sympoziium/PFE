@@ -9,12 +9,14 @@ from core.vision.detecteurs.Luminosité import LuminosityDetector
 
 camera = PiCam2()
 detector = LuminosityDetector()
-
 vision_pipeline = VisionPipeline(camera=camera)
 
 # On ajoute le détecteur au pipeline de vision
 vision_pipeline.add_detectors(detector)
-vision_pipeline.start()
+# vision_pipeline.start()
+
+vision_thread = None
+
 
 testing = True
 while testing:
