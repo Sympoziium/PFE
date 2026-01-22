@@ -45,12 +45,19 @@ body {{
 }}
 
 .tab-header {{
-	display: flex; justify-content: space-between; align-items: center;
-	gap: 12px; margin-bottom: 12px;
+	display: flex; align-items: center;
+	margin-bottom: 12px;
 }}
 
 .tab-title {{
 	font-size: 22px; font-weight: bold; margin: 0;
+}}
+
+.tab-nav {{
+	display: flex; align-items: center;
+	/* Ajustez l'espacement entre boutons ici (2-5px) */
+	gap: 4px;
+	margin-left: auto; /* pousse la nav à droite */
 }}
 
 .tab-content {{
@@ -74,8 +81,11 @@ body {{
 	<div class='tab-shell'>
 	  <div class='tab-header'>
 		<h2 class='tab-title'>{title}</h2>
-		<!-- Exemple d'action globale de l'onglet (facultatif) -->
-		<button class='primary-btn' onclick="alert('Action onglet (à remplacer)');">Action de l'onglet</button>
+		<div class='tab-nav'>
+		  <!-- Boutons de navigation entre onglets (exemples; à remplacer) -->
+		  <button class='primary-btn' onclick="alert('Action onglet accueil (à remplacer)');">Accueil</button>
+	  	  <button class='primary-btn' onclick="alert('Action onglet template (à remplacer)');">Template</button>
+		</div>
 	  </div>
 
 	  <div class='tab-content'>
