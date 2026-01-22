@@ -115,3 +115,16 @@ PFE/
     - l’ajout de nouveaux détecteurs,
     - l’intégration future d’un modèle CNN,
     - les tests sur matériel réel ou simulé.
+
+
+### Ajout d'un serveur FLASK
+**TLDR** : J'ai commencer le développement d'un serveur flask custom pour la vision. Pour le moment j'ai seulement copier les parties du live feed caméra du code original.
+
+**Added**
+- ajouté un framework de base pour un serveur web dédié à la vision.
+- ajouté un bouton pour la capture d'image via le serveur web.
+- ajouté plusieurs fonctions getter pratique dans la classe `VisionPipeline`.
+- ajouté la gestion de caméra sur thread depuis `flask_server.py`. voir si on serais mieux de le faire ailleur.
+- ajouté le lancement du `flask_server.py` sur un thread.
+- ajout de l'enregistrement des images sur le PC via le serveur flask.
+

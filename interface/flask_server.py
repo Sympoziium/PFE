@@ -2,13 +2,23 @@
 # ------------------
 # Module pour gérer le serveur Flask pour l'interface web du robot
 
+from fileinput import filename
 from flask import Flask, Response, request, redirect, url_for, jsonify 
 import time, cv2
 import threading
 from core.vision.vision_pipeline import VisionPipeline
 
+import os, uuid # Pour la sauvegarde des images capturées
+
 # Initialisation de l'instance du serveur Flask
 app = Flask(__name__)
+
+vision_pipeline = None
+
+# Fonction pour attacher le pipeline de vision global
+def attach_pipeline(pipeline):
+    global vision_pipeline
+    vision_pipeline = pipeline
 
 
 # Page principale de l'interface web
@@ -20,8 +30,30 @@ def home():
 @app.route('/capture_image', methods=['POST'])
 def capture_image():
     global vision_pipeline # l'instance du pipeline de vision est déclarée globalement et intialisé dans le main
-    filename = vision_pipeline.step()
-    return jsonify({'filename': filename})
+    
+    if vision_pipeline is None or not vision_pipeline.is_running():
+        return jsonify({'error': 'camera not running'}), 400
+    
+    # 1. Capture de l'image actuelle
+    frame_brg = vision_pipeline.capture_frame()
+    
+    # 2. Conception du PATH pour sauvegarder l'image
+    save_dir = os.path.join(app.static_folder, 'captured_images') # Dossier pour sauvegarder les images capturées
+    os.makedirs(save_dir, exist_ok=True) # Crée le dossier s'il n'existe pas
+
+    # 3. Génération d'un nom de fichier unique
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    filename = f'{ts}_{uuid.uuid4().hex[:6]}.jpg'
+    save_path = os.path.join(save_dir, filename)
+    
+    # 4. Sauvegarde de l'image localement
+    ok = cv2.imwrite(save_path, frame_brg)
+    if not ok:
+        return jsonify({'error': 'write failed'}), 500
+    
+    # 5. Génération d'un URL pour accéder à l'image sauvegardée via le PC
+    image_url = url_for('static', filename=f'captured_images/{filename}', _external=True)
+    return jsonify({'filename': filename, 'url': image_url})
 
 @app.route('/video') 
 def video_feed(): 
@@ -33,7 +65,7 @@ def video_feed():
                 time.sleep(0.1) 
                 continue 
             try: 
-                frame = vision_pipeline.capture_frame() 
+                frame_bgr = vision_pipeline.capture_frame() 
             except Exception as e: 
                 # Si erreur de capture pedant startup/shutdown, skip 
                 # CORRECTION: Affiche l'erreur correctement 
@@ -42,7 +74,6 @@ def video_feed():
                 continue 
 
             # Convertie de RGB (camera) à BGR (OpenCV) 
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) 
             ret, jpeg = cv2.imencode('.jpg', frame_bgr) 
             if not ret: 
                 continue 
@@ -81,7 +112,7 @@ def start_camera():
     print("Thread caméra démarré") 
     # --- CREATE A NEW CAMERA OBJECT --- 
     vision_pipeline.start()
-    vision_thread = threading.Thread(target=vision_pipeline.run_camera()) 
+    vision_thread = threading.Thread(target=vision_pipeline.run_camera) 
     vision_thread.daemon = True
     vision_thread.start()
     print("Caméra en fonctionnement")
@@ -103,7 +134,7 @@ def page_accueil():
         width: 100vw; height: 100vh; 
         font-family: Arial, sans-serif; 
         background: linear-gradient(135deg, #40E0D0, #00BFFF); 
-        color: #255; display: flex; flex-direction: column; 
+        color: #333; display: flex; flex-direction: column; 
     }
 
     h1, h2, h3 { margin: 10px 0; text-align: center; } 
@@ -175,7 +206,8 @@ def page_accueil():
         padding: 10px 20px;
         cursor: pointer;
         font-size: 16px;
-
+    }
+        
     .capture-btn:hover {
         background-color: #388e3c;
     }
@@ -240,8 +272,23 @@ def page_accueil():
     function captureImage() {
         fetch('/capture_image', { method: 'POST' })
             .then(response => response.json())
-            .then(data => {
-                alert('Image capturée et enregistrée sur le serveur : ' + data['filename']);
+            .then(({ file_url, filename, error }) => {
+                if (error) {
+                    alert('Erreur lors de la capture de l\'image : ' + error);
+                    return;
+                }
+                alert('Image capturée et enregistrée sur le serveur : ' + file_url);
+                // enregistrement de l'image sur le PC
+                const link = document.createElement('a');
+                link.href = file_url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                // Ouverture d'un preview dans un nouvel onglet
+                window.open(file_url, '_blank');
+            })
+            .catch(err => { alert('Erreur lors de la communication avec le serveur : ' + err);
             });
     }
 
@@ -250,8 +297,3 @@ def page_accueil():
     """
 
     return html
-
-
-# === LANCEMENT DU SERVEUR === 
-if __name__ == '__main__': 
-    app.run(host='0.0.0.0', port=5000, threaded=True) 

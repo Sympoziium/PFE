@@ -9,7 +9,7 @@
 # - agréger les résultats
 # - fournir une API simple pour interagir avec le pipeline de vision
 # ------------------
-
+import threading
 import time
 
 
@@ -19,6 +19,7 @@ class VisionPipeline:
         self.detectors = detectors if detectors is not None else []
         self.periode = 1.0 / fps
         self.running = False
+        self.lock = threading.Lock() # pour la synchronisation des threads
 
     def start(self):
         """ appeler pour démarrer le pipeline de vision """
@@ -47,15 +48,16 @@ class VisionPipeline:
         if not self.running:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
         
-        start_time = time.time()
-        
-        try:
-            frame = self.camera.capture()
-        except Exception as e:
-            print(f"Erreur lors de la capture d'une image: {e}")
-            raise e
-        
-        results = []
+        with self.lock: # assurer la synchronisation des accès à la caméra
+            start_time = time.time()
+            
+            try:
+                frame = self.camera.capture()
+            except Exception as e:
+                print(f"Erreur lors de la capture d'une image: {e}")
+                raise e
+            
+            results = []
 
         # Appliquer chaque détecteur sur l'image capturée
         for detectors in self.detectors:
@@ -91,8 +93,8 @@ class VisionPipeline:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
         
         try:
-            frame = self.camera.capture()
-            return frame
+            with self.lock: # assurer la synchronisation des accès à la caméra
+                return self.camera.capture()
         except Exception as e:
             print(f"Erreur lors de la capture d'une image brute: {e}")
             raise e
