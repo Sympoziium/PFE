@@ -3,7 +3,7 @@
 # Module pour gérer le serveur Flask pour l'interface web du robot
 
 from fileinput import filename
-from flask import Flask, Response, request, redirect, url_for, jsonify 
+from flask import Flask, Response, request, redirect, url_for, jsonify, send_from_directory
 import time, cv2
 import threading
 from core.vision.vision_pipeline import VisionPipeline
@@ -11,9 +11,14 @@ from core.vision.vision_pipeline import VisionPipeline
 import os, uuid # Pour la sauvegarde des images capturées
 
 # Initialisation de l'instance du serveur Flask
-app = Flask(__name__)
+app = Flask(__name__, static_folder = os.path.join(os.path.dirname(__file__), 'static'))
 
+# Instance globale du pipeline de vision
 vision_pipeline = None
+
+# Path pour sauvegarder les images capturées
+CAPTURE_DIR = os.path.join(app.static_folder, 'captured_images')
+os.makedirs(CAPTURE_DIR, exist_ok=True)  # Crée le dossier s'il n'existe pas
 
 # Fonction pour attacher le pipeline de vision global
 def attach_pipeline(pipeline):
@@ -25,6 +30,16 @@ def attach_pipeline(pipeline):
 @app.route('/')
 def home():
     return page_accueil()
+
+# Fonction pour télécharger une image capturée (Appelé automatiquement après capture)
+@app.route('/download_image/<filename>')
+def download_image(filename):
+    print("Downloading:", filename, "from", CAPTURE_DIR)
+    full_path = os.path.join(CAPTURE_DIR, filename)
+    if not os.path.exists(full_path):
+        print("File not found:", full_path)
+        return "File not found", 404
+    return send_from_directory(CAPTURE_DIR, filename, as_attachment=True)
 
 # Fonction pour générer la page d'accueil HTML
 @app.route('/capture_image', methods=['POST'])
@@ -38,23 +53,23 @@ def capture_image():
     # 1. Capture de l'image actuelle
     frame_brg = vision_pipeline.capture_frame()
     
-    # 2. Conception du PATH pour sauvegarder l'image
-    save_dir = os.path.join(app.static_folder, 'captured_images') # Dossier pour sauvegarder les images capturées
-    os.makedirs(save_dir, exist_ok=True) # Crée le dossier s'il n'existe pas
-
-    # 3. Génération d'un nom de fichier unique
+    # 2. Génération d'un nom de fichier unique
     ts = time.strftime("%Y%m%d-%H%M%S")
     filename = f'{ts}_{uuid.uuid4().hex[:6]}.jpg'
-    save_path = os.path.join(save_dir, filename)
+    save_path = os.path.join(CAPTURE_DIR, filename)
     
-    # 4. Sauvegarde de l'image localement
+    # 3. Sauvegarde de l'image localement
     ok = cv2.imwrite(save_path, frame_brg)
     if not ok:
         return jsonify({'error': 'write failed'}), 500
     
+    # 4. Validation de la sauvegarde
+    print("Saved image to:", save_path, "exists?", os.path.exists(save_path))
+
+
     # 5. Génération d'un URL pour accéder à l'image sauvegardée via le PC
-    image_url = url_for('static', filename=f'captured_images/{filename}', _external=True)
-    return jsonify({'filename': filename, 'url': image_url})
+    image_url = f'/download_image/{filename}'
+    return jsonify({'filename': filename, 'file_url':  image_url})
 
 @app.route('/status')
 def status():
@@ -66,6 +81,7 @@ def status():
 @app.route('/video') 
 def video_feed(): 
     global vision_pipeline
+    print("GET /video reçu") # pour debug
 
     if not vision_pipeline or not vision_pipeline.is_running(): 
         print("Video feed requested but video pipeline not running") 
@@ -77,6 +93,7 @@ def video_feed():
 
     # Générateur de flux vidéo Attention: le livefeed consume 1 thread CPU
     def generate(): 
+        print("Générateur de feed started")
         while vision_pipeline.is_running(): 
             # attend si l'objet camera est activé 
             # if not vision_pipeline.is_running(): 
@@ -144,6 +161,7 @@ def start_camera():
 
 
 def page_accueil():
+    print("Génération de la page d'accueil HTML") # pour debug
     html = """<!DOCTYPE html><html lang="fr"> 
 
     /* Styles CSS pour l'interface web */
@@ -246,11 +264,13 @@ def page_accueil():
     <body> 
     """
     html += "<div class='container'>"
-    
+
+    print("Ajout du panneau de contrôle de la caméra") # pour debug
+
     # --- Panneau de contrôle de la caméra ---
     html += "<div class='camera-controls'>" 
     html += "<h2>Contrôle de la caméra</h2>"
-    # --- Ajout des boutons et du conteneur pour le flux vidéo ---
+    # --- Ajout des boutons pour le flux vidéo ---
     html += "<button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>▶️ Start Camera</button>" 
     
     html += "<button class='capture-btn' id='cameraCaptureBtn' onclick='captureImage()'>📸 Capture Image</button>" 
@@ -260,11 +280,20 @@ def page_accueil():
     
     html += "</div>" 
 
+    print("Fin de la génération de la page d'accueil HTML") # pour debug
+
+
     # --- Fonctions JavaScript pour gérer le livefeed vidéo --- 
+    # WARNING: On a pas de façon dirècte pour débugger le script JS. Si il brise
+    # La page HTML va chargé mais resté bloqué, les action des boutons ne répondront pas.
+    # Utiliser la console du navigateur pour debuguer le JS en faisant F12 sur la page web.
+    # La console affichera les erreurs JS et permet d'exécuter des commandes JS manuellement pour tester.
     html += """ 
     <script> 
 
     function toggleCamera() { 
+        console.log("toggleCamera() appelée"); // pour debug
+
         const liveFeed = document.getElementById('liveFeed'); 
         const btn = document.getElementById('cameraToggleBtn'); 
         const img = liveFeed.querySelector('img'); 
@@ -297,11 +326,13 @@ def page_accueil():
     } 
 
     function captureImage() {
+        console.log("captureImage() appelée"); // pour debug
+
         fetch('/capture_image', { method: 'POST' })
             .then(response => response.json())
             .then(({ file_url, filename, error }) => {
                 if (error) {
-                    alert('Erreur lors de la capture de l\'image : ' + error);
+                    alert('Erreur lors de la capture image : ' + error);
                     return;
                 }
                 alert('Image capturée et enregistrée sur le serveur : ' + file_url);
@@ -313,14 +344,17 @@ def page_accueil():
                 link.click();
                 link.remove();
                 // Ouverture d'un preview dans un nouvel onglet
-                window.open(file_url, '_blank');
+                // window.open(file_url, '_blank');
             })
             .catch(err => { alert('Erreur lors de la communication avec le serveur : ' + err);
+                console.log("Erreur lors de la communication avec le serveur : " + err); // pour debug
             });
     }
 
     </script> 
     </body></html> 
     """
+
+    print("Fonction JS ajoutée à la page d'accueil") # pour debug
 
     return html

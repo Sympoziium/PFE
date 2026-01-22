@@ -26,7 +26,7 @@ attach_pipeline(vision_pipeline)
 # Démarrer le serveur Flask dans un thread séparé
 server_thread = threading.Thread(
     target=app.run,
-    kwargs={'host': '0.0.0.0', 'port': 5000, 'threaded': True, 'use_reloader': False}
+    kwargs={'host': '0.0.0.0', 'port': 5000, 'threaded': True, 'use_reloader': False, 'debug': False}
 )
 server_thread.daemon = True
 server_thread.start()
