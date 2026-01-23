@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # TemplateOnglet.py
 # ------------------
 # Template de base (HTML/CSS/JS inline) pour un onglet vide prêt à être branché dans Flask.

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # onglet_vision.py
 # ------------------
 # ce module défini un onglet de l'interface web dédié au fonctionnalitées du module de vision

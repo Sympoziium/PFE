@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # Luminosité.py
 # ------------------
 # Module de détecteur ultra simple pour tester le pipeline de vision

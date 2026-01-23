@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # Line_detector.py
 # ------------------
 # Module de détecteur de lignes dans une image

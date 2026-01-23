@@ -73,7 +73,9 @@ On souhaite se connecter au Raspberry Pi du robot afin d'avoir un plein contrôl
     ```
     pi@zumi3257:~ $
     ```
-    
+
+
+pour consulter la doc des fonctions de la library zumi aller a `https://docs.robolink.com/docs/Zumi/Python/Function-Documentation`
 
 
 ## CHANGELOG

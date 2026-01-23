@@ -1,7 +1,8 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # main.py
 # ------------------
 # Point d'entree principal pour exécuter le programme du robot
-# coding=utf-8
 # Import pour le module de vision
 from core.camera.picam2 import PiCam2
 from core.vision.vision_pipeline import VisionPipeline

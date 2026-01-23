@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# picam2.py
+# ------------------
+# Module de gestion de la caméra Raspberry Pi utilisant la bibliothèque Picamera2
 from picamera2 import Picamera2, Preview
 from .camera_base import CameraBase
 import numpy as np

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vision_pipeline.py
 # ------------------
 # ce module défini la logique de détection de la vision

@@ -1,4 +1,9 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # camera/camera_base.py
+# ------------------
+# Interface abstraite pour une caméra.
+# Toute caméra (Pi, Zumi, USB, simulation)
 
 from abc import ABC, abstractmethod
 import numpy as np

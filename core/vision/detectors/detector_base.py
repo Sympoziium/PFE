@@ -1,4 +1,6 @@
-# base_detecteur.py
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# detector_base.py
 # ------------------
 # ce module défini la classe de base pour les détecteurs de vision
 # il servira de base pour l'implémentation du CNN
