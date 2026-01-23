@@ -34,15 +34,13 @@ def attach_pipeline(pipeline):
 #                       Pages de l'interface web
 # ----------------------------------------------------------------------------
 # Route pour la page d'accueil
-# @app.route('/')
-# def home():
-    # return page_accueil()
-
-# Route pour l'onglet de vision
-# @app.route('/onglet_vision')
-# def onglet_vision():
 @app.route('/')
 def home():
+    return page_accueil()
+
+# Route pour l'onglet de vision
+@app.route('/vision')
+def vision():
     html = render_vision_tab("Vision du Zumi")
     return html
 
@@ -53,7 +51,7 @@ def onglet_template():
 
 
 # ----------------------------------------------------------------------------
-#                       Fonctions de callback pour les actions web
+#                Fonctions de callback pour les actions web
 # ----------------------------------------------------------------------------
 
 # Fonction pour télécharger une image capturée (Appelé automatiquement après capture)
@@ -140,12 +138,12 @@ def close_camera():
     global vision_pipeline
     if not vision_pipeline.is_running():
         print("Camera not active") 
-        return redirect(url_for('home')) 
+        return ("", 204)
     
     vision_pipeline.stop()  
    
     print("Camera stop signal accepted.") 
-    return redirect(url_for('home')) 
+    return ("", 204)
 
 @app.route('/start_camera', methods=['POST']) 
 def start_camera(): 
@@ -153,12 +151,14 @@ def start_camera():
     
     if vision_pipeline.is_running(): 
         print("Camera already active") 
-        return redirect(url_for('home'))
+        return ("", 204)
      
     # --- CREATE A NEW CAMERA OBJECT --- 
     vision_pipeline.start()
     print("Caméra en fonctionnement")
-    return redirect(url_for('home'))
+    return ("", 204)
+
+# --------------------------------------------
 
 
 
@@ -182,6 +182,14 @@ def page_accueil():
     }
 
     h1, h2, h3 { margin: 10px 0; text-align: center; } 
+
+    /* Nav d'onglets en haut */
+    .tab-header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; }
+    .tab-title { font-size: 22px; font-weight: bold; margin: 0; }
+    .tab-nav { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+    .primary-btn { background: #007acc; color: white; border: none; padding: 10px 18px; border-radius: 10px; cursor: pointer; font-size: 15px; }
+    .primary-btn:hover { background: #005fa3; }
+    .primary-btn.active { background: #00528a; box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset; }
 
     /* Styles pour le conteneur principal et les sections */
     .container { 
@@ -265,13 +273,25 @@ def page_accueil():
     </head> 
     <body> 
     """
+
     html += "<div class='container'>"
 
-    print("Ajout du panneau de contrôle de la caméra") # pour debug
+    html += """
+    <div class='tab-header'>
+        <h2 class='tab-title'>Accueil</h2>
+        <div class='tab-nav'>
+            <button class='primary-btn' data-path='/' onclick="location.href='/'">Accueil</button>
+            <button class='primary-btn' data-path='/vision' onclick="location.href='/vision'">Vision</button>
+            <button class='primary-btn' data-path='/onglet_template' onclick="location.href='/onglet_template'">Template</button>
+        </div>
+    </div>
+    """
 
     # --- Panneau de contrôle de la caméra ---
     html += "<div class='camera-controls'>" 
     html += "<h2>Contrôle de la caméra</h2>"
+    # Ajout d'une barre de navigation d'onglets en haut
+    
     # --- Ajout des boutons pour le flux vidéo ---
     html += "<button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>▶️ Start Camera</button>" 
     
@@ -282,8 +302,6 @@ def page_accueil():
     
     html += "</div>" 
 
-    print("Fin de la génération de la page d'accueil HTML") # pour debug
-
 
     # --- Fonctions JavaScript pour gérer le livefeed vidéo --- 
     # WARNING: On a pas de façon dirècte pour débugger le script JS. Si il brise
@@ -292,6 +310,16 @@ def page_accueil():
     # La console affichera les erreurs JS et permet d'exécuter des commandes JS manuellement pour tester.
     html += """ 
     <script> 
+
+    // Active l'état du bouton d'onglet selon l'URL courante
+    (function() {
+        const norm = p => (p || '').replace(/\/+$/,'') || '/';
+        const here = norm(location.pathname);
+        document.querySelectorAll('.tab-nav .primary-btn').forEach(btn => {
+            const p = norm(btn.dataset?.path || btn.getAttribute('data-path'));
+            if (p === here) btn.classList.add('active');
+        });
+    })();
 
     function toggleCamera() { 
         console.log("toggleCamera() appelée"); // pour debug
