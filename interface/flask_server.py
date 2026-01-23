@@ -1,6 +1,8 @@
 # flask_server.py
 # ------------------
-# Module pour gérer le serveur Flask pour l'interface web du robot
+# Module pour de gestion des routes du serveur Flask pour l'interface web du robot
+# on déclare ici uniquement les routes et callbacks pour le backend du serveur Flask
+# l'interface web est défini dans des fichiers dédiés pour chaque onglet.
 
 from fileinput import filename
 from flask import Flask, Response, request, redirect, url_for, jsonify, send_from_directory
@@ -51,7 +53,7 @@ def onglet_template():
 
 
 # ----------------------------------------------------------------------------
-#                Fonctions de callback pour les actions web
+#            Fonctions de callback pour les actions de vision
 # ----------------------------------------------------------------------------
 
 # Fonction pour télécharger une image capturée (Appelé automatiquement après capture)
@@ -158,8 +160,75 @@ def start_camera():
     print("Caméra en fonctionnement")
     return ("", 204)
 
-# --------------------------------------------
+# ----------------------------------------------------------------------------
+#          Fonctions de callback pour les actions moteur du robot
+# ----------------------------------------------------------------------------
+@app.route('/zumi/forward') 
+def forward(): 
+    global g_last_move_time, g_watchdog_active  
+    g_last_move_time = time.time()              
+    g_watchdog_active = True                    
+    print("[HTTP] /zumi/forward reçu") 
+    try: 
+        zumi.control_motors(DRIVE_SPEED, DRIVE_SPEED) 
+        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(DRIVE_SPEED, DRIVE_SPEED)) 
+        return "ok" 
+    except Exception as e: 
+        print("[ERREUR] zumi.control_motors(forward):", e) 
+        return "error", 500 
 
+@app.route('/zumi/reverse') 
+def reverse(): 
+    global g_last_move_time, g_watchdog_active  
+    g_last_move_time = time.time()              
+    g_watchdog_active = True                    
+    print("[HTTP] /zumi/reverse reçu") 
+    try: 
+        zumi.control_motors(-DRIVE_SPEED, -DRIVE_SPEED) 
+        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-DRIVE_SPEED, -DRIVE_SPEED)) 
+        return "ok" 
+    except Exception as e: 
+        print("[ERREUR] zumi.control_motors(reverse):", e) 
+        return "error", 500 
+    
+@app.route('/zumi/left') 
+def left(): 
+    global g_last_move_time, g_watchdog_active  
+    g_last_move_time = time.time()              
+    g_watchdog_active = True                    
+    print("[HTTP] /zumi/left reçu") 
+    try: 
+        zumi.control_motors(-TURN_SPEED, TURN_SPEED)  
+        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-TURN_SPEED, TURN_SPEED)) 
+        return "ok" 
+    except Exception as e: 
+        print("[ERREUR] zumi.control_motors(left):", e) 
+        return "error", 500 
+    
+@app.route('/zumi/right') 
+def right(): 
+    global g_last_move_time, g_watchdog_active  
+    g_last_move_time = time.time()              
+    g_watchdog_active = True                    
+    print("[HTTP] /zumi/right reçu") 
+    try: 
+        zumi.control_motors(TURN_SPEED, -TURN_SPEED) 
+        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(TURN_SPEED, -TURN_SPEED)) 
+        return "ok" 
+    except Exception as e: 
+        print("[ERREUR] zumi.control_motors(right):", e) 
+        return "error", 500 
+    
+@app.route('/zumi/stop') 
+def stop(): 
+    print("[HTTP] /zumi/stop reçu") 
+    try: 
+        zumi.stop() 
+        print("[ACTION] zumi.stop() exécuté") 
+        return "ok" 
+    except Exception as e: 
+        print("[ERREUR] zumi.stop():", e) 
+        return "error", 500 
 
 
 def page_accueil():

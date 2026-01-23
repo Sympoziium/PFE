@@ -42,6 +42,39 @@ Pour plus de détails, consultez le [Guide Git Complet](GUIDE_GIT.md).
 
 Projet réalisé dans le cadre du programme de fin d'études.
 
+## Procédure de connexion au zumi via SSH
+On souhaite se connecter au Raspberry Pi du robot afin d'avoir un plein contrôle de celui-ci
+
+1. se connecter au Wifi du zumi. 
+    En allumant le robot, il va afficher le SSID de son réseau, on doit alors s'y connecter en entrant le mot de passe qui est le même que le SSID. 
+    SSID connu: `zumi3257`
+
+2. se connecter sur dans un browser chrome a `http://zumidashboard.ai/`
+    on veut aller chercher l'adresse ip du robot qui se trouve dans les settings lorsque connecté.
+    adresse ip connue : `10.192.181.46`
+
+3. Ouvrir un terminal et tenter une connexion ssh au robot.
+
+    entrez la commande suivante `ssh pi@adresse_ip_du_robot`comme ceci:
+    ```
+    ssh pi@10.192.181.46
+    ```
+
+4. à la première connexion il vont demander si tu veux fingerprint l'encription il faut entrer `yes`
+    ```
+    The authenticity of host '10.192.181.46 (10.192.181.46)' can't be established.
+    ED25519 key fingerprint is SHA256:DjT/j9wBuWBwYsjfBbCoAbD+RFQeL6+tj6RO3I/2/s8.
+    This key is not known by any other names.
+    Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+    Warning: Permanently added '10.192.181.46' (ED25519) to the list of known hosts.
+    ```
+
+5. finalement, on va demander le mot de passe pour se connecter au robot, le mot de passe est `pi` puis appuyer sur enter vous verrez allors le terminal bash du robot.
+    ```
+    pi@zumi3257:~ $
+    ```
+    
+
 
 ## CHANGELOG
 
