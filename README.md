@@ -47,11 +47,11 @@ On souhaite se connecter au Raspberry Pi du robot afin d'avoir un plein contrôl
 
 1. se connecter au Wifi du zumi. 
     En allumant le robot, il va afficher le SSID de son réseau, on doit alors s'y connecter en entrant le mot de passe qui est le même que le SSID. 
-    SSID connu: `zumi3257`
+    SSID connu: `zumi3257`, `zumi4585`
 
 2. se connecter sur dans un browser chrome a `http://zumidashboard.ai/`
     on veut aller chercher l'adresse ip du robot qui se trouve dans les settings lorsque connecté.
-    adresse ip connue : `10.192.181.46`
+    **Cette Étape est facultative** on peut se connecter avec le default gateway `192.168.10.1`
 
 3. Ouvrir un terminal et tenter une connexion ssh au robot.
 

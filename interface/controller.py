@@ -1,0 +1,1 @@
+# definir les fonctions utiliser par les routes ex : activer lumiere rouge, demarrer detection, etc pour les appeler par les routes.

@@ -5,8 +5,9 @@
 # Point d'entree principal pour exécuter le programme du robot
 # Import pour le module de vision
 from core.camera.picam2 import PiCam2
+from zumi.util.camera import Camera # pour tester sur le vrai robot
 from core.vision.vision_pipeline import VisionPipeline
-from core.vision.detectors.Luminosité import LuminosityDetector
+from core.vision.detectors.Luminosity import LuminosityDetector
 
 # Import pour le serveur web (Flask)
 from interface.flask_server import app, attach_pipeline
@@ -14,6 +15,7 @@ from interface.flask_server import app, attach_pipeline
 import threading
 
 camera = PiCam2()
+# camera = Camera()  # Utiliser cette ligne pour tester sur le vrai robot Zumi
 detector = LuminosityDetector()
 vision_pipeline = VisionPipeline(camera=camera)
 
