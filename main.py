@@ -5,7 +5,14 @@
 # Point d'entree principal pour exécuter le programme du robot
 # Import pour le module de vision
 # from core.camera.picam2 import PiCam2 
-from zumi.util.camera import Camera # pour tester sur le vrai robot
+
+# IMPORT ZUMI LIBRARY
+import sys
+sys.path.append("/usr/local/lib/python3.5/dist-packages")  # chemin du package zumi
+from zumi.util.camera import Camera
+
+
+
 from core.vision.vision_pipeline import VisionPipeline
 from core.vision.detectors.Luminosity import LuminosityDetector
 

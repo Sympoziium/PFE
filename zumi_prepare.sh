@@ -10,6 +10,7 @@
 # 3. lancer le script : sudo ~/zumi_prepare.sh
 # 4. une fois le script terminé, se connecter au Zumi via l'IP affichée (ssh pi@<IP>)
 # mot de passe par défaut : pi
+# ces normal si il faut attendre 3-5 minutes avant que la connexion SSH soit active
 
 
 # --- Stop programmes Zumi ---
@@ -40,7 +41,7 @@ ps aux | grep python | grep -v grep
 echo "✅ Tous les services Zumi ont été désactivés."
 
 
-sleep 10
+sleep 5
 
 # Ajout temporaire du hotspot
 echo "📶 Connexion temporaire au Wi-Fi maison..."
@@ -102,12 +103,12 @@ echo "👉 SSH sur $IP via le réseau Wi-Fi"
 
 
 # --- Désactivation du point d'accès AP0 ---
-echo "❌ Désactivation du AP0..."
-sudo ip link set ap0 down
-sudo systemctl stop hostapd 2>/dev/null
-sudo systemctl stop dnsmasq 2>/dev/null
-sleep 2
-echo "✅ AP0 désactivé."
+# echo "❌ Désactivation du AP0..."
+# sudo ip link set ap0 down
+# sudo systemctl stop hostapd 2>/dev/null
+# sudo systemctl stop dnsmasq 2>/dev/null
+# sleep 2
+# echo "✅ AP0 désactivé."
 
 
 exit 0
