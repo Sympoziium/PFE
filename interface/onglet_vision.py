@@ -17,7 +17,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 	"""
 
-	return f"""<!DOCTYPE html><html lang='fr'>
+	return """<!DOCTYPE html><html lang='fr'>
 	<head>
 	<meta charset='UTF-8'>
 	<meta name='viewport' content='width=device-width, initial-scale=1'>
@@ -172,7 +172,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 			<div class='tab-content'>
 				<div class='tab-header'>
-					<h3 class='tab-subtitle'>{"Capture image"}</h3>
+					<h3 class='tab-subtitle'>Capture image</h3>
 				</div>
 				<!-- AJOUT DES FONCTIONS DE CAPTURE -->
 				<button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>▶️ Start Camera</button>
@@ -187,7 +187,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 			<div class='tab-content'>
 				<div class='tab-header'>
-					<h3 class='tab-subtitle'>{"Image Detection"}</h3>
+					<h3 class='tab-subtitle'>Image Detection</h3>
 				</div>
 				<!-- AJOUT DES FONCTIONS DE DÉTECTION -->
 				<div class='tab-row'>
@@ -283,7 +283,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	
 	</script>
 	</body></html>
-	"""
+	""".format(title=title)
 
 
 #Pour permettre de naviguer entre les onglets

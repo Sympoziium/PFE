@@ -10,7 +10,7 @@ class mockZumi:
         print("Mock Zumi stopped")
 
     def control_motors(self, left_speed, right_speed):
-        print(f"Mock Zumi motors set to left: {left_speed}, right: {right_speed}")
+        print("Mock Zumi motors set to left: {}, right: {}".format(left_speed, right_speed))
 
     def get_battery_percent(self):
         return 100

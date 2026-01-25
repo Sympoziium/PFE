@@ -18,7 +18,7 @@ def render_template_tab(title: str = "Onglet générique") -> str:
 	La page est volontairement vide de contrôles; insérez vos boutons à l'endroit indiqué.
 	"""
 
-	return f"""<!DOCTYPE html><html lang='fr'>
+	return """<!DOCTYPE html><html lang='fr'>
 	<head>
 	<meta charset='UTF-8'>
 	<meta name='viewport' content='width=device-width, initial-scale=1'>
@@ -172,7 +172,7 @@ def render_template_tab(title: str = "Onglet générique") -> str:
 		async function capture() {{ const r = await fetch('/capture_image', {{ method: 'POST' }}); const j = await r.json(); console.log(j); }}
 	</script>
 	</body></html>
-	"""
+	""".format(title=title)
 
 
 # Rappel d'intégration rapide dans Flask (page simple) :

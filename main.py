@@ -14,8 +14,13 @@ from interface.flask_server import app, attach_pipeline
 
 import threading
 
-camera = PiCam2()
-# camera = Camera()  # Utiliser cette ligne pour tester sur le vrai robot Zumi
+try:
+    camera = PiCam2()
+except Exception as e:
+    print("Erreur lors de l'initialisation de la caméra PiCam2: {}".format(e))
+    print("Utilisation de la caméra par défaut.")
+    camera = Camera()  # Utiliser cette ligne pour tester sur le vrai robot Zumi
+
 detector = LuminosityDetector()
 vision_pipeline = VisionPipeline(camera=camera)
 

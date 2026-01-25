@@ -79,7 +79,7 @@ def capture_image():
     
     # 2. Génération d'un nom de fichier unique
     ts = time.strftime("%Y%m%d-%H%M%S")
-    filename = f'{ts}_{uuid.uuid4().hex[:6]}.jpg'
+    filename = '{}_{}.jpg'.format(ts, uuid.uuid4().hex[:6])
     save_path = os.path.join(CAPTURE_DIR, filename)
     
     # 3. Sauvegarde de l'image localement
@@ -91,7 +91,7 @@ def capture_image():
     print("Saved image to:", save_path, "exists?", os.path.exists(save_path))
 
     # 5. Génération d'un URL pour accéder à l'image sauvegardée via le PC
-    image_url = f'/download_image/{filename}'
+    image_url = '/download_image/{}'.format(filename)
     return jsonify({'filename': filename, 'file_url':  image_url})
 
 # Fonction pour vérifier le statut de la caméra 

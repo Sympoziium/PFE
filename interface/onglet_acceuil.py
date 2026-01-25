@@ -11,7 +11,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	"""Retourne la page HTML complète de l'onglet d'accueil.
 	"""
 
-	return f"""<!DOCTYPE html><html lang='fr'>
+	return """<!DOCTYPE html><html lang='fr'>
 	<head>
 	<meta charset='UTF-8'>
 	<meta name='viewport' content='width=device-width, initial-scale=1'>
@@ -165,6 +165,6 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 		async function capture() {{ const r = await fetch('/capture_image', {{ method: 'POST' }}); const j = await r.json(); console.log(j); }}
 	</script>
 	</body></html>
-	"""
+	""".format(title=title)
 
 
