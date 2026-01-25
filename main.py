@@ -4,7 +4,7 @@
 # ------------------
 # Point d'entree principal pour exécuter le programme du robot
 # Import pour le module de vision
-from core.camera.picam2 import PiCam2
+# from core.camera.picam2 import PiCam2 
 from zumi.util.camera import Camera # pour tester sur le vrai robot
 from core.vision.vision_pipeline import VisionPipeline
 from core.vision.detectors.Luminosity import LuminosityDetector
@@ -14,12 +14,15 @@ from interface.flask_server import app, attach_pipeline
 
 import threading
 
-try:
-    camera = PiCam2()
-except Exception as e:
-    print("Erreur lors de l'initialisation de la caméra PiCam2: {}".format(e))
-    print("Utilisation de la caméra par défaut.")
-    camera = Camera()  # Utiliser cette ligne pour tester sur le vrai robot Zumi
+# try:
+#     camera = PiCam2()
+# except Exception as e:
+#     print("Erreur lors de l'initialisation de la caméra PiCam2: {}".format(e))
+#     print("Utilisation de la caméra par défaut.")
+#     camera = Camera()  # Utiliser cette ligne pour tester sur le vrai robot Zumi
+
+# Le zumi n'a pas la librairie picamera2 d'installée par défaut, on utilise la caméra par défaut
+camera = Camera() 
 
 detector = LuminosityDetector()
 vision_pipeline = VisionPipeline(camera=camera)
