@@ -67,7 +67,7 @@ class controller:
         func = request.environ.get('werkzeug.server.shutdown')
         if func is None:
             return jsonify({"error": "shutdown unavailable"}), 500
-        self.app.logger.info("Arrêt du serveur Flask demandé via /EXIT")
+        self.app.logger.info("Arrêt du serveur Flask demandé via /exit")
         func()  # Le serveur s'arrêtera après cette requête
         return ('', 204)
     

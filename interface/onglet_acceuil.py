@@ -11,7 +11,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	"""Retourne la page HTML complète de l'onglet d'accueil.
 	"""
 
-	return """<!DOCTYPE html><html lang='fr'>
+	html = """<!DOCTYPE html><html lang='fr'>
 	<head>
 	<meta charset='UTF-8'>
 	<meta name='viewport' content='width=device-width, initial-scale=1'>
@@ -393,6 +393,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 
 	</script>
 	</body></html>
-	""".format(title=title)
+	"""
+
+	# Remplacer uniquement le titre sans interpréter les autres accolades
+	return html.replace("{title}", title)
 
 

@@ -17,7 +17,7 @@ def register_routes(ctrl):
     app.add_url_rule('/onglet_template', 'onglet_template', lambda: ctrl.onglet_template())
 
     # MISC actions
-    app.add_url_rule('/exit', 'exit_server', lambda: ctrl.exit_server())
+    app.add_url_rule('/exit', 'exit_server', lambda: ctrl.exit_server(), methods=['POST'])
 
     # Vision actions
     app.add_url_rule('/download_image/<filename>', 'download_image', lambda filename: ctrl.download_image(filename))
