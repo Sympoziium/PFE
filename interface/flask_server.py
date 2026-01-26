@@ -101,6 +101,23 @@ def status():
         "camera_running": vision_pipeline.is_running()
     })
 
+# Fonction pour arrêter proprement le serveur Flask (et le programme)
+@app.route('/EXIT', methods=['POST'])
+def exit_server():
+    global vision_pipeline
+    try:
+        if vision_pipeline and vision_pipeline.is_running():
+            vision_pipeline.stop()
+    except Exception:
+        pass
+
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        return jsonify({"error": "shutdown unavailable"}), 500
+    app.logger.info("Arrêt du serveur Flask demandé via /EXIT")
+    func()  # Le serveur s'arrêtera après cette requête
+    return ('', 204)
+
 # Fonction pour le flux vidéo en direct
 @app.route('/video') 
 def video_feed(): 

@@ -163,3 +163,12 @@ PFE/
 - ajouté le lancement du `flask_server.py` sur un thread.
 - ajout de l'enregistrement des images sur le PC via le serveur flask.
 
+### Modification pour le Zumi
+- le zumi fonctionne avex `python 3.5.3`, j'ai donc du modifier les fichiers sources du projet pour ne plus utiliser les print format `f` et forcer l'encodage de tout les fichiers en UTF-8 avec l'entête:
+```
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+```
+- j'ai conçu avec chatGPT un script de préparation du Zumi qui est a run avant de faire les tests. en gros il permet d'arrêter les process du programme de base du zumi et libère les ressources du robot pour notre code a nous. voir `Procédure test zumi.md` pour les détails.
+- le robot est capable d'exécuter notre programme et son serveur flask est fonctionnel, deplus les api zumi sont toujours fonctionnel.
+- ajout d'un bouton exit sur la paje d'acceuil pour permettre de quitter le programme normalement.

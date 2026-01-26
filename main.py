@@ -3,8 +3,10 @@
 # main.py
 # ------------------
 # Point d'entree principal pour exécuter le programme du robot
-# Import pour le module de vision
-# from core.camera.picam2 import PiCam2 
+# pour se connecter au serveur flask après qu'il soit partit
+# entrer l'ip du zumi sur le réseau local dans le web browser
+# ex: http://192.168.68.73:5000/
+
 
 # IMPORT ZUMI LIBRARY
 import sys
@@ -51,14 +53,6 @@ server_thread.start()
 print("Flask server démarré")
 
 
+server_thread.join()  # Attente jusqu'à l'arrêt du serveur via /EXIT
 
-testing = True
-while testing:
-    server_thread.join()  # Le serveur Flask gère les requêtes en arrière-plan
-
-
-    # results = vision_pipeline.step()
-    # print("Résultats de la détection de luminosité :", results)
-    # cmd = input("Appuyez sur Espace pour arrêter...")  # Pause pour chaque étape
-    # if cmd == " ":
-    #     testing = False
+exit(0)

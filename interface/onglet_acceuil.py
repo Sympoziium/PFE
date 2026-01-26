@@ -133,6 +133,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 				<button class='primary-btn' data-path="/vision" onclick="location.href='/vision'">Vision</button>
 				<button class='primary-btn' data-path="/onglet_template" onclick="location.href='/onglet_template'">Template</button>
 				</div>
+				<button class='primary-btn' onclick="fetch('/EXIT', {{method:'POST'}})">EXIT</button>
 			</div>
 
 			<div class='tab-content'>
