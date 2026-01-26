@@ -18,24 +18,24 @@ echo "🛑 Désactivation des services Zumi..."
 # --- Stop programmes Zumi ---
 echo "Arrêt du dashboard..."
 sudo pkill -f dashboard.py
-sleep 3
+sleep 1
 
 echo "Arrêt du service zumidashboard..."
 sudo pkill -f zumidashboard
-sleep 3
+sleep 1
 
 echo "Arrêt des gestures..."
 sudo pkill -f gesture.py
-sleep 3
+sleep 1
 
 echo "Arrêt de l'Interface_Opérateur.py..."
 sudo pkill -f Interface_Operateur.py
-sleep 3
+sleep 1
 echo "Arrêt de Jupyter et des scripts Python..."
 sudo pkill -f jupyter
-sleep 3
+sleep 1
 sudo pkill -f python3
-sleep 3
+sleep 1
 
 echo "🧹 Nettoyage des processus Python..."
 ps aux | grep python | grep -v grep
@@ -43,7 +43,7 @@ ps aux | grep python | grep -v grep
 echo "✅ Tous les services Zumi ont été désactivés."
 
 
-sleep 5
+sleep 3
 
 # --- Libérer les ports web potentiellement occupés (ex: Flask:5000, Dashboard:8080/80) ---
 kill_port() {
@@ -117,13 +117,13 @@ sudo wpa_supplicant -B -i wlan0 -c /tmp/wpa_supplicant.conf
 
 
 echo "🔄 Attente de connexion..."
-sleep 7
+sleep 4
 
 # Renouveler proprement l'IP pour éviter les erreurs RTNETLINK
 sudo dhclient -r wlan0 2>/dev/null || true
 sudo dhclient wlan0
 
-sleep 5
+sleep 3
 
 
 

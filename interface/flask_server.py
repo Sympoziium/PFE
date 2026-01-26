@@ -4,249 +4,89 @@
 # on déclare ici uniquement les routes et callbacks pour le backend du serveur Flask
 # l'interface web est défini dans des fichiers dédiés pour chaque onglet.
 
-from fileinput import filename
-from flask import Flask, Response, request, redirect, url_for, jsonify, send_from_directory
-import time, cv2
-import threading
-from core.vision.vision_pipeline import VisionPipeline
+from flask import Flask
+import os
 
-# Import des autres onglets de l'interface
-from interface.onglet_vision import render_vision_tab
-from interface.TemplateOnglet import render_template_tab # Exemple d'onglet template générique supprimer quand il y en aura d'autres
-
-
-import os, uuid # Pour la sauvegarde des images capturées
+from main import ctrl
 
 # Initialisation de l'instance du serveur Flask
-app = Flask(__name__, static_folder = os.path.join(os.path.dirname(__file__), 'static'))
+app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 
-# Instance globale du pipeline de vision
-vision_pipeline = None
 
-# Path pour sauvegarder les images capturées
-CAPTURE_DIR = os.path.join(app.static_folder, 'captured_images')
-os.makedirs(CAPTURE_DIR, exist_ok=True)  # Crée le dossier s'il n'existe pas
 
-# Fonction pour attacher le pipeline de vision global
-def attach_pipeline(pipeline):
-    global vision_pipeline
-    vision_pipeline = pipeline
 
 # ----------------------------------------------------------------------------
 #                       Pages de l'interface web
 # ----------------------------------------------------------------------------
-# Route pour la page d'accueil
 @app.route('/')
 def home():
-    return page_accueil()
+    return ctrl.home()
 
-# Route pour l'onglet de vision
 @app.route('/vision')
 def vision():
-    html = render_vision_tab("Vision du Zumi")
-    return html
+    return ctrl.vision()
 
 @app.route('/onglet_template')
 def onglet_template():
-    html = render_template_tab("Mon onglet perso")
-    return html
-
+    return ctrl.onglet_template()
 
 # ----------------------------------------------------------------------------
 #            Fonctions de callback pour les actions de vision
 # ----------------------------------------------------------------------------
 
-# Fonction pour télécharger une image capturée (Appelé automatiquement après capture)
 @app.route('/download_image/<filename>')
 def download_image(filename):
-    print("Downloading:", filename, "from", CAPTURE_DIR)
-    full_path = os.path.join(CAPTURE_DIR, filename)
-    if not os.path.exists(full_path):
-        print("File not found:", full_path)
-        return "File not found", 404
-    return send_from_directory(CAPTURE_DIR, filename, as_attachment=True)
+    return ctrl.download_image(filename)
 
 # Fonction pour générer la page d'accueil HTML
 @app.route('/capture_image', methods=['POST'])
 def capture_image():
-    global vision_pipeline # l'instance du pipeline de vision est déclarée globalement et intialisé dans le main
-    
-    if vision_pipeline is None or not vision_pipeline.is_running():
-        return jsonify({'error': 'camera not running'}), 400
-    
-    # 1. Capture de l'image actuelle
-    frame_brg = vision_pipeline.capture_frame()
-    
-    # 2. Génération d'un nom de fichier unique
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    filename = '{}_{}.jpg'.format(ts, uuid.uuid4().hex[:6])
-    save_path = os.path.join(CAPTURE_DIR, filename)
-    
-    # 3. Sauvegarde de l'image localement
-    ok = cv2.imwrite(save_path, frame_brg)
-    if not ok:
-        return jsonify({'error': 'write failed'}), 500
-    
-    # 4. Validation de la sauvegarde
-    print("Saved image to:", save_path, "exists?", os.path.exists(save_path))
-
-    # 5. Génération d'un URL pour accéder à l'image sauvegardée via le PC
-    image_url = '/download_image/{}'.format(filename)
-    return jsonify({'filename': filename, 'file_url':  image_url})
+    return ctrl.capture_image()
 
 # Fonction pour vérifier le statut de la caméra 
 @app.route('/status')
 def status():
-    return jsonify({
-        "camera_running": vision_pipeline.is_running()
-    })
+    return ctrl.status()
 
-# Fonction pour arrêter proprement le serveur Flask (et le programme)
 @app.route('/EXIT', methods=['POST'])
 def exit_server():
-    global vision_pipeline
-    try:
-        if vision_pipeline and vision_pipeline.is_running():
-            vision_pipeline.stop()
-    except Exception:
-        pass
-
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        return jsonify({"error": "shutdown unavailable"}), 500
-    app.logger.info("Arrêt du serveur Flask demandé via /EXIT")
-    func()  # Le serveur s'arrêtera après cette requête
-    return ('', 204)
+    return ctrl.exit_server()
 
 # Fonction pour le flux vidéo en direct
-@app.route('/video') 
-def video_feed(): 
-    global vision_pipeline
+@app.route('/video')
+def video_feed():
+    return ctrl.video_feed()
 
-    if not vision_pipeline or not vision_pipeline.is_running(): 
-        print("Video feed requested but video pipeline not running") 
-        return "Camera not running", 503
+@app.route('/close_camera', methods=['POST'])
+def close_camera():
+    return ctrl.close_camera()
 
-    if vision_pipeline.get_camera() is None:
-        print("Video feed requested but camera not initialized")
-        return "Camera not running", 503
-
-    # Générateur de flux vidéo Attention: le livefeed consume 1 thread CPU
-    def generate(): 
-        while vision_pipeline.is_running(): 
-            try: 
-                frame_bgr = vision_pipeline.capture_frame() 
-            except Exception as e: 
-                print("Erreur de capture:", e) 
-                time.sleep(0.1) 
-                break # sortir de la boucle si erreur 
-
-            # Convertir l'image BGR en JPEG
-            ret, jpeg = cv2.imencode('.jpg', frame_bgr) 
-            if not ret: 
-                continue 
-
-            yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n') 
-            
-            time.sleep(0.05)
-
-    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame') 
-
-@app.route('/close_camera', methods=['POST']) 
-def close_camera(): 
-    global vision_pipeline
-    if not vision_pipeline.is_running():
-        print("Camera not active") 
-        return ("", 204)
-    
-    vision_pipeline.stop()  
-   
-    print("Camera stop signal accepted.") 
-    return ("", 204)
-
-@app.route('/start_camera', methods=['POST']) 
-def start_camera(): 
-    global vision_pipeline, vision_thread 
-    
-    if vision_pipeline.is_running(): 
-        print("Camera already active") 
-        return ("", 204)
-     
-    # --- CREATE A NEW CAMERA OBJECT --- 
-    vision_pipeline.start()
-    print("Caméra en fonctionnement")
-    return ("", 204)
+@app.route('/start_camera', methods=['POST'])
+def start_camera():
+    return ctrl.start_camera()
 
 # ----------------------------------------------------------------------------
 #          Fonctions de callback pour les actions moteur du robot
 # ----------------------------------------------------------------------------
 @app.route('/zumi/forward') 
 def forward(): 
-    global g_last_move_time, g_watchdog_active  
-    g_last_move_time = time.time()              
-    g_watchdog_active = True                    
-    print("[HTTP] /zumi/forward reçu") 
-    try: 
-        zumi.control_motors(DRIVE_SPEED, DRIVE_SPEED) 
-        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(DRIVE_SPEED, DRIVE_SPEED)) 
-        return "ok" 
-    except Exception as e: 
-        print("[ERREUR] zumi.control_motors(forward):", e) 
-        return "error", 500 
+    return ctrl.forward() 
 
 @app.route('/zumi/reverse') 
 def reverse(): 
-    global g_last_move_time, g_watchdog_active  
-    g_last_move_time = time.time()              
-    g_watchdog_active = True                    
-    print("[HTTP] /zumi/reverse reçu") 
-    try: 
-        zumi.control_motors(-DRIVE_SPEED, -DRIVE_SPEED) 
-        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-DRIVE_SPEED, -DRIVE_SPEED)) 
-        return "ok" 
-    except Exception as e: 
-        print("[ERREUR] zumi.control_motors(reverse):", e) 
-        return "error", 500 
+    return ctrl.reverse()
     
 @app.route('/zumi/left') 
 def left(): 
-    global g_last_move_time, g_watchdog_active  
-    g_last_move_time = time.time()              
-    g_watchdog_active = True                    
-    print("[HTTP] /zumi/left reçu") 
-    try: 
-        zumi.control_motors(-TURN_SPEED, TURN_SPEED)  
-        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-TURN_SPEED, TURN_SPEED)) 
-        return "ok" 
-    except Exception as e: 
-        print("[ERREUR] zumi.control_motors(left):", e) 
-        return "error", 500 
+    return ctrl.left()
     
 @app.route('/zumi/right') 
 def right(): 
-    global g_last_move_time, g_watchdog_active  
-    g_last_move_time = time.time()              
-    g_watchdog_active = True                    
-    print("[HTTP] /zumi/right reçu") 
-    try: 
-        zumi.control_motors(TURN_SPEED, -TURN_SPEED) 
-        print("[ACTION] zumi.control_motors({}, {}) exécuté".format(TURN_SPEED, -TURN_SPEED)) 
-        return "ok" 
-    except Exception as e: 
-        print("[ERREUR] zumi.control_motors(right):", e) 
-        return "error", 500 
+    return ctrl.right()
     
 @app.route('/zumi/stop') 
 def stop(): 
-    print("[HTTP] /zumi/stop reçu") 
-    try: 
-        zumi.stop() 
-        print("[ACTION] zumi.stop() exécuté") 
-        return "ok" 
-    except Exception as e: 
-        print("[ERREUR] zumi.stop():", e) 
-        return "error", 500 
-
+    return ctrl.stop()
 
 def page_accueil():
     print("Génération de la page d'accueil HTML") # pour debug
