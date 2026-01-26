@@ -126,4 +126,10 @@ Tu devrais voir ton interface web Flask, prête à interagir avec ton robot.
 sudo ~/PFE/zumi_prepare.sh fast
 ```
 
+**TYPE d'erreur a **
+```
+OSError: [Errno 98] Address already in use
+```
+si tu vois une erreur du genre ces que tu dois executer le script: 
+
 - Pour éviter de perdre la connexion SSH pendant les tests, garde le terminal ouvert.
