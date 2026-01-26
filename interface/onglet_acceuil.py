@@ -18,7 +18,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	<title>{title}</title>
 	<link rel='icon' href='data:,'>
 	<style>
-	body {{
+    body {
 		margin: 0; padding: 0;
 		width: 100vw; height: 100vh;
 		font-family: Arial, sans-serif;
@@ -29,13 +29,13 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	/* --- Déclarations des différents styles de conteneurs --- */
 
 	/* Container principal des éléments de l'onglet */
-	.container {{
+    .container {
 		display: flex; justify-content: center; align-items: flex-start;
 		padding: 20px; height: calc(100vh - 40px);
 	}}
 
-	// Shell de l'onglet avec fond blanc et ombre
-	.tab-shell {{
+    /* Shell de l'onglet avec fond blanc et ombre */
+    .tab-shell {
 		background: rgba(255,255,255,0.92);
 		border-radius: 16px;
 		padding: 18px;
@@ -60,21 +60,21 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 
     .right-panel { overflow-y: auto; }
 
-	// Boite d'entête
-	.tab-header {{
+    /* Boite d'entête */
+    .tab-header {
 		display: flex; align-items: center;
 		margin-bottom: 12px;
 	}}
 
-	// Boite de boutons de navigation entre onglets
-	.tab-nav {{
+    /* Boite de boutons de navigation entre onglets */
+    .tab-nav {
 		display: flex; align-items: center;
 		gap: 4px;
 		margin-left: auto; /* pousse la nav à droite */
 	}}
 
-	// Boite de contenu, contour pointillé
-	.tab-content {{
+    /* Boite de contenu, contour pointillé */
+    .tab-content {
 		border: 2px dashed #bcdffb;
 		border-radius: 12px;
 		padding: 16px;
@@ -82,47 +82,47 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 		background: #f7fbff;
 	}}
 
-	// Ligne horizontale pour agencer des éléments
-	.tab-row {{
+    /* Ligne horizontale pour agencer des éléments */
+    .tab-row {
 		display: flex; align-items: flex-start; gap: 12px;
 	}}
 
 	/* --- Styles pour les différents types de texte --- */
 	
-	// Boite de texte format titre
-	.tab-title {{
+    /* Boite de texte format titre */
+    .tab-title {
 		font-size: 22px; font-weight: bold; margin: 0;
 	}}
 
-	// Boite de texte format sous-titre
-	.tab-subtitle {{
+    /* Boite de texte format sous-titre */
+    .tab-subtitle {
 		font-size: 18px; font-weight: bold; margin: 0;
 	}}
 
-	// Boite de texte format texte normal
-	.tab-text {{
+    /* Boite de texte format texte normal */
+    .tab-text {
 		font-size: 16px; font-weight: normal; margin: 0;
 	}}
 
 	/* --- Déclarations des différents styles de widgets --- */
 
 	/* style bouton cliquable principal */
-	.primary-btn {{
+    .primary-btn {
 		background: #007acc; color: white; border: none;
 		padding: 10px 18px; border-radius: 10px;
 		cursor: pointer; font-size: 15px;
 	}}
 
-	.primary-btn:hover {{ background: #005fa3; }}
+    .primary-btn:hover { background: #005fa3; }
 
 	/* état actif pour le bouton d'onglet courant */
-	.primary-btn.active {{
+    .primary-btn.active {
 		background: #00528a;
 		box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
 	}}
 
 	/* style bouton toggle */
-	.toggle-btn {{
+    .toggle-btn {
         background: #007acc; 
         color: white; 
         border: none; 
@@ -133,7 +133,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         font-size: 15px;
     }}
 
-    .toggle-btn:hover {{ background: #005fa3; }} 
+    .toggle-btn:hover { background: #005fa3; } 
 
 	/* --- definition des elements de controle du robot --- */
 	.command-button {
@@ -225,6 +225,29 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         .dpad-center:active { background-color: #e0e0e0; }
 
 
+	/* --- Styles pour le live feed vidéo --- */
+
+    .live-feed {
+        display: none; 
+        width: 100%; 
+        margin-top: 20px; 
+        padding: 10px; 
+        background-color: #f0f8ff; 
+        border-radius: 20px; 
+        box-shadow: 0 0 10px rgba(0,0,0,0.15); 
+        text-align: center; 
+    }}
+
+    .live-feed img {
+        width: 50%; 
+        max-width: 650px; 
+        height: auto; 
+        border-radius: 8px; 
+        border: 4px solid #00BFFF; 
+        margin-top: 10px; 
+    }}
+
+	
 	/* --- Arrangements des éléments de l'interface --- */
 	
 	</style>
@@ -239,7 +262,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 				<button class='primary-btn' data-path="/" onclick="location.href='/'">Accueil</button>
 				<button class='primary-btn' data-path="/vision" onclick="location.href='/vision'">Vision</button>
 				<button class='primary-btn' data-path="/onglet_template" onclick="location.href='/onglet_template'">Template</button>
-				<button class='primary-btn' onclick="fetch('/exit', {{method:'POST'}})">EXIT</button>
+                <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
 				</div>
 			</div>
 
@@ -301,16 +324,16 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 
 	<script>
 	// Active l'état du bouton d'onglet selon l'URL courante
-	(function() {{
+    (function() {
 		const norm = p => (p || '').replace(/\/+$/,'') || '/';
 		const here = norm(location.pathname);
-		document.querySelectorAll('.tab-nav .primary-btn').forEach(btn => {{
+        document.querySelectorAll('.tab-nav .primary-btn').forEach(btn => {
 			const p = norm(btn.dataset?.path || btn.getAttribute('data-path'));
 			if (p === here) btn.classList.add('active');
-		}});
-	}})();
+        });
+    })();
 
-	function toggleCamera() {{ 
+    function toggleCamera() { 
         console.log("toggleCamera() appelée"); // pour debug
 
         const liveFeed = document.getElementById('liveFeed'); 
@@ -319,19 +342,19 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 
         const isActive = liveFeed.style.display === 'block';
 
-        if (!isActive) {{
+        if (!isActive) {
             // 1. Affiche le conteneur et change le bouton (pour la réactivité)  
             btn.textContent = '⛔ Stop Camera'; 
 
             // 2. Envoie la commande de démarrage au serveur 
-            fetch('/start_camera', {{ method: 'POST' }}) 
-                .then(() => {{
+            fetch('/start_camera', { method: 'POST' }) 
+                .then(() => {
                 // 3. ATTEND que le serveur ait confirmé le démarrage avant de demander le flux vidéo. 
                 liveFeed.style.display = 'block';
                 img.src = '/video?' + new Date().getTime(); 
-			}}); 
+            }); 
         
-        }} else {{
+        } else {
             // 1. Cache le conteneur et change le bouton 
             liveFeed.style.display = 'none'; 
             btn.textContent = '▶️ Start Camera'; 
@@ -340,9 +363,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
             img.src = "";  
             
             // 3. Envoie la commande d'arrêt au serveur 
-            fetch('/close_camera', {{ method: 'POST' }}); 
-        }}
-    }}
+            fetch('/close_camera', { method: 'POST' }); 
+        }
+    }
 
 	// --- NOUVEAU : Modifications pour le Watchdog ---
     let isMoving = false;
