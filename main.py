@@ -11,11 +11,8 @@
 #                               Imports
 # ----------------------------------------------------------------------------
 
-# Import du package Zumi
-import sys
-sys.path.append("/usr/local/lib/python3.5/dist-packages")  # chemin du package zumi
-from zumi.util.camera import Camera
-from zumi.zumi import Zumi
+# Import de l'implémentation du robot Zumi
+from core.robot.robot_zumi import RobotZumi
 
 # Import du pipeline de vision et des détecteurs
 from core.vision.vision_pipeline import VisionPipeline
@@ -34,12 +31,11 @@ import threading
 # ----------------------------------------------------------------------------
 
 # Initialisation du robot Zumi
-camera = Camera() 
-zumi = Zumi()
+zumi = RobotZumi()
 
 # Initialisation du pipeline de vision
 detector = LuminosityDetector()
-vision_pipeline = VisionPipeline(camera=camera)
+vision_pipeline = VisionPipeline(camera=zumi.camera)
 
 # On ajoute le détecteur au pipeline de vision
 vision_pipeline.add_detectors(detector)
@@ -48,7 +44,10 @@ vision_pipeline.add_detectors(detector)
 ctrl = controller_module.controller(zumi)
 routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du contrôleur (build du serveur)
 # On attache le pipeline de vision au contrôleur
-ctrl.attach_pipeline_vision(vision_pipeline)   
+ctrl.attach_pipeline_vision(vision_pipeline)  
+
+zumi.screen.clear_screen()
+zumi.screen.celebrate_reaction()
 
 if __name__ == '__main__':
     # Démarrage du watchdog des moteurs dans un thread séparé
