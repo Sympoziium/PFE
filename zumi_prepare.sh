@@ -7,11 +7,56 @@
 # procédure d'utilisation :
 # 1. Allumer Zumi
 # 2. Se connecter au wifi du zumi et en SSH via un terminal (ssh  pi@192.168.10.1)
-# 3. lancer le script : sudo ~/zumi_prepare.sh
+# 3. lancer le script et choisir 1 ou 2 au clavier :
+#    sudo ~/zumi_prepare.sh
+#    (Optionnel) mode direct:
+#       - préparation complète (après power cycle): sudo ~/zumi_prepare.sh full
+#       - préparation rapide (entre deux tests):    sudo ~/zumi_prepare.sh fast
 # 4. une fois le script terminé, se connecter au Zumi via l'IP affichée (ssh pi@<IP>)
 # mot de passe par défaut : pi
 # ces normal si il faut attendre 3-5 minutes avant que la connexion SSH soit active
 
+
+MODE="$1"
+
+# Menu interactif si aucun argument fourni
+if [ -z "$MODE" ]; then
+    echo "Choisir le mode de préparation :"
+    echo "  1) préparation complète (services + réseau)"
+    echo "  2) préparation rapide (kill Flask seulement)"
+    while true; do
+        read -r -p "Votre choix [1/2]: " CHOICE
+        case "$CHOICE" in
+            1)
+                MODE="full"; break ;;
+            2)
+                MODE="fast"; break ;;
+            *)
+                echo "Choix invalide. Entrez 1 ou 2." ;;
+        esac
+    done
+fi
+
+# Chemin rapide: libérer uniquement Flask/port 5000 sans toucher au réseau
+if [ "$MODE" = "fast" ]; then
+    echo "⚡ Mode FAST: libération du serveur Flask (port 5000)"
+    # Tenter de libérer via fuser si disponible
+    if command -v fuser >/dev/null 2>&1; then
+        sudo fuser -k 5000/tcp 2>/dev/null || true
+    fi
+    # Kill Flask / Werkzeug
+    sudo pkill -f flask || true
+    sudo pkill -f werkzeug || true
+    # Kill les python qui écoutent sur 5000
+    for pid in $(sudo ss -lptn | awk '/:5000/ {print $7}' | sed -E 's/.*pid=([0-9]+).*/\1/'); do
+        echo "🔥 Kill PID $pid (port 5000)"
+        sudo kill -9 "$pid" || true
+    done
+    # Dernier recours: tuer le programme principal
+    sudo pkill -9 -f main.py || true
+    echo "✅ FAST prepare terminé. Vous pouvez relancer votre programme."
+    exit 0
+fi
 
 echo "🛑 Désactivation des services Zumi..."
 
