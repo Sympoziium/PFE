@@ -9,7 +9,7 @@ Centralise la logique des endpoints; `flask_server.py` ne fait que lier les rout
 """
 
 import os, uuid, time, cv2
-from flask import Response, request, jsonify, send_from_directory
+from flask import Flask, Response, request, jsonify, send_from_directory
 
 from interface.onglet_acceuil import render_accueil_tab
 from interface.onglet_vision import render_vision_tab
@@ -24,8 +24,8 @@ TURN_SPEED = 15
 WATCHDOG_TIMEOUT_SECONDS = 0.8 # S'arrête si aucune commande en 0.8s
 
 class controller:
-    def __init__(self, app, zumi):
-        self.app = app
+    def __init__(self, zumi):
+        self.app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
         self.robot = zumi # référence au robot Zumi a remplacer plus tard par la classe robot
         self.vision_pipeline = None
         self.last_move_time = time.time()

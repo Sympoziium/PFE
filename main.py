@@ -19,8 +19,8 @@ from core.vision.vision_pipeline import VisionPipeline
 from core.vision.detectors.Luminosity import LuminosityDetector
 
 # Import pour le serveur web (Flask)
-from interface.flask_server import app
 from interface import controller as controller_module
+from interface import flask_server as routes
 import threading
 
 # try:
@@ -35,14 +35,19 @@ camera = Camera()
 zumi = Zumi()
 detector = LuminosityDetector()
 vision_pipeline = VisionPipeline(camera=camera)
-# Contrôleur backend
-ctrl = controller_module.controller(app, zumi)
-
 
 # On ajoute le détecteur au pipeline de vision
 vision_pipeline.add_detectors(detector)
 # vision_pipeline.start()
+
+
+# Contrôleur backend
+# Initialisation de l'instance du serveur Flask
+ctrl = controller_module.controller(zumi)
+routes.register_routes(ctrl) # on enregistre les routes sur l'app Flask du contrôleur (build du serveur)
+
 ctrl.attach_pipeline_vision(vision_pipeline)    
+
 
 
 # Démarrer le serveur Flask dans un thread séparé
@@ -54,13 +59,13 @@ ctrl.attach_pipeline_vision(vision_pipeline)
 # server_thread.start()
 
 if __name__ == '__main__':
-    watchdog_thread = threading.Thread(target=motor_watchdog)
+    watchdog_thread = threading.Thread(target=ctrl.motor_watchdog)
     watchdog_thread.daemon = True # S'assure qu'il s'arrête avec le script
     watchdog_thread.start()
 
-    print("Programme is running") # Vous pouvez garder votre print
-    app.run(host='0.0.0.0', port=5000, threaded=True)
-
     print("Flask server démarré")
+    ctrl.app.run(host='0.0.0.0', port=5000, threaded=True)
+
+    print("Flask server arrêté")
     # Lorsque le serveur Flask s'arrête, on arrête aussi le programme principal
     exit(0)
