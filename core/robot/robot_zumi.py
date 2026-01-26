@@ -51,7 +51,7 @@ class RobotZumi(RobotBase):
         else:
             right_speed = roue_d_speed
 
-            
+
         # contrôle des clignotants
         if right_speed > left_speed:
             self.zumi.signal_right_on()
@@ -82,7 +82,7 @@ class RobotZumi(RobotBase):
         try:
             self.screen.draw_text_center(text)
         except Exception as e:
-            print(f"Erreur lors de l'affichage du texte: {e}")
+            print("Erreur lors de l'affichage du texte: {}".format(e))
     
     def display_image_from_path(self, image_path: str):
         """
@@ -91,7 +91,7 @@ class RobotZumi(RobotBase):
         try:
             self.screen.draw_image(self.screen.path_to_image(image_path))
         except Exception as e:
-            print(f"Erreur lors de l'affichage de l'image: {e}")
+            print("Erreur lors de l'affichage de l'image: {}".format(e))
 
     def display_image(self, image: numpy.ndarray):
         """
@@ -101,7 +101,7 @@ class RobotZumi(RobotBase):
         try:
             self.screen.show_screen(image)
         except Exception as e:
-            print(f"Erreur lors de l'affichage de l'image: {e}")
+            print("Erreur lors de l'affichage de l'image: {}".format(e))
 
     def clear_screen(self):
         """
@@ -110,7 +110,7 @@ class RobotZumi(RobotBase):
         try:
             self.screen.clear_display()
         except Exception as e:
-            print(f"Erreur lors de l'effacement de l'écran: {e}")
+            print("Erreur lors de l'effacement de l'écran: {}".format(e))
 
     # --------------------------------------------------------
     #                   Contrôle de la personalité
@@ -123,7 +123,7 @@ class RobotZumi(RobotBase):
             self.screen.angry()
             self.personality.angry()
         except Exception as e:
-            print(f"Erreur lors de la réaction de colère: {e}")
+            print("Erreur lors de la réaction de colère: {}".format(e))
 
     def happy_reaction(self):
         """
@@ -133,7 +133,7 @@ class RobotZumi(RobotBase):
             self.screen.happy()
             self.personality.happy()
         except Exception as e:
-            print(f"Erreur lors de la réaction heureux: {e}")
+            print("Erreur lors de la réaction heureux: {}".format(e))
 
     def look_around_reaction(self):
         """
@@ -142,7 +142,7 @@ class RobotZumi(RobotBase):
         try:
             self.personality.look_around()
         except Exception as e:
-            print(f"Erreur lors de la réaction regarder autour: {e}")
+            print("Erreur lors de la réaction regarder autour: {}".format(e))
 
     def sad_reaction(self):
         """
@@ -151,7 +151,7 @@ class RobotZumi(RobotBase):
         try:
             self.screen.sad()
         except Exception as e:
-            print(f"Erreur lors de la réaction triste: {e}")
+            print("Erreur lors de la réaction triste: {}".format(e))
 
     def sleeping_reaction(self):
         """
@@ -160,7 +160,7 @@ class RobotZumi(RobotBase):
         try:
             self.screen.sleeping()
         except Exception as e:
-            print(f"Erreur lors de la réaction dormir: {e}")
+            print("Erreur lors de la réaction dormir: {}".format(e))
 
     def celebrate_reaction(self):
         """
@@ -169,7 +169,7 @@ class RobotZumi(RobotBase):
         try:
             self.personality.celebrate()
         except Exception as e:
-            print(f"Erreur lors de la réaction célébrer: {e}")
+            print("Erreur lors de la réaction célébrer: {}".format(e))
 
 
 
