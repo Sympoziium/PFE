@@ -46,9 +46,12 @@ routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du 
 # On attache le pipeline de vision au contrôleur
 ctrl.attach_pipeline_vision(vision_pipeline)  
 
-zumi.screen.clear_screen()
-zumi.screen.celebrate_reaction()
+zumi.clear_screen()
+zumi.celebrate_reaction()
 
+# ----------------------------------------------------------------------------
+#                           Démarrage du serveur
+# ----------------------------------------------------------------------------
 if __name__ == '__main__':
     # Démarrage du watchdog des moteurs dans un thread séparé
     watchdog_thread = threading.Thread(target=ctrl.motor_watchdog)
