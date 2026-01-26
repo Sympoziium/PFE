@@ -1,14 +1,18 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vision_pipeline.py
 # ------------------
-# ce module défini la logique de détection de la vision
-# ------------------
-# Cette classe assure la gestion du pipeline de vision
-# - gérer la boucle de vision
-# - appeler la caméra
-# - appeler les algorithmes
-# - agréger les résultats
-# - fournir une API simple pour interagir avec le pipeline de vision
-# ------------------
+"""
+ce module défini la logique de détection de la vision
+------------------
+Cette classe assure la gestion du pipeline de vision
+- gérer la boucle de vision
+- appeler la caméra
+- appeler les algorithmes
+- agréger les résultats
+- fournir une API simple pour interagir avec le pipeline de vision
+------------------
+"""
 import threading
 import time
 
@@ -27,7 +31,7 @@ class VisionPipeline:
             self.camera.start_camera()
             self.running = True
         except Exception as e:
-            print(f"Erreur lors du démarrage du pipeline de vision: {e}")
+            print("Erreur lors du demarrage du pipeline de vision: {}".format(e))
             raise e
         
     def stop(self):
@@ -36,7 +40,7 @@ class VisionPipeline:
             self.camera.close()
             self.running = False
         except Exception as e:
-            print(f"Erreur lors de l'arrêt du pipeline de vision: {e}")
+            print("Erreur lors de l'arret du pipeline de vision: {}".format(e))
             raise e
         
     def add_detectors(self, detectors):
@@ -54,7 +58,7 @@ class VisionPipeline:
         try:
             frame = self.camera.capture()
         except Exception as e:
-            print(f"Erreur lors de la capture d'une image: {e}")
+            print("Erreur lors de la capture d'une image: {}".format(e))
             raise e
         
         results = []
@@ -68,7 +72,7 @@ class VisionPipeline:
                                         # et seulement retourner la décision finale
 
             except Exception as e:
-                print(f"Erreur lors du traitement de l'image par le détecteur {detectors}: {e}")
+                print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detectors, e))
                 raise e
         
         # On fait un délais pour respecter le fps souhaité
@@ -96,7 +100,7 @@ class VisionPipeline:
         #with self.lock: # assurer la synchronisation des accès à la caméra
             return self.camera.capture()
         except Exception as e:
-            print(f"Erreur lors de la capture d'une image brute: {e}")
+            print("Erreur lors de la capture d'une image brute: {}".format(e))
             raise e
 
     def get_detectors(self):

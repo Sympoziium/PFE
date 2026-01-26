@@ -1,5 +1,13 @@
 # TODO List
 
+poursuivre le développement de l'onglet acceuil. tu doit repomper les features général du programme original et les ajouter.
+par exemple on veux pouvoir regarder le livefeed en ayant les boutons de contrôle du robot.
+
+le robot ne supporte vraiment pas les accents, donc fait tout en UTF-8 
+
+
+- ajouter un bouton exit pour bien fermer le thread du serveur sur la page d'acceuil
+
 - Eventuellement il faudrais peutetre migrer le serveur flask sur pc et rendre le robot le client. sa devrais liberer des ressources du cpu du robot.
 
 schema ideal
