@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 # flask_server.py
 # ------------------
-"""
-flask_server.py
-Thin routing layer: exposes a function to register routes on a controller's app
-without importing main, avoiding circular dependencies.
+"""Définit les routes Flask et les lie aux méthodes du contrôleur backend.
+    On déclare ici une route pour chaque bouton ou action du serveur vers
+    une méthode du contrôleur.
 """
 
 def register_routes(ctrl):

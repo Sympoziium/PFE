@@ -1,17 +1,18 @@
 #!/bin/bash
-
+#  zumi_prepare.sh
+# -----------------------------------------------------------------------------
 # Script de préparation de Zumi en mode DEV il sert a désactiver les services automatiques
-# du Zumi et à connecter le Zumi au hotspot du PC pour le développement. ce script doit être
+# du Zumi et à connecter le Zumi au wifi désigné pour le développement. ce script doit être
 # lancé via une connexion SSH. 
 
 # procédure d'utilisation :
 # 1. Allumer Zumi
 # 2. Se connecter au wifi du zumi et en SSH via un terminal (ssh  pi@192.168.10.1)
 # 3. lancer le script et choisir 1 ou 2 au clavier :
-#    sudo ~/zumi_prepare.sh
+#    sudo ~/PFE/zumi_prepare.sh
 #    (Optionnel) mode direct:
-#       - préparation complète (après power cycle): sudo ~/zumi_prepare.sh full
-#       - préparation rapide (entre deux tests):    sudo ~/zumi_prepare.sh fast
+#       - préparation complète (après power cycle): sudo ~/PFE/zumi_prepare.sh full
+#       - préparation rapide (entre deux tests):    sudo ~/PFE/zumi_prepare.sh fast
 # 4. une fois le script terminé, se connecter au Zumi via l'IP affichée (ssh pi@<IP>)
 # mot de passe par défaut : pi
 # ces normal si il faut attendre 3-5 minutes avant que la connexion SSH soit active
@@ -134,8 +135,8 @@ kill_port 5000
 kill_port 8080
 kill_port 80
 
-# Ajout temporaire du hotspot
-echo "📶 Connexion temporaire au Wi-Fi maison..."
+# configuration du wifi dev
+echo "📶 Connexion au Wi-Fi maison..."
 
 cat << EOF | sudo tee /tmp/wpa_supplicant.conf
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
@@ -212,15 +213,6 @@ sudo pkill -9 -f main.py || true
 
 echo "🚀 Zumi prêt pour ton utilisation (dev mode)"
 echo "👉 SSH sur $IP via le réseau Wi-Fi"
-
-
-# --- Désactivation du point d'accès AP0 ---
-# echo "❌ Désactivation du AP0..."
-# sudo ip link set ap0 down
-# sudo systemctl stop hostapd 2>/dev/null
-# sudo systemctl stop dnsmasq 2>/dev/null
-# sleep 2
-# echo "✅ AP0 désactivé."
 
 
 exit 0

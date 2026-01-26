@@ -172,3 +172,7 @@ PFE/
 - j'ai conçu avec chatGPT un script de préparation du Zumi qui est a run avant de faire les tests. en gros il permet d'arrêter les process du programme de base du zumi et libère les ressources du robot pour notre code a nous. voir `Procédure test zumi.md` pour les détails.
 - le robot est capable d'exécuter notre programme et son serveur flask est fonctionnel, deplus les api zumi sont toujours fonctionnel.
 - ajout d'un bouton exit sur la paje d'acceuil pour permettre de quitter le programme normalement.
+- ajout des fonctions de contrôle moteur au serveur flask.
+
+**Modification du serveur flask**
+- Le serveur est rendu modulaire, il est constitué des fichiers 

@@ -2,15 +2,17 @@
 # -*- coding: utf-8 -*-
 # vision_pipeline.py
 # ------------------
-# ce module défini la logique de détection de la vision
-# ------------------
-# Cette classe assure la gestion du pipeline de vision
-# - gérer la boucle de vision
-# - appeler la caméra
-# - appeler les algorithmes
-# - agréger les résultats
-# - fournir une API simple pour interagir avec le pipeline de vision
-# ------------------
+"""
+ce module défini la logique de détection de la vision
+------------------
+Cette classe assure la gestion du pipeline de vision
+- gérer la boucle de vision
+- appeler la caméra
+- appeler les algorithmes
+- agréger les résultats
+- fournir une API simple pour interagir avec le pipeline de vision
+------------------
+"""
 import threading
 import time
 

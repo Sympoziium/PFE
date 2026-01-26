@@ -22,15 +22,42 @@ cd ~
 git clone https://github.com/Sympoziium/PFE.git
 cd PFE
 ```
+**TU DOIS MODIFIER LE SCRIPT DE PRÉPARATION AVANT DE CONTINUER**
+tu dois simplement mettre le SSID et le mot de passe de ton Wifi dans le script
 
-2. Rends le script de préparation exécutable et lance-le pour désactiver les services automatiques et connecter le Zumi à ton réseau Wi-Fi :
-```bash
-chmod +x ~/zumi_prepare.sh
-sudo ~/zumi_prepare.sh
-```
+#### Sur le robot 
+- dans le terminal bash du robot colle cette `cmd` pour modifier le fichier:
+    
+    ```bash
+    nano ~/PFE/zumi_prepare.sh
+    ```
+
+- dans le code de `zumi_prepare.sh` trouve cette partie et change le `SSID` et le `mdp` pour ton wifi:
+
+    ```bash
+    # configuration du wifi dev
+    echo "📶 Connexion au Wi-Fi maison..."
+
+    cat << EOF | sudo tee /tmp/wpa_supplicant.conf
+    ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+    update_config=1
+    network={
+        ssid="TON_SSID"
+        psk="TON_MDP"
+        key_mgmt=WPA-PSK
+    }
+    EOF
+    ``` 
+- pour sauvegarder et revenir au terminal tu dois appuyé sur les macros `CTRL+o` puis `ENTER` pour **sauvegarder** et `CTRL+x` pour **retourner** au terminal.
+
+- Rends le script de préparation **exécutable** et lance-le pour désactiver les services automatiques et connecter le Zumi à ton réseau Wi-Fi :
+
+    ```bash
+    chmod +x ~/PFE/zumi_prepare.sh
+    sudo ~/PFE/zumi_prepare.sh
+    ```
 
 Le script fait plusieurs choses :
-**Il faut donc le modifier pour mettre les param de ton wifi**
 - Arrête les services automatiques du Zumi (dashboard.py, zumidashboard, gesture.py, etc.)
 
 - Configure wlan0 pour se connecter à ton réseau Wi-Fi local
@@ -87,8 +114,7 @@ Flask server démarré
 ## 5️⃣ Accéder au serveur Flask depuis ton PC
 
 - Dans ton navigateur, ouvre l’adresse IP du Zumi suivie du port 5000 :
-
-http://192.168.68.73:5000/
+ex: http://192.168.68.73:5000/
 
 
 Tu devrais voir ton interface web Flask, prête à interagir avec ton robot.
@@ -97,10 +123,7 @@ Tu devrais voir ton interface web Flask, prête à interagir avec ton robot.
 
 - Toujours tuer les instances Flask en cours avant de relancer main.py si le port 5000 est occupé :
 ```bash
-sudo netstat -tulpn | grep :5000
-sudo kill -9 <PID> # remplace <PID> par le num de celui actif
+sudo ~/PFE/zumi_prepare.sh fast
 ```
 
 - Pour éviter de perdre la connexion SSH pendant les tests, garde le terminal ouvert.
-
-- Le script zumi_prepare.sh doit être lancé une seule fois par session, sauf si tu redémarres le robot.
