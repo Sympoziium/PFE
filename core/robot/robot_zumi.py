@@ -34,8 +34,16 @@ class RobotZumi(RobotBase):
         Définit la vitesse des moteurs du Zumi.
     
         """
-        self.zumi.break_lights_off()
-        self.zumi.headlights_on()
+        ## les leds semble causer probleme
+        try: 
+            self.zumi.break_lights_off()
+        except Exception as e:
+            print("Erreur self.zumi.break_lights_off(): {}".format(e))
+        
+        try: 
+            self.zumi.headlights_on()
+        except Exception as e:
+            print("Erreur self.zumi.headlights_on(): {}".format(e))
 
         if roue_g_speed > DRIVE_SPEED:
             left_speed = DRIVE_SPEED
@@ -54,14 +62,32 @@ class RobotZumi(RobotBase):
 
         # contrôle des clignotants
         if right_speed > left_speed:
-            self.zumi.signal_right_on()
-            self.zumi.signal_left_off()
+            try:
+                self.zumi.signal_right_on()
+            except Exception as e:
+                print("Erreur self.zumi.signal_right_on(): {}".format(e))
+            try:    
+                self.zumi.signal_left_off()
+            except Exception as e:
+                print("Erreur self.zumi.signal_left_off(): {}".format(e))
         elif left_speed > right_speed:
-            self.zumi.signal_left_on()
-            self.zumi.signal_right_off()
+            try:
+                self.zumi.signal_left_on()
+            except Exception as e:
+                print("Erreur self.zumi.signal_left_on(): {}".format(e))
+            try:
+                self.zumi.signal_right_off()
+            except Exception as e:
+                print("Erreur self.zumi.signal_right_off(): {}".format(e))
         else:
-            self.zumi.signal_left_off()
-            self.zumi.signal_right_off()
+            try:
+                self.zumi.signal_left_off()
+            except Exception as e:
+                print("Erreur self.zumi.signal_left_off(): {}".format(e))
+            try:
+                self.zumi.signal_right_off()
+            except Exception as e:
+                print("Erreur self.zumi.signal_right_off(): {}".format(e))
         
         self.zumi.control_motors(left_speed, right_speed)
 
@@ -70,7 +96,10 @@ class RobotZumi(RobotBase):
         Arrête les moteurs du Zumi.
         """
         self.zumi.stop()
-        self.zumi.break_lights_on()
+        try:
+            self.zumi.break_lights_on()
+        except Exception as e:
+            print("Erreur self.zumi.break_lights_on(): {}".format(e))
 
 # ---------------------------------------------------------------------------------
 #                             Contrôle de l'écran

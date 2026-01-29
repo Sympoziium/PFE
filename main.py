@@ -47,7 +47,8 @@ routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du 
 ctrl.attach_pipeline_vision(vision_pipeline)  
 
 zumi.clear_screen()
-zumi.celebrate_reaction()
+
+# zumi.celebrate_reaction() # réaction de célébration au démarrage ATTENTION LE ROBOT BOUGE
 
 # ----------------------------------------------------------------------------
 #                           Démarrage du serveur
