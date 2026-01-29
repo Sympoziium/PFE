@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 # robot_zumi.py
 # ------------------
-# Implémentation du robot Zumi.
+# Implémentation du robot Zumi. ici on interface toute les méthodes mises
+# à disposition par le package Zumi pour contrôler le robot.
+# Référence des fonctions du package Zumi:
+# https://docs.robolink.com/docs/Zumi/Python/Function-Documentation
 
 import numpy
 from core.robot.robot_base import RobotBase
@@ -25,7 +28,7 @@ class RobotZumi(RobotBase):
         self.camera = Camera()
         self.screen = Screen()
         self.personality = Personality(self.zumi, self.screen)
-        
+
 # ---------------------------------------------------------------------------------
 #                             Contrôle des moteurs
 # ---------------------------------------------------------------------------------
