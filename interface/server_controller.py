@@ -9,7 +9,7 @@ Centralise la logique des endpoints; `flask_router.py` ne fait que lier les rout
 """
 
 import os, uuid, time, cv2
-from flask import Flask, Response, request, jsonify, send_from_directory
+from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
 from interface.onglet_acceuil import render_accueil_tab
 from interface.onglet_vision import render_vision_tab
@@ -136,7 +136,7 @@ class controller:
             return jsonify({'error': 'write failed'}), 500
 
         # 4. URL de téléchargement
-        file_url = Flask.url_for('static', filename='captured_images/{}'.format(filename))
+        file_url = url_for('static', filename='captured_images/{}'.format(filename))
         download_url = '/download_image/{}'.format(filename)
         return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url})
 
