@@ -105,26 +105,44 @@ PFE/
 │
 ├── core/
 │   ├── camera/
-│   │   ├── camera_base.py        # Abstraction caméra
-│   │   └── picam2_camera.py      # Implémentation PiCamera (Picam2)
-│   │   
-│   ├── vision/
-│   │   ├── detector/
-│   │   │   ├── detector_base.py  # Interface des détecteurs
-│   │   │   ├── line_detector.py
-│   │   │   └── luminosite.py
-│   │   └── vision_pipeline.py    # Orchestration du pipeline de vision
+│   │   ├── __init__.py
+│   │   ├── camera_base.py
+│   │   └── picam2.py
 │   │
-│   └── robot/                    # À implémenter
-│       ├── robot_base.py
-│       ├── zumi_robot.py
-│       └── sim_robot.py
+│   ├── robot/
+│   │   ├── Archive/
+│   │   ├── __init__.py
+│   │   ├── robot_base.py
+│   │   └── robot_zumi.py
+│   │
+│   └── vision/
+│       ├── detectors/
+│       │   ├── detector_base.py
+│       │   ├── Line_detector.py
+│       │   ├── Luminosity.py
+│       │   └── Stop_detector_zumi.py
+│       ├── Objectif.md
+│       └── vision_pipeline.py
 │
 ├── interface/
-│   └── flask_server.py            # Interface opérateur (serveur Flask)
+│   ├── flask_router.py
+│   ├── onglet_acceuil.py
+│   ├── onglet_template.py
+│   ├── onglet_vision.py
+│   └── server_controller.py
 │
-└── main.py                        # Point d’entrée du programme
-
+├── Doc/
+│   ├── AIDE_MEMOIRE_GIT.md
+│   ├── GUIDE_GIT.md
+│   ├── GUIDE_GIT.pdf
+│   ├── Procédure serveur flask.md
+│   ├── Procédure test zumi.md
+│   └── Workflow_GIT.md
+│
+├── .gitignore
+├── main.py
+├── zumi_prepare.sh
+└── README.md
 ```
 
 ### Modularisation du système de vision
@@ -175,4 +193,10 @@ PFE/
 - ajout des fonctions de contrôle moteur au serveur flask.
 
 **Modification du serveur flask**
-- Le serveur est rendu modulaire, il est constitué des fichiers 
+- Le serveur est rendu modulaire, il est constitué des fichiers d'onglets permettant de segmenté chaque fonctionnalitée.
+- l'onglet vision offre toute les fonctionnalitées pour l'intéraction avec vision artificielle.
+    - on peut voir le livefeed;
+    - on peut capturer des images;
+    - on pourra choisir le détecteur
+    - on pourra faire uen prédiction avec ce détecteur.
+
