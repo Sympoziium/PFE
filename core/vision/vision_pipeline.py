@@ -17,6 +17,7 @@ import threading
 import time
 
 
+
 class VisionPipeline:
     def __init__(self, camera, detectors=None, fps=30):
         self.camera = camera
@@ -51,6 +52,7 @@ class VisionPipeline:
         self.detectors.append(detectors)
 
     def step(self):
+        ## fonction désuette ?
         """ effectuer un cycle du pipeline de vision """
         if not self.running:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
@@ -85,6 +87,41 @@ class VisionPipeline:
             time.sleep(sleep_time)
         
         return results
+    
+    def process_frame(self, frame, detetor_index=0):
+        """ traiter un frame spécifique avec un détecteur spécifique """
+
+        camera_was_running = False
+        if self.running:
+            # arret temporaire de la caméra pour éviter les conflits
+            camera_was_running = True
+            self.stop()
+        
+        if detetor_index < 0 or detetor_index >= len(self.detectors):
+            raise IndexError("Index de détecteur invalide.")
+        
+        start_time = time.time() # pour mesurer le temps de traitement
+
+        detector = self.detectors[detetor_index]
+        
+        try:
+            detection = detector.process(frame)
+            elapsed_time = time.time() - start_time
+            results = {
+                "detector": detection.get("detector", "unknown"),
+                "Object detected": detection.get("detected", False),
+                "Object coordinates": detection["box"][:2],
+                "object size": detection["box"][3:],
+                "processing_time_sec": elapsed_time
+            }
+            
+            if camera_was_running:
+                self.start() # redémarrer la caméra si elle était en cours d'exécution
+
+            return results
+        except Exception as e:
+            print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
+            raise e
 
     def is_running(self):
         """ vérifier si le pipeline de vision est en cours d'exécution """

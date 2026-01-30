@@ -9,6 +9,9 @@ from .detector_base import BaseDetector
 import numpy as np
 
 class LuminosityDetector(BaseDetector):
+    def __init__(self):
+        self.name = "LuminosityDetector"
+
     def process(self, frame):
         """
         Calcule la luminosite moyenne de l'image.
@@ -20,7 +23,7 @@ class LuminosityDetector(BaseDetector):
             dict: Dictionnaire contenant le nom du detecteur et la luminosite moyenne de l'image.
         """ 
         # Calculer la luminosite moyenne
-        return {"detector": "luminosity", "value": float(frame.mean())}
+        return {"detector": self.name, "value": float(frame.mean())}
     
     def preprocess(self, frame):
         """

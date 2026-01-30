@@ -33,6 +33,8 @@ class controller:
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
+        # Index du détecteur sélectionné côté serveur
+        self.selected_detector_index = 0
 
     # Attache le pipeline de vision
     def attach_pipeline_vision(self, pipeline):
@@ -147,6 +149,66 @@ class controller:
             "camera_running": bool(vp and vp.is_running())
         })
 
+    # Liste des détecteurs disponibles + index sélectionné
+    def detectors(self):
+        vp = self.vision_pipeline
+        detectors_info = []
+        selected = self.selected_detector_index
+        if vp:
+            try:
+                for i, det in enumerate(vp.get_detectors()):
+                    # Nom lisible du détecteur
+                    name = det.name if hasattr(det, 'name') else str(det)
+                    detectors_info.append({"index": i, "name": name})
+                # Clamp de l'index sélectionné si hors bornes
+                if len(detectors_info) == 0:
+                    selected = -1
+                else:
+                    selected = max(0, min(selected, len(detectors_info) - 1))
+                    self.selected_detector_index = selected
+            except Exception:
+                pass
+        return jsonify({"detectors": detectors_info, "selected": selected})
+
+    # Sélectionner le détecteur actif
+    def set_detector(self):
+        vp = self.vision_pipeline
+        data = request.get_json(silent=True) or request.form or {}
+        try:
+            idx = data.get('index')
+            if idx is None:
+                idx = data.get('detector_index')
+            if idx is None:
+                return jsonify({"error": "index manquant"}), 400
+            idx = int(idx)
+        except Exception:
+            return jsonify({"error": "index invalide"}), 400
+
+        if not vp or idx < 0 or idx >= len(vp.get_detectors()):
+            return jsonify({"error": "index hors bornes"}), 400
+
+        self.selected_detector_index = idx
+        return ('', 204)
+
+    # Exécuter la détection sur le frame courant avec le détecteur sélectionné
+    def run_detection(self):
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'Video pipeline not initialized'}), 400
+
+        # Récupérer un frame courant
+        frame_bgr = vp.get_last_frame()
+        if frame_bgr is None:
+            return jsonify({'error': 'no frame available'}), 500
+
+        try:
+            results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index)
+            return jsonify(results)
+        except IndexError:
+            return jsonify({'error': 'invalid detector index'}), 400
+        except Exception as e:
+            return jsonify({'error': 'processing failed', 'details': str(e)}), 500
+
     # Flux vidéo
     def video_feed(self):
         vp = self.vision_pipeline
@@ -252,5 +314,5 @@ class controller:
             return "ok" 
         except Exception as e: 
             print("[ERREUR] zumi.stop():", e) 
-            return "error", 500 
+            return "error", 500
 

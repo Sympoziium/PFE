@@ -200,3 +200,28 @@ PFE/
     - on pourra choisir le détecteur
     - on pourra faire uen prédiction avec ce détecteur.
 
+### Ajout d'un détecteur de stop de base
+parmis les fonctions fournies par le package zumi on à une api appelé `find_stop_sign()`. pour cette première implémentation, nous allons l'ajouter au détecteurs de notre projet comme ground truth, elle
+servira de base pour comparer avec nos propres détecteurs.
+
+### Intégration sélection de détecteur et exécution (Vision)
+
+- Interface Vision:
+  - Remplacement du bouton temporaire par une liste déroulante listant les détecteurs disponibles.
+  - Chargement dynamique via `GET /detectors` et présélection de l’index courant.
+  - Envoi de la sélection au backend via `POST /detector`.
+  - Le bouton “Lancer Détection” appelle `POST /run_detection` et affiche le JSON de résultat.
+
+- Backend Flask:
+  - Ajout de l’attribut `selected_detector_index` dans le contrôleur pour mémoriser le détecteur choisi.
+  - Nouvelles routes: `GET /detectors`, `POST /detector`, `POST /run_detection`.
+  - Récupération du frame courant via `vision_pipeline.get_last_frame()` (repli sur `capture_frame()` si nécessaire).
+  - Exécution de la détection avec `VisionPipeline.process_frame(frame, detetor_index=selected_detector_index)`.
+
+- Routes et fichiers modifiés:
+  - `interface/flask_router.py`: ajout des règles pour `detectors`, `detector`, `run_detection`.
+  - `interface/server_controller.py`: ajout de l’état sélection + endpoints de liste/sélection/exécution + gestion d’erreurs.
+  - `interface/onglet_vision.py`: ajout de la liste déroulante, du JS de chargement/sélection et de l’affichage des résultats.
+
+- Note technique:
+  - Les frames caméra sont des `ndarray` au format BGR (OpenCV). Conversion en RGB uniquement si exigée par un détecteur (`cv2.cvtColor(..., cv2.COLOR_BGR2RGB)`).

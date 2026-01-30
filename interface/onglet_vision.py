@@ -146,6 +146,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	   L'ordre des classes CSS suit l'ordre d'apparition dans le HTML.
 	   Sections délimitées par <div class='XXX'> ... </div> */
 
+	/* Ajout styles pour select */
+	.select-detector {
+		padding: 8px; border-radius: 8px; border: 1px solid #aaa; background: #fff; font-size: 14px;
+	}
+
 	</style>
 	</head>
 	<body>
@@ -183,20 +188,21 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<!-- AJOUT DES FONCTIONS DE DÉTECTION -->
 				<div class='tab-row'>
 					<div class='tab-btn-group'>
-						<button class='primary-btn' onclick="alert('Fonction non implémentée')">Choix Détecteur</button>
-						<!-- Ajouter une liste déroulante pour choisir le détecteur -->
-						<button class='primary-btn' onclick="alert('Fonction non implémentée')">Lancer Détection</button>
-						<!-- ajouter un bouton pour lancer la détection -->
-						<button class='primary-btn' onclick="alert('Fonction non implémentée')">Afficher Résultats</button>
-						<!-- afficher les résultats de la détection dans des viewer -->
+						<!-- Remplace le bouton par une liste déroulante -->
+						<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
+						<select id='detectorSelect' class='select-detector' onchange='onDetectorChange()'>
+							<!-- options remplies dynamiquement -->
+						</select>
+						<button class='primary-btn' onclick="runDetection()">Lancer Détection</button>
+						<button class='primary-btn' onclick="toggleResults()">Afficher/masquer Résultats</button>
 					</div>
-					<div class='tab-content' id='lastCapturedImageContainer' style='flex-grow: 1;'>
+					<div class='live-feed' id='lastCapturedImageContainer' style='flex-grow: 1;'>
 						<img id='lastCapturedImage' alt='Dernière image capturée' style='max-width: 300px; display: block; margin-left: auto;'>
 					</div>
 					<!-- ajouter la dernière image capturée -->
 				</div>
 				
-				<div id='zone-resultats-detection'></div>
+				<div id='zone-resultats-detection' style='display:none;'></div>
 			</div>
 		</div>
 	</div>
@@ -278,7 +284,67 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		imgElem.src = imageUrl;
 	}
 
-	
+	// --- Détecteurs: chargement, sélection et exécution ---
+	function loadDetectors() {
+		fetch('/detectors')
+			.then(r => r.json())
+			.then(({ detectors, selected }) => {
+				const sel = document.getElementById('detectorSelect');
+				sel.innerHTML = '';
+				if (!detectors || detectors.length === 0) {
+					const opt = document.createElement('option');
+					opt.value = -1;
+					opt.textContent = 'Aucun détecteur disponible';
+					sel.appendChild(opt);
+					sel.disabled = true;
+					return;
+				}
+				detectors.forEach(d => {
+					const opt = document.createElement('option');
+					opt.value = d.index;
+					opt.textContent = d.name + ' (#' + d.index + ')';
+					sel.appendChild(opt);
+				});
+				if (selected != null && selected >= 0) {
+					sel.value = String(selected);
+				}
+			})
+			.catch(() => {});
+	}
+
+	function onDetectorChange() {
+		const sel = document.getElementById('detectorSelect');
+		const idx = parseInt(sel.value, 10);
+		if (isNaN(idx) || idx < 0) return;
+		fetch('/detector', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ index: idx })
+		}).catch(() => {});
+	}
+
+	function runDetection() {
+		fetch('/run_detection', { method: 'POST' })
+			.then(r => r.json())
+			.then(res => {
+				const zone = document.getElementById('zone-resultats-detection');
+				zone.style.display = 'block';
+				zone.textContent = JSON.stringify(res, null, 2);
+			})
+			.catch(err => {
+				const zone = document.getElementById('zone-resultats-detection');
+				zone.style.display = 'block';
+				zone.textContent = 'Erreur: ' + err;
+			});
+	}
+
+	function toggleResults() {
+		const zone = document.getElementById('zone-resultats-detection');
+		zone.style.display = (zone.style.display === 'none' || zone.style.display === '') ? 'block' : 'none';
+	}
+
+	// Charger la liste des détecteurs au chargement de la page
+	window.addEventListener('DOMContentLoaded', loadDetectors);
 	</script>
 	</body></html>
 	"""
