@@ -118,8 +118,12 @@ class controller:
         if vp is None or not vp.is_running():
             return jsonify({'error': 'camera not running'}), 400
 
-        # 1. Capture de l'image actuelle
-        frame_brg = vp.capture_frame()
+        # 1. Récupération de l'image actuelle sans ré-entrer dans le générateur
+        #    Si le flux vidéo tourne, on utilise le dernier frame mis en buffer.
+        frame_bgr = vp.get_last_frame()
+        if frame_bgr is None:
+            # Pas de flux actif ou pas encore d'image en buffer: on capture directement
+            frame_bgr = vp.capture_frame()
 
         # 2. Génération d'un nom de fichier unique
         ts = time.strftime("%Y%m%d-%H%M%S")
@@ -127,13 +131,14 @@ class controller:
         save_path = os.path.join(self.CAPTURE_DIR, filename)
 
         # 3. Sauvegarde de l'image localement
-        ok = cv2.imwrite(save_path, frame_brg)
+        ok = cv2.imwrite(save_path, frame_bgr)
         if not ok:
             return jsonify({'error': 'write failed'}), 500
 
         # 4. URL de téléchargement
-        image_url = '/download_image/{}'.format(filename)
-        return jsonify({'filename': filename, 'file_url': image_url})
+        file_url = Flask.url_for('static', filename='captured_images/{}'.format(filename))
+        download_url = '/download_image/{}'.format(filename)
+        return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url})
 
     # Statut
     def status(self):
@@ -153,7 +158,10 @@ class controller:
         def generate():
             while vp.is_running():
                 try:
+                    # Capture du frame depuis la caméra
                     frame_bgr = vp.capture_frame()
+                    # Mettre à jour le buffer pour les captures instantanées
+                    vp.update_last_frame(frame_bgr)
                 except Exception:
                     time.sleep(0.1)
                     break

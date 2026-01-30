@@ -253,15 +253,15 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
         fetch('/capture_image', { method: 'POST' })
             .then(response => response.json())
-            .then(({ file_url, filename, error }) => {
+            .then(({ file_url, download_url, filename, error }) => {
                 if (error) {
                     alert('Erreur lors de la capture image : ' + error);
                     return;
                 }
-                alert('Image capturée et enregistrée sur le serveur : ' + file_url);
+                alert('Image capturée et enregistrée sur le serveur : ' + download_url);
                 // enregistrement de l'image sur le PC
                 const link = document.createElement('a');
-                link.href = file_url;
+                link.href = download_url;
                 link.download = filename;
 				imageCapturedCallback(file_url); // mise a jour de la dernière image capturée
                 document.body.appendChild(link);
