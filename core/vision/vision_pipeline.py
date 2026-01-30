@@ -23,7 +23,10 @@ class VisionPipeline:
         self.detectors = detectors if detectors is not None else []
         self.periode = 1.0 / fps
         self.running = False
-        # self.lock = threading.Lock() # pour la synchronisation des threads
+        self.last_captured_image_url = None
+        # Buffer de la dernière image et protection de concurrence
+        self._lock = threading.Lock()
+        self._last_frame = None
 
     def start(self):
         """ appeler pour démarrer le pipeline de vision """
@@ -97,11 +100,33 @@ class VisionPipeline:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
         
         try:
-        #with self.lock: # assurer la synchronisation des accès à la caméra
+            # Capture directe depuis la caméra (utilisé quand aucun flux ne tourne)
             return self.camera.capture()
         except Exception as e:
             print("Erreur lors de la capture d'une image brute: {}".format(e))
             raise e
+
+    def update_last_frame(self, frame):
+        """Met à jour le buffer de la dernière image capturée (thread-safe)."""
+        if frame is None:
+            return
+        with self._lock:
+            # stocker une copie pour éviter les mutations concurrentes
+            try:
+                self._last_frame = frame.copy()
+            except Exception:
+                # si frame n'est pas un numpy array, on stocke tel quel
+                self._last_frame = frame
+
+    def get_last_frame(self):
+        """Retourne une copie de la dernière image si disponible, sinon None (thread-safe)."""
+        with self._lock:
+            if self._last_frame is None:
+                return None
+            try:
+                return self._last_frame.copy()
+            except Exception:
+                return self._last_frame
 
     def get_detectors(self):
         """ obtenir la liste des détecteurs ajoutés au pipeline de vision """
@@ -111,15 +136,3 @@ class VisionPipeline:
         """ obtenir la caméra utilisée dans le pipeline de vision """
         return self.camera
     
-    # def run_camera(self):
-    #     """ fonction pour exécuter la boucle de capture de la caméra dans un thread séparé """
-    #     if not self.running:
-    #         raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
-        
-    #     while self.running:
-    #         try:
-    #             time.sleep(0.05)  # Petite pause pour éviter une boucle trop rapide
-    #         except Exception as e:
-    #             print(f"Erreur dans la boucle de la caméra: {e}")
-    #             raise e
-        
