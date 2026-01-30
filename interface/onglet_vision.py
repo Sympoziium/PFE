@@ -190,7 +190,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 						<button class='primary-btn' onclick="alert('Fonction non implémentée')">Afficher Résultats</button>
 						<!-- afficher les résultats de la détection dans des viewer -->
 					</div>
-					<img id='lastCapturedImage' alt='Dernière image capturée' style='max-width: 300px; display: block; margin-left: auto;'>
+					<div class='tab-content' id='lastCapturedImageContainer' style='flex-grow: 1;'>
+						<img id='lastCapturedImage' alt='Dernière image capturée' style='max-width: 300px; display: block; margin-left: auto;'>
+					</div>
 					<!-- ajouter la dernière image capturée -->
 				</div>
 				
@@ -261,6 +263,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 const link = document.createElement('a');
                 link.href = file_url;
                 link.download = filename;
+				imageCapturedCallback(file_url); // mise a jour de la dernière image capturée
                 document.body.appendChild(link);
                 link.click();
                 link.remove();
@@ -269,6 +272,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 console.log("Erreur lors de la communication avec le serveur : " + err); // pour debug
             });
 	}
+
+	function imageCapturedCallback(imageUrl) {
+		const imgElem = document.getElementById('lastCapturedImage');
+		imgElem.src = imageUrl;
+	}
+
 	
 	</script>
 	</body></html>

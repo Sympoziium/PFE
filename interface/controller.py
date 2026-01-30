@@ -112,6 +112,7 @@ class controller:
             return "File not found", 404
         return send_from_directory(self.CAPTURE_DIR, filename, as_attachment=True)
 
+
     # Capture d'image
     def capture_image(self):
         vp = self.vision_pipeline
@@ -133,6 +134,7 @@ class controller:
 
         # 4. URL de téléchargement
         image_url = '/download_image/{}'.format(filename)
+        self.vision_pipeline.last_captured_image_url = image_url
         return jsonify({'filename': filename, 'file_url': image_url})
 
     # Statut

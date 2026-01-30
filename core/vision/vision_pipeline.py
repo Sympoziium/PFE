@@ -23,6 +23,7 @@ class VisionPipeline:
         self.detectors = detectors if detectors is not None else []
         self.periode = 1.0 / fps
         self.running = False
+        self.last_captured_image_url = None
         # self.lock = threading.Lock() # pour la synchronisation des threads
 
     def start(self):
@@ -111,15 +112,3 @@ class VisionPipeline:
         """ obtenir la caméra utilisée dans le pipeline de vision """
         return self.camera
     
-    # def run_camera(self):
-    #     """ fonction pour exécuter la boucle de capture de la caméra dans un thread séparé """
-    #     if not self.running:
-    #         raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
-        
-    #     while self.running:
-    #         try:
-    #             time.sleep(0.05)  # Petite pause pour éviter une boucle trop rapide
-    #         except Exception as e:
-    #             print(f"Erreur dans la boucle de la caméra: {e}")
-    #             raise e
-        
