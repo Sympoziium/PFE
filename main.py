@@ -25,7 +25,7 @@ from interface import flask_router as routes
 
 # Import utilitaire
 import threading
-
+import time 
 
 # ----------------------------------------------------------------------------
 #                           Initialisation
@@ -51,6 +51,22 @@ ctrl.attach_pipeline_vision(vision_pipeline)
 zumi.clear_screen()
 
 # zumi.celebrate_reaction() # réaction de célébration au démarrage ATTENTION LE ROBOT BOUGE
+
+# Dans main.py, juste avant ctrl.app.run
+def debug_vision():
+    vision_pipeline.start()
+    while True:
+        results = vision_pipeline.step()
+        print("Résultats vision:", results)
+        time.sleep(0.1)
+
+# Lance cela dans un thread pour ne pas bloquer Flask
+threading.Thread(target=debug_vision, daemon=True).start()
+
+
+
+
+
 
 # ----------------------------------------------------------------------------
 #                           Démarrage du serveur
