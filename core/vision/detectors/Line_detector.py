@@ -51,7 +51,7 @@ class LineFollowerControl:
     def compute_commands(self, line_error):
         if line_error is None:
             return 0, 0  # On s'arrête si on perd la ligne
-
+        print(line_error)
         # Calcul de la correction (steering)
         # Si line_error > 0 (ligne à droite), turn_output sera positif
         turn_output = line_error * self.kp
