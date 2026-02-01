@@ -149,29 +149,25 @@ class controller:
 
     # Flux vidéo
     def video_feed(self):
-        vp = self.vision_pipeline
-        if not vp or not vp.is_running():
-            return "Camera not running", 503
-        if vp.get_camera() is None:
-            return "Camera not running", 503
+            vp = self.vision_pipeline
+            if not vp or not vp.is_running():
+                return "Camera not running", 503
 
-        def generate():
-            while vp.is_running():
-                try:
-                    # Capture du frame depuis la caméra
-                    frame_bgr = vp.capture_frame()
-                    # Mettre à jour le buffer pour les captures instantanées
-                    vp.update_last_frame(frame_bgr)
-                except Exception:
-                    time.sleep(0.1)
-                    break
-                ret, jpeg = cv2.imencode('.jpg', frame_bgr)
-                if not ret:
-                    continue
-                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-                time.sleep(0.05)
+            def generate():
+                while vp.is_running():
+                    # On récupère l'image déjà traitée (avec le point bleu dessiné)
+                    frame_bgr = vp.get_last_frame()
+                    
+                    if frame_bgr is not None:
+                        ret, jpeg = cv2.imencode('.jpg', frame_bgr)
+                        if ret:
+                            yield (b'--frame\r\n'
+                                b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+                    
+                    # On attend un tout petit peu pour ne pas saturer le CPU (environ 20-30 FPS)
+                    time.sleep(0.04)
 
-        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+            return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     # Caméra: stop/start
     def close_camera(self):
