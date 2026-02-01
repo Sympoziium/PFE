@@ -44,7 +44,7 @@ class LineDetector(BaseDetector):
         return None
 
 class LineFollowerControl:
-    def __init__(self, kp=0.001, base_speed=5):
+    def __init__(self, kp=0.001, base_speed=1):
         self.kp = kp  # Gain proportionnel
         self.base_speed = base_speed
 
@@ -54,7 +54,7 @@ class LineFollowerControl:
         print(line_error)
         # Calcul de la correction (steering)
         # Si line_error > 0 (ligne à droite), turn_output sera positif
-        turn_output = line_error * self.kp
+        turn_output = -line_error * self.kp
 
         # Calcul des vitesses pour chaque roue
         left_speed = self.base_speed + turn_output
