@@ -90,6 +90,12 @@ if __name__ == '__main__':
     watchdog_thread.daemon = True # S'assure qu'il s'arrête avec le script
     watchdog_thread.start()
 
+    # 2. DÉMARRAGE DE L'ASSERVISSEMENT 
+    # On lance la boucle de contrôle en arrière-plan
+    control_thread = threading.Thread(target=control_loop)
+    control_thread.daemon = True
+    control_thread.start()
+
     print("Flask server démarré")
     ctrl.app.run(host='0.0.0.0', port=5000, threaded=True)
 
