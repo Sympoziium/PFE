@@ -49,7 +49,7 @@ class LineFollowerControl:
         self.base_speed = base_speed
 
     def compute_commands(self, line_error):
-        if line_error is None:
+        if line_error > 20 or line_error < -20:
             return 0, 0  # On s'arrête si on perd la ligne
         print(line_error)
         # Calcul de la correction (steering)
