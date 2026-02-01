@@ -17,29 +17,25 @@ class LineDetector(BaseDetector):
         return {"detector": "line", "value": line_center}
     
     def detect_lines(self, frame):
-        # Dessiner un point sur l'image pour l'interface web
-        if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"])
-            cv2.circle(frame, (cx, int(height*0.8)), 5, (0, 255, 0), -1) 
-    # Le point vert apparaîtra sur ton flux Flask !
-        # 1. Région d'Intérêt (ROI) : on ne regarde que le bas de l'image
+        # 1. ROI : On regarde le bas du tapis (la route juste devant le robot)
         height, width = frame.shape[:2]
-        roi = frame[int(height*0.6):height, :] # Garde les 40% du bas
+        roi = frame[int(height*0.7):height, :] 
 
-        # 2. Conversion en Gris et Flou pour réduire le bruit
+        # 2. Prétraitement
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        # 3. Seuillage (Threshold) : Isoler la ligne noire
-        # Ajuste le 60 selon l'éclairage de ta pièce
-        _, thresh = cv2.threshold(blur, 60, 255, cv2.THRESH_BINARY_INV)
+        # 3. Seuillage pour ligne BLANCHE
+        # On cherche les pixels brillants (proches de 255)
+        # Ajuste le 200 selon la luminosité de ta pièce
+        _, thresh = cv2.threshold(blur, 200, 255, cv2.THRESH_BINARY)
 
-        # 4. Calcul du centre de masse (Moments)
+        # 4. Calcul du centre de masse
         M = cv2.moments(thresh)
         if M["m00"] != 0:
             cx = int(M["m10"] / M["m00"])
-            # On retourne l'erreur par rapport au centre (0 = parfaitement centré)
-            error = cx - (width / 2)
-            return error
+            # On dessine un point bleu sur l'image pour confirmer la détection
+            cv2.circle(frame, (cx, int(height*0.85)), 10, (255, 0, 0), -1)
+            return cx - (width / 2)
         
-        return None # Aucune ligne détectée
+        return None
