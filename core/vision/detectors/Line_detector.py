@@ -17,6 +17,20 @@ class LineDetector(BaseDetector):
         return {"detector": "line", "value": line_center}
     
     def detect_lines(self, frame):
+        # DEBUG
+        # print("DEBUG: detect_lines appelé") 
+
+        height, width = frame.shape[:2]
+        roi = frame[int(height*0.7):height, :] 
+        
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # Test de luminosité : affiche la valeur maximale trouvée dans la zone
+        # print("Max pixel value in ROI:", np.max(gray))
+
+        _, thresh = cv2.threshold(blur, 200, 255, cv2.THRESH_BINARY)
+
         # 1. ROI : On regarde le bas du tapis (la route juste devant le robot)
         height, width = frame.shape[:2]
         roi = frame[int(height*0.7):height, :] 
