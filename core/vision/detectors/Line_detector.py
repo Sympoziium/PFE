@@ -44,7 +44,7 @@ class LineDetector(BaseDetector):
         return None
 
 class LineFollowerControl:
-    def __init__(self, kp=0.001, base_speed=1):
+    def __init__(self, kp=0.00001, base_speed=1):
         self.kp = kp  # Gain proportionnel
         self.base_speed = base_speed
 
