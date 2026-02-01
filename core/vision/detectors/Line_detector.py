@@ -11,8 +11,8 @@ import cv2
 import numpy as np
 
 class LineDetector(BaseDetector):
-    def process(self, frame):
-        # On récupère le centre de la ligne
+    def process(self, frame):    
+        print("PIPELINE -> Appel de LineDetector.process") 
         line_center = self.detect_lines(frame)
         return {"detector": "line", "value": line_center}
     
