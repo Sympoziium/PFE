@@ -59,6 +59,6 @@ class LineFollowerControl:
         # Calcul des vitesses pour chaque roue
         left_speed = self.base_speed + turn_output
         right_speed = self.base_speed - turn_output
-        print("left speed = ", left_speed, "right speed= ", right_speed)
+        print("left speed = ", left_speed, "right speed= ", right_speed, "turn outpu = ", turn_output)
         #return int(left_speed), int(right_speed)
         return 0, 0 
