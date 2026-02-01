@@ -18,13 +18,7 @@ class LineDetector(BaseDetector):
     
     def detect_lines(self, frame):
         # DEBUG
-        # print("DEBUG: detect_lines appelé") 
-
-        height, width = frame.shape[:2]
-        roi = frame[int(height*0.7):height, :] 
-        
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        print("DEBUG: detect_lines appelé") 
         
         # Test de luminosité : affiche la valeur maximale trouvée dans la zone
         # print("Max pixel value in ROI:", np.max(gray))
