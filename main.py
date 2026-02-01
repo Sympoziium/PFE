@@ -17,6 +17,7 @@ from core.robot.robot_zumi import RobotZumi
 # Import du pipeline de vision et des détecteurs
 from core.vision.vision_pipeline import VisionPipeline
 from core.vision.detectors.Luminosity import LuminosityDetector
+from core.vision.detectors.Line_detector import LineDetector
 
 # Import pour le serveur web (Flask)
 from interface import server_controller as controller_module
@@ -36,10 +37,11 @@ zumi = RobotZumi()
 # Initialisation du pipeline de vision
 detector = LuminosityDetector()
 vision_pipeline = VisionPipeline(camera=zumi.camera)
+line_detector = LineDetector()
 
 # On ajoute le détecteur au pipeline de vision
 vision_pipeline.add_detectors(detector)
-
+vision_pipeline.add_detectors(line_detector)
 # Initialisation du contrôleur (serveur Flask)
 ctrl = controller_module.controller(zumi)
 routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du contrôleur (build du serveur)
