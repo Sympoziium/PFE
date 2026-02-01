@@ -17,32 +17,27 @@ class LineDetector(BaseDetector):
         return {"detector": "line", "value": line_center}
     
     def detect_lines(self, frame):
-        # DEBUG
-        print("DEBUG: detect_lines appelé") 
-        
-        # Test de luminosité : affiche la valeur maximale trouvée dans la zone
-        # print("Max pixel value in ROI:", np.max(gray))
-
-        _, thresh = cv2.threshold(blur, 200, 255, cv2.THRESH_BINARY)
-
-        # 1. ROI : On regarde le bas du tapis (la route juste devant le robot)
+        # 1. Définition de la zone d'intérêt (ROI) en premier
         height, width = frame.shape[:2]
         roi = frame[int(height*0.7):height, :] 
 
-        # 2. Prétraitement
+        # 2. Prétraitement (Conversion et Flou)
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        # 3. Seuillage pour ligne BLANCHE
-        # On cherche les pixels brillants (proches de 255)
-        # Ajuste le 200 selon la luminosité de ta pièce
-        _, thresh = cv2.threshold(blur, 200, 255, cv2.THRESH_BINARY)
+        # DEBUG : Maintenant que 'gray' existe, on peut logger
+        print("DEBUG: detect_lines appelé") 
+        print("Max pixel value in ROI: {}".format(np.max(gray)))
+
+        # 3. Seuillage pour ligne BLANCHE (Utilise 'blur' ici)
+        # Note : Si Max pixel < 200, baisse cette valeur à 150
+        _, thresh = cv2.threshold(blur, 180, 255, cv2.THRESH_BINARY)
 
         # 4. Calcul du centre de masse
         M = cv2.moments(thresh)
         if M["m00"] != 0:
             cx = int(M["m10"] / M["m00"])
-            # On dessine un point bleu sur l'image pour confirmer la détection
+            # Feedback visuel : Cercle BLEU
             cv2.circle(frame, (cx, int(height*0.85)), 10, (255, 0, 0), -1)
             return cx - (width / 2)
         
