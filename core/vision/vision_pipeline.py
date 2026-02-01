@@ -60,6 +60,7 @@ class VisionPipeline:
         
         try:
             frame = self.camera.capture()
+            self.update_last_frame(frame) #Ajout d'une sauvegarde dans un buffer
         except Exception as e:
             print("Erreur lors de la capture d'une image: {}".format(e))
             raise e

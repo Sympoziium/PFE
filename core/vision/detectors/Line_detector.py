@@ -31,7 +31,7 @@ class LineDetector(BaseDetector):
 
         # 3. Seuillage pour ligne BLANCHE (Utilise 'blur' ici)
         # Note : Si Max pixel < 200, baisse cette valeur à 150
-        _, thresh = cv2.threshold(blur, 180, 255, cv2.THRESH_BINARY)
+        _, thresh = cv2.threshold(blur, 150, 255, cv2.THRESH_BINARY)
 
         # 4. Calcul du centre de masse
         M = cv2.moments(thresh)

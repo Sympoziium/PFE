@@ -52,13 +52,17 @@ zumi.clear_screen()
 
 # zumi.celebrate_reaction() # réaction de célébration au démarrage ATTENTION LE ROBOT BOUGE
 
-# Dans main.py, juste avant ctrl.app.run
+
 def debug_vision():
     vision_pipeline.start()
-    while True:
-        results = vision_pipeline.step()
-        print("Résultats vision:", results)
-        time.sleep(0.1)
+    while vision_pipeline.is_running():
+        try:
+            results = vision_pipeline.step()
+            # On affiche les résultats dans le terminal
+            print("Résultats vision: {}".format(results))
+        except Exception as e:
+            print("Erreur dans la boucle debug: {}".format(e))
+        time.sleep(0.1) # 10 fois par seconde suffit pour le debug
 
 # Lance cela dans un thread pour ne pas bloquer Flask
 threading.Thread(target=debug_vision, daemon=True).start()
