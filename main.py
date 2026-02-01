@@ -18,6 +18,7 @@ from core.robot.robot_zumi import RobotZumi
 from core.vision.vision_pipeline import VisionPipeline
 from core.vision.detectors.Luminosity import LuminosityDetector
 from core.vision.detectors.Line_detector import LineDetector
+from core.vision.detectors.Line_detector import LineFollowerControl
 
 # Import pour le serveur web (Flask)
 from interface import server_controller as controller_module
@@ -53,20 +54,28 @@ zumi.clear_screen()
 # zumi.celebrate_reaction() # réaction de célébration au démarrage ATTENTION LE ROBOT BOUGE
 
 
-def debug_vision():
+follower = LineFollowerControl(kp=0.5, base_speed=20)
+
+def control_loop():
     vision_pipeline.start()
     while vision_pipeline.is_running():
-        try:
-            results = vision_pipeline.step()
-            # On affiche les résultats dans le terminal
-            print("Résultats vision: {}".format(results))
-        except Exception as e:
-            print("Erreur dans la boucle debug: {}".format(e))
-        time.sleep(0.1) # 10 fois par seconde suffit pour le debug
+        results = vision_pipeline.step()
+        
+        # Extraire la valeur du LineDetector
+        line_val = None
+        for res in results:
+            if res.get("detector") == "line":
+                line_val = res.get("value")
 
-# Lance cela dans un thread pour ne pas bloquer Flask
-threading.Thread(target=debug_vision, daemon=True).start()
-
+        if line_val is not None:
+            # Calculer les vitesses
+            l_speed, r_speed = follower.compute_commands(line_val)
+            # Envoyer la commande au Zumi
+            zumi.control_motors(l_speed, r_speed)
+        else:
+            zumi.stop()
+            
+        time.sleep(0.05) # Fréquence de 20Hz
 
 
 
