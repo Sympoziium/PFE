@@ -23,7 +23,12 @@ class LuminosityDetector(BaseDetector):
             dict: Dictionnaire contenant le nom du detecteur et la luminosite moyenne de l'image.
         """ 
         # Calculer la luminosite moyenne
-        return {"detector": self.name, "value": float(frame.mean())}
+        resultats = {
+                "Detector": self.name,
+                "Luminosity": float(frame.mean()),
+                }
+
+        return resultats
     
     def preprocess(self, frame):
         """

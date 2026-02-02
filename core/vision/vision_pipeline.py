@@ -107,20 +107,17 @@ class VisionPipeline:
         try:
             detection = detector.process(frame)
             elapsed_time = time.time() - start_time
-            results = {
-                "detector": detection.get("detector", "unknown"),
-                "Object detected": detection.get("detected", False),
-                "Object coordinates": detection["box"][:2],
-                "object size": detection["box"][3:],
-                "processing_time_sec": elapsed_time
-            }
-            
+            detection["Processing time"] = elapsed_time
+
             if camera_was_running:
                 self.start() # redémarrer la caméra si elle était en cours d'exécution
 
-            return results
+            return detection
+        
         except Exception as e:
             print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
+            if camera_was_running:
+                self.start()
             raise e
 
     def is_running(self):

@@ -32,11 +32,25 @@ class StopDetector(BaseDetector):
             dict: résultat de la détection (nom du détecteur, état de détection, boîte englobante).
         """
         # Implémentation spécifique pour le Zumi
-
+        
         detection = self.zumi_vision.find_stop_sign(frame, scale_factor=self.scaleFactor, min_neighbors=self.minNeighbors, min_size=self.minSize)
-        # la fonction retourne les coordonnées du panneau stop si détecté et le height/width
-        if detection is None:
-            return {"detector": self.name, "detected": False, "box": None}
-        else:
-            return {"detector": self.name, "detected": True, "box": detection}
+        stop_detected = False
+        Coordonées = None
+        Taille = None
 
+        if detection is None:
+            print("Aucun panneau stop détecté.")
+            stop_detected = False
+        else:
+            stop_detected = True
+            Coordonées = (detection["x"], detection["y"])
+            Taille = (detection["width"], detection["height"])
+        
+        resultats = {
+                "Detector": self.name,
+                "Object detected": stop_detected,
+                "Object coordinates": Coordonées,
+                "Object size": Taille,
+            }
+        
+        return resultats
