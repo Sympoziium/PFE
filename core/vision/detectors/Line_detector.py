@@ -51,7 +51,6 @@ class LineFollowerControl:
     def compute_commands(self, line_error):
         #if line_error > 20 or line_error < -20:
         #    return 0, 0  # On s'arrête si on perd la ligne
-        print(line_error)
         # Calcul de la correction (steering)
         # Si line_error > 0 (ligne à droite), turn_output sera positif
         turn_output = line_error * self.kp
@@ -59,6 +58,6 @@ class LineFollowerControl:
         # Calcul des vitesses pour chaque roue
         left_speed = self.base_speed + turn_output
         right_speed = self.base_speed - turn_output
-        print("left speed = ", left_speed, "right speed= ", right_speed, "turn outpu = ", turn_output)
-        #return int(left_speed), int(right_speed)
-        return 0,0
+        print('left speed =', left_speed, 'right speed = ', right_speed)
+        return int(left_speed), int(right_speed)
+        #return 0,0

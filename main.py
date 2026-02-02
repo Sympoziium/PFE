@@ -67,7 +67,7 @@ def control_loop():
             if res.get("detector") == "line":
                 line_val = res.get("value")
 
-        if line_val is not None:
+        if line_val>3 or line_val<-3:
             # Calculer les vitesses
             l_speed, r_speed = follower.compute_commands(line_val)
             # Envoyer la commande au Zumi
@@ -75,7 +75,7 @@ def control_loop():
         else:
             zumi.stop()
             
-            
+
         time.sleep(0.05) # Fréquence de 20Hz
 
 
