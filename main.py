@@ -67,7 +67,7 @@ def control_loop():
             if res.get("detector") == "line":
                 line_val = res.get("value")
         print('error =', line_val)
-        if line_val>3 and line_val<20 or line_val<-3 and line_val>-20 and line_val is not None:
+        if line_val is not None and (3 < abs(line_val) < 20):
             # Calculer les vitesses
             l_speed, r_speed = follower.compute_commands(line_val)
             # Envoyer la commande au Zumi
