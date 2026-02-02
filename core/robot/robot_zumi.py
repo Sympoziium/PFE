@@ -39,9 +39,9 @@ class RobotZumi(RobotBase):
         """
         ## les leds semble causer probleme
         try: 
-            self.zumi.back_lights_off()
+            self.zumi.break_lights_off()
         except Exception as e:
-            print("Erreur self.zumi.back_lights_off(): {}".format(e))
+            print("Erreur self.zumi.break_lights_off(): {}".format(e))
         
         try: 
             self.zumi.headlights_on()
@@ -100,9 +100,9 @@ class RobotZumi(RobotBase):
         """
         self.zumi.stop()
         try:
-            self.zumi.back_lights_on()
+            self.zumi.break_lights_on()
         except Exception as e:
-            print("Erreur self.zumi.back_lights_on(): {}".format(e))
+            print("Erreur self.zumi.break_lights_on(): {}".format(e))
 
 # ---------------------------------------------------------------------------------
 #                             Contrôle de l'écran
