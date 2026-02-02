@@ -58,15 +58,20 @@ follower = LineFollowerControl(kp=0.5, base_speed=20)
 
 def control_loop():
     global is_calibrating
-    # On ne lance pas le pipeline ici, on attend qu'il soit lancé via l'interface
+    vision_pipeline.start()
     
     while True:
-        # 1. Si on calibre ou si la caméra est éteinte, on attend
-        if is_calibrating or not vision_pipeline.is_running():
+        # 1. Vérification du flag de calibration
+        if is_calibrating:
             time.sleep(0.1)
             continue
 
-        # 2. Si la caméra tourne, on traite l'image
+        # 2. Vérification que la caméra tourne
+        if not vision_pipeline.is_running():
+            time.sleep(0.1)
+            continue
+
+        # 3. Traitement de la vision
         results = vision_pipeline.step()
         
         line_val = None
@@ -74,9 +79,11 @@ def control_loop():
             if res.get("detector") == "line":
                 line_val = res.get("value")
         
+        # 4. Logique de suivi
         if line_val is not None and (3 < abs(line_val) < 20):
-            l_speed, r_speed = follower.compute_commands(line_val)
-            zumi.control_motors(l_speed, r_speed)
+            # Utilisez vos variables de vitesse (follower.compute_commands)
+            # l_speed, r_speed = follower.compute_commands(line_val)
+            zumi.control_motors(10, 0)
         else:
             zumi.stop()
 

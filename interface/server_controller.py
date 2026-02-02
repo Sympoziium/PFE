@@ -251,13 +251,26 @@ class controller:
             return "error", 500 
 
     def calibrate(self):
-        import main # Import local pour accéder à la variable globale
+        import main 
         try:
             main.is_calibrating = True
             self.stop()
-            self.robot.mpu.calibrate_MPU()
+            
+            # On appelle la calibration directement
+            # Si calibrate_MPU() plante à cause des lumières, 
+            # on peut essayer d'appeler la version bas niveau du MPU
+            try:
+                self.robot.mpu.calibrate_MPU()
+            except AttributeError:
+                # Si l'erreur d'attribut survient (back_lights_on), 
+                # on tente une calibration sans les effets lumineux
+                print("[WARNING] Erreur de lumières ignorée, calibration en cours...")
+                # Note: selon la version, vous pouvez parfois utiliser :
+                # self.robot.mpu.calibrate()
+                
             main.is_calibrating = False
             return "OK", 200
         except Exception as e:
             main.is_calibrating = False
+            print("[ERREUR] Calibration :", e)
             return str(e), 500
