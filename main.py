@@ -72,7 +72,7 @@ def control_loop():
             l_speed, r_speed = follower.compute_commands(line_val)
             # Envoyer la commande au Zumi
             #zumi.control_motors(l_speed, r_speed)
-            zumi.control_motors(10, 10)
+            zumi.control_motors(10, 0)
             print('IN LOOP')
         else:
             zumi.stop()
