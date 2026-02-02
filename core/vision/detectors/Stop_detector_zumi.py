@@ -43,8 +43,8 @@ class StopDetector(BaseDetector):
             stop_detected = False
         else:
             stop_detected = True
-            Coordonées = (detection["x"], detection["y"])
-            Taille = (detection["width"], detection["height"])
+            Coordonées = (detection[1], detection[2])# (x, y)
+            Taille = (detection[3], detection[4])# (largeur, hauteur)
         
         resultats = {
                 "Detector": self.name,
