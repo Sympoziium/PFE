@@ -35,7 +35,7 @@ class StopDetector(BaseDetector):
         
         detection = self.zumi_vision.find_stop_sign(frame, scale_factor=self.scaleFactor, min_neighbors=self.minNeighbors, min_size=self.minSize)
         stop_detected = False
-        Coordonées = None
+        Coordonnees = None
         Taille = None
 
         if detection is None:
@@ -44,13 +44,13 @@ class StopDetector(BaseDetector):
         else:
             stop_detected = True
             print("Detection : {}".format(detection))
-            Coordonées = (detection[1], detection[2])# (x, y)
-            Taille = (detection[3], detection[4])# (largeur, hauteur)
+            Coordonnees = (detection[0], detection[1])# (x, y)
+            Taille = (detection[2], detection[3])# (largeur, hauteur)
         
         resultats = {
                 "Detector": self.name,
                 "Object detected": stop_detected,
-                "Object coordinates": Coordonées,
+                "Object coordinates": Coordonnees,
                 "Object size": Taille,
             }
         
