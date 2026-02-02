@@ -319,8 +319,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 		</div>
 	</div>
 	
-
-	<button onclick="calibrateZumi()" style="background-color: #f39c12; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">
+    <button onclick="calibrateZumi()" style="background-color: #f39c12; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">
     Recalibrer Zumi
     </button>
 
@@ -336,6 +335,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
     </script>
+	
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
 	<script>

@@ -57,6 +57,13 @@ zumi.clear_screen()
 follower = LineFollowerControl(kp=0.5, base_speed=20)
 
 def control_loop():
+
+    global is_calibrating
+    while True:
+        if is_calibrating:
+            time.sleep(0.1) # Ne fait rien pendant la calibration
+            continue
+
     vision_pipeline.start()
     while vision_pipeline.is_running():
         results = vision_pipeline.step()

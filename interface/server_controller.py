@@ -251,8 +251,13 @@ class controller:
             return "error", 500 
 
 def calibrate(self):
-    print("Début de la calibration...")
-    self.robot.stop() # Sécurité
-    self.robot.mpu.calibrate_MPU()
-    print("Calibration terminée.")
-    return "OK", 200
+    import main # Import local pour accéder à la variable globale
+    try:
+        main.is_calibrating = True
+        self.stop()
+        self.robot.mpu.calibrate_MPU()
+        main.is_calibrating = False
+        return "OK", 200
+    except Exception as e:
+        main.is_calibrating = False
+        return str(e), 500
