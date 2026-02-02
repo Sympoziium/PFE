@@ -188,7 +188,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<!-- AJOUT DES FONCTIONS DE DÉTECTION -->
 				<div class='tab-row'>
 					<div class='tab-btn-group'>
-						<!-- Remplace le bouton par une liste déroulante -->
 						<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
 						<select id='detectorSelect' class='select-detector' onchange='onDetectorChange()'>
 							<!-- options remplies dynamiquement -->
@@ -280,8 +279,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	function imageCapturedCallback(imageUrl) {
+		console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl); // pour debug
 		const imgElem = document.getElementById('lastCapturedImage');
-		imgElem.src = imageUrl;
+		const img = imgElem.querySelector('img');
+		imgElem.style.display = 'block'; 
+		img.src = imageUrl;
 	}
 
 	// --- Détecteurs: chargement, sélection et exécution ---
