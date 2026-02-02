@@ -52,40 +52,41 @@ ctrl.attach_pipeline_vision(vision_pipeline)
 zumi.clear_screen()
 
 # zumi.celebrate_reaction() # réaction de célébration au démarrage ATTENTION LE ROBOT BOUGE
-
+is_calibrating = False
 
 follower = LineFollowerControl(kp=0.5, base_speed=20)
 
 def control_loop():
-
     global is_calibrating
+    vision_pipeline.start()
+    
     while True:
         if is_calibrating:
             time.sleep(0.1) # Ne fait rien pendant la calibration
             continue
 
-    vision_pipeline.start()
-    while vision_pipeline.is_running():
-        results = vision_pipeline.step()
-        
-        # Extraire la valeur du LineDetector
-        line_val = None
-        for res in results:
-            if res.get("detector") == "line":
-                line_val = res.get("value")
-        print('error =', line_val)
-        if line_val is not None and (3 < abs(line_val) < 20):
-            # Calculer les vitesses
-            l_speed, r_speed = follower.compute_commands(line_val)
-            # Envoyer la commande au Zumi
-            #zumi.control_motors(l_speed, r_speed)
-            zumi.control_motors(10, 0)
-            print('IN LOOP')
-        else:
-            zumi.stop()
+    
+        while vision_pipeline.is_running():
+            results = vision_pipeline.step()
             
+            # Extraire la valeur du LineDetector
+            line_val = None
+            for res in results:
+                if res.get("detector") == "line":
+                    line_val = res.get("value")
+            print('error =', line_val)
+            if line_val is not None and (3 < abs(line_val) < 20):
+                # Calculer les vitesses
+                l_speed, r_speed = follower.compute_commands(line_val)
+                # Envoyer la commande au Zumi
+                #zumi.control_motors(l_speed, r_speed)
+                zumi.control_motors(10, 0)
+                print('IN LOOP')
+            else:
+                zumi.stop()
+                
 
-        time.sleep(0.05) # Fréquence de 20Hz
+            time.sleep(0.05) # Fréquence de 20Hz
 
 
 
