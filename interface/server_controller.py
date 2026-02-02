@@ -35,6 +35,8 @@ class controller:
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
         # Index du détecteur sélectionné côté serveur
         self.selected_detector_index = 0
+        # Dernière image capturée (nom de fichier) pour la détection à la demande
+        self.last_captured_filename = None
 
     # Attache le pipeline de vision
     def attach_pipeline_vision(self, pipeline):
@@ -143,6 +145,8 @@ class controller:
         # 4. URL de téléchargement
         file_url = url_for('static', filename='captured_images/{}'.format(filename))
         download_url = '/download_image/{}'.format(filename)
+        # Mémoriser la dernière image capturée pour une détection à la demande
+        self.last_captured_filename = filename
         return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url})
 
     # Statut
@@ -193,20 +197,59 @@ class controller:
         self.selected_detector_index = idx
         return ('', 204)
 
-    # Exécuter la détection sur le frame courant avec le détecteur sélectionné
+    # Exécuter la détection sur la dernière image capturée
     def run_detection(self):
         vp = self.vision_pipeline
         if vp is None:
             return jsonify({'error': 'Video pipeline not initialized'}), 400
 
-        # Récupérer un frame courant
-        frame_bgr = vp.get_last_frame()
-        if frame_bgr is None:
-            return jsonify({'error': 'no frame available'}), 500
+        # Récupérer l'image capturée la plus récente depuis le disque
+        filename = getattr(self, 'last_captured_filename', None)
+        if not filename:
+            return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
+
+        img_path = os.path.join(self.CAPTURE_DIR, filename)
+        if not os.path.exists(img_path):
+            return jsonify({'error': 'last captured image not found on server'}), 404
 
         try:
+            # Charger l'image en BGR pour la détection
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return jsonify({'error': 'failed to read captured image'}), 500
+
             results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index)
-            return jsonify(results)
+
+            # Si détection, créer et sauvegarder une version annotée
+            annotated_url = None
+            annotated_filename = None
+            if results and results.get('Object detected'):
+                coords = results.get('Object coordinates')
+                size = results.get('Object size')
+                if coords and size:
+                    x, y = int(coords[0]), int(coords[1])
+                    w, h = int(size[0]), int(size[1])
+                    # Dessiner sur une copie pour ne pas modifier l'originale
+                    annotated = frame_bgr.copy()
+                    cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv2.putText(annotated, 'STOP', (x, max(0, y - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+                    base, ext = os.path.splitext(filename)
+                    annotated_filename = '{}_det{}'.format(base, ext or '.jpg')
+                    annotated_path = os.path.join(self.CAPTURE_DIR, annotated_filename)
+                    cv2.imwrite(annotated_path, annotated)
+                    annotated_url = url_for('static', filename='captured_images/{}'.format(annotated_filename))
+
+            # Inclure les URLs utiles pour l'interface
+            source_url = url_for('static', filename='captured_images/{}'.format(filename))
+            payload = dict(results)
+            payload.update({
+                'source_filename': filename,
+                'source_file_url': source_url,
+                'annotated_filename': annotated_filename,
+                'annotated_file_url': annotated_url,
+            })
+            return jsonify(payload)
         except IndexError:
             return jsonify({'error': 'invalid detector index'}), 400
         except Exception as e:

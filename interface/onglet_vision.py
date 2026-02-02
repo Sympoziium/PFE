@@ -332,6 +332,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				const zone = document.getElementById('zone-resultats-detection');
 				zone.style.display = 'block';
 				zone.textContent = JSON.stringify(res, null, 2);
+
+				// Si une image annotée est disponible, l'afficher dans la zone "Dernière image capturée"
+				if (res && res.annotated_file_url) {
+					imageCapturedCallback(res.annotated_file_url);
+				} else if (res && res.source_file_url) {
+					// Sinon, s'assurer que l'image source s'affiche au besoin
+					imageCapturedCallback(res.source_file_url);
+				}
 			})
 			.catch(err => {
 				const zone = document.getElementById('zone-resultats-detection');
