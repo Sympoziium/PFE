@@ -282,10 +282,6 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 					<div class='driving-mode'>
 						<h3>Contrôle du Zumi</h3>
 						<div class="dpad-container">
-                            <div style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px;">
-                            <button onclick="calibrateZumi()" style="background-color: #f39c12; color: white; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%;">
-                                🔧 Recalibrer les Capteurs
-                            </button>
 							<!-- HAUT -->
 							<button 
 								class="dpad-button dpad-up" 
