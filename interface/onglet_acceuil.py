@@ -320,6 +320,22 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	</div>
 	
 
+	<button onclick="calibrateZumi()" style="background-color: #f39c12; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">
+    Recalibrer Zumi
+    </button>
+
+    <script>
+    function calibrateZumi() {
+        if(confirm("Assurez-vous que Zumi est sur une surface plane et ne bouge pas. Continuer ?")) {
+            fetch('/zumi/calibrate')
+                .then(response => {
+                    if (response.ok) alert("Calibration terminée !");
+                    else alert("Erreur lors de la calibration.");
+                })
+                .catch(error => console.error('Erreur:', error));
+        }
+    }
+    </script>
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
 	<script>
