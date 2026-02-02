@@ -58,35 +58,29 @@ follower = LineFollowerControl(kp=0.5, base_speed=20)
 
 def control_loop():
     global is_calibrating
-    vision_pipeline.start()
+    # On ne lance pas le pipeline ici, on attend qu'il soit lancé via l'interface
     
     while True:
-        if is_calibrating:
-            time.sleep(0.1) # Ne fait rien pendant la calibration
+        # 1. Si on calibre ou si la caméra est éteinte, on attend
+        if is_calibrating or not vision_pipeline.is_running():
+            time.sleep(0.1)
             continue
 
-    
-        while vision_pipeline.is_running():
-            results = vision_pipeline.step()
-            
-            # Extraire la valeur du LineDetector
-            line_val = None
-            for res in results:
-                if res.get("detector") == "line":
-                    line_val = res.get("value")
-            print('error =', line_val)
-            if line_val is not None and (3 < abs(line_val) < 20):
-                # Calculer les vitesses
-                l_speed, r_speed = follower.compute_commands(line_val)
-                # Envoyer la commande au Zumi
-                #zumi.control_motors(l_speed, r_speed)
-                zumi.control_motors(10, 0)
-                print('IN LOOP')
-            else:
-                zumi.stop()
-                
+        # 2. Si la caméra tourne, on traite l'image
+        results = vision_pipeline.step()
+        
+        line_val = None
+        for res in results:
+            if res.get("detector") == "line":
+                line_val = res.get("value")
+        
+        if line_val is not None and (3 < abs(line_val) < 20):
+            l_speed, r_speed = follower.compute_commands(line_val)
+            zumi.control_motors(l_speed, r_speed)
+        else:
+            zumi.stop()
 
-            time.sleep(0.05) # Fréquence de 20Hz
+        time.sleep(0.05)
 
 
 
