@@ -250,3 +250,9 @@ class controller:
             print("[ERREUR] zumi.stop():", e) 
             return "error", 500 
 
+def calibrate(self):
+    print("Début de la calibration...")
+    self.robot.stop() # Sécurité
+    self.robot.mpu.calibrate_MPU()
+    print("Calibration terminée.")
+    return "OK", 200

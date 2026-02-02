@@ -32,5 +32,7 @@ def register_routes(ctrl):
     app.add_url_rule('/zumi/left', 'left', lambda: ctrl.left())
     app.add_url_rule('/zumi/right', 'right', lambda: ctrl.right())
     app.add_url_rule('/zumi/stop', 'stop', lambda: ctrl.stop())
+    app.add_url_rule('/zumi/calibrate', 'calibrate', lambda: ctrl.calibrate())
 
     return app
+
