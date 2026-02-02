@@ -75,6 +75,7 @@ def control_loop():
         else:
             zumi.stop()
             
+            
         time.sleep(0.05) # Fréquence de 20Hz
 
 
