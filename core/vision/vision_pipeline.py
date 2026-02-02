@@ -91,11 +91,11 @@ class VisionPipeline:
     def process_frame(self, frame, detetor_index=0):
         """ traiter un frame spécifique avec un détecteur spécifique """
 
-        camera_was_running = False
-        if self.running:
-            # arret temporaire de la caméra pour éviter les conflits
-            camera_was_running = True
-            self.stop()
+        # camera_was_running = False
+        # if self.running:
+        #     # arret temporaire de la caméra pour éviter les conflits
+        #     camera_was_running = True
+        #     self.stop()
         
         if detetor_index < 0 or detetor_index >= len(self.detectors):
             raise IndexError("Index de détecteur invalide.")
@@ -109,15 +109,15 @@ class VisionPipeline:
             elapsed_time = time.time() - start_time
             detection["Processing time"] = elapsed_time
 
-            if camera_was_running:
-                self.start() # redémarrer la caméra si elle était en cours d'exécution
+            # if camera_was_running:
+            #     self.start() # redémarrer la caméra si elle était en cours d'exécution
 
             return detection
         
         except Exception as e:
             print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
-            if camera_was_running:
-                self.start()
+            # if camera_was_running:
+            #     self.start()
             raise e
 
     def is_running(self):
@@ -133,12 +133,13 @@ class VisionPipeline:
         if not self.running:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
         
-        try:
-            # Capture directe depuis la caméra (utilisé quand aucun flux ne tourne)
-            return self.camera.capture()
-        except Exception as e:
-            print("Erreur lors de la capture d'une image brute: {}".format(e))
-            raise e
+        with self._lock:
+            try:
+                # Capture directe depuis la caméra (utilisé quand aucun flux ne tourne)
+                return self.camera.capture()
+            except Exception as e:
+                print("Erreur lors de la capture d'une image brute: {}".format(e))
+                raise e
 
     def update_last_frame(self, frame):
         """Met à jour le buffer de la dernière image capturée (thread-safe)."""
