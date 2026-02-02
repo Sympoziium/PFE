@@ -115,17 +115,20 @@ class controller:
         return send_from_directory(self.CAPTURE_DIR, filename, as_attachment=True)
 
     # Capture d'image
-    def capture_image(self):
+    def capture_image(self, ConvertToRGB=False):
         vp = self.vision_pipeline
         if vp is None or not vp.is_running():
             return jsonify({'error': 'camera not running'}), 400
 
         # 1. Récupération de l'image actuelle sans ré-entrer dans le générateur
         #    Si le flux vidéo tourne, on utilise le dernier frame mis en buffer.
-        frame_bgr = vp.get_last_frame()
-        if frame_bgr is None:
+        frame = vp.get_last_frame()
+        if frame is None:
             # Pas de flux actif ou pas encore d'image en buffer: on capture directement
-            frame_bgr = vp.capture_frame()
+            return jsonify({'error': 'Activer la camera car le flux est pas encore disponible'}), 400
+
+        if ConvertToRGB:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # 2. Génération d'un nom de fichier unique
         ts = time.strftime("%Y%m%d-%H%M%S")
@@ -133,7 +136,7 @@ class controller:
         save_path = os.path.join(self.CAPTURE_DIR, filename)
 
         # 3. Sauvegarde de l'image localement
-        ok = cv2.imwrite(save_path, frame_bgr)
+        ok = cv2.imwrite(save_path, frame)
         if not ok:
             return jsonify({'error': 'write failed'}), 500
 
@@ -227,7 +230,9 @@ class controller:
                 except Exception:
                     time.sleep(0.1)
                     break
-                ret, jpeg = cv2.imencode('.jpg', frame_bgr)
+                # Conversion en RGB pour l'affichage web
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                ret, jpeg = cv2.imencode('.jpg', frame_rgb)
                 if not ret:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
