@@ -39,9 +39,9 @@ class RobotZumi(RobotBase):
         """
         ## les leds semble causer probleme
         try: 
-            self.zumi.back_lights_off()
+            1#self.zumi.back_lights_off()
         except Exception as e:
-            print("Erreur self.zumi.back_lights_off(): {}".format(e))
+            1#print("Erreur self.zumi.back_lights_off(): {}".format(e))
         
         try: 
             self.zumi.headlights_on()
