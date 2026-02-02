@@ -279,6 +279,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 				</div>
 
 				<div class='right-panel'>
+				    <button onclick="calibrateZumi()" style="width:100%; background-color: #f39c12; color: white; padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin-bottom: 15px;">
+                        🔧 Recalibrer Capteurs (MPU)
+                    </button>
 					<div class='driving-mode'>
 						<h3>Contrôle du Zumi</h3>
 						<div class="dpad-container">
@@ -414,7 +417,17 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     // Sécurité : si l'utilisateur relâche le clic n'importe où sur la page
     window.addEventListener('mouseup', stopMove);
     window.addEventListener('touchend', stopMove);
-
+	
+    function calibrateZumi() {
+    if(confirm("Assurez-vous que Zumi est sur une surface plane et ne bouge pas. Continuer ?")) {
+        fetch('/zumi/calibrate')
+            .then(response => {
+                if (response.ok) alert("Calibration terminée !");
+                else alert("Erreur lors de la calibration.");
+            })
+            .catch(error => console.error('Erreur:', error));
+    }
+}
 	</script>
 	</body></html>
 	"""
