@@ -133,3 +133,21 @@ OSError: [Errno 98] Address already in use
 si tu vois une erreur du genre ces que tu dois executer le script: 
 
 - Pour éviter de perdre la connexion SSH pendant les tests, garde le terminal ouvert.
+
+
+#################
+
+
+
+
+1. allumer le zumi
+
+2. connexion au réseau wifi du zumi
+
+3. connexion ssh au pi avec l'adresse du gatway `ssh pi@192.168.10.1`
+
+4. rouler le script de préparation l'option 1 (attendre sa peut être +- long)
+```
+sudo ~/PFE/zumi_prepare.sh full
+```
+5. 
