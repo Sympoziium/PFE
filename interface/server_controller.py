@@ -484,7 +484,26 @@ class controller:
             h_mask = np.zeros_like(h, dtype=np.uint8)
             h_mask[s > 30] = h[s > 30]
             save_step(h_mask, 'h_where_s_gt_30', 'gray')
+            # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
+            v_mask = np.zeros_like(v, dtype=np.uint8)
+            v_mask[s > 30] = v[s > 30]
+            save_step(v_mask, 'v_where_s_gt_30', 'gray')
+
+            # combiner les masques h, s, v
+            hsv_combined_mask = cv2.bitwise_and(h_mask, cv2.bitwise_and(s_mask, v_mask))
+            print("Combining H, S, V masks...")
+            print("pixels avrege value : {}".format(np.mean(hsv_combined_mask)))
+            print("Nb pixels dans le masque combiné HSV:", cv2.countNonZero(hsv_combined_mask))
+            save_step(hsv_combined_mask, 'hsv_combined_mask', 'gray')
+
+            print("binariser le masque combiné HSV...")
+            average_val = np.mean(hsv_combined_mask) 
+            min_val = average_val - average_val * 0.3
+            max_val = average_val + average_val * 0.3
+            print("Threshold values: min {:.2f}, max {:.2f}".format(min_val, max_val))
+            _, hsv_combined_binary = cv2.threshold(hsv_combined_mask, min_val, max_val, cv2.THRESH_BINARY)
+            save_step(hsv_combined_binary, 'hsv_combined_binary', 'gray')
 
 
             print("Génération d'une image filtrée pour la couleur rouge...")
