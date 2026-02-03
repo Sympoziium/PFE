@@ -453,8 +453,8 @@ class controller:
             s_mask = cv2.inRange(s, 90, 255)
             save_step(s_mask, 's_gt_90', 'gray')
         
-            s_mask_saturation_ext = cv2.inRange(s, 110, 190) # extrait les contour du panneau stop
-            save_step(s_mask_saturation_ext, 's_mask_110_190', 'gray')
+            s_mask_saturation_ext = cv2.inRange(s, 115, 185) # extrait les contour du panneau stop
+            save_step(s_mask_saturation_ext, 's_mask_115_185', 'gray')
 
             s_mask_final = cv2.bitwise_xor(s_mask, s_mask_saturation_ext)
             save_step(s_mask_final, 's_mask_final', 'gray')
@@ -482,6 +482,9 @@ class controller:
             v_mask = np.zeros_like(v, dtype=np.uint8)
             v_mask[s > 90] = v[s > 90]
             save_step(v_mask, 'v_where_s_gt_90', 'gray')
+
+            v_mask_inverted = cv2.bitwise_not(v_mask)
+            save_step(v_mask_inverted, 'v_mask_inverted', 'gray')
 
             v_mask_contour = cv2.inRange(v, 140, 255)
             save_step(v_mask_contour, 'v_mask_contour', 'gray')
@@ -516,14 +519,14 @@ class controller:
             kernel5 = np.ones((5, 5), np.uint8)
             kernel7 = np.ones((7, 7), np.uint8)
             
-            mask_close1 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel1, iterations=1) # close pour boucher les petits trous
+            mask_close1 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel1, iterations=3) # close pour boucher les petits trous
 
             mask_open1 = cv2.morphologyEx(mask_close1, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
             mask_close2 = cv2.morphologyEx(mask_open1, cv2.MORPH_CLOSE, kernel5, iterations=1) # close pour boucher
             
 
-            mask_open2 = cv2.morphologyEx(mask_close2, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
-            mask_close3 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=1) # close pour boucher
+            mask_open2 = cv2.morphologyEx(mask_close2, cv2.MORPH_OPEN, kernel3, iterations=2) # open pour éliminer le bruit
+            mask_close3 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=2) # close pour boucher
             
             # Test morphologie
             save_step(mask, 'initial_mask', mode='gray')
