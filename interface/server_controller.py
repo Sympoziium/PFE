@@ -442,8 +442,8 @@ class controller:
 
             # visualisation saturation image initiale
             sat_overlay = frame_bgr.copy()
-            sat_overlay[s < 60] = (0, 0, 0)
-            save_step(sat_overlay, 'pixels_with_s_gt_60_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
+            sat_overlay[s < 90] = (0, 0, 0)
+            save_step(sat_overlay, 'pixels_with_s_gt_90_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
             
             print("Canal HSV stats:")
             print("H min/max:", h.min(), h.max())
@@ -453,11 +453,11 @@ class controller:
             print("Écarts-types: H {:.2f}, S {:.2f}, V {:.2f}".format(np.std(h), np.std(s), np.std(v)))
 
             print("Histogrammes:")
-            h_valide = h[(s > 60)]
+            h_valide = h[(s > 90)]
             h_hist_valide, _ = np.histogram(h_valide, bins=180, range=(0, 180))
-            h_hist, _ = np.histogram(h, bins=256, range=(0, 256))
-            s_hist, _ = np.histogram(s, bins=256, range=(60, 256))
-            v_hist, _ = np.histogram(v, bins=256, range=(0, 256))
+            h_hist, _ = np.histogram(h, bins=166, range=(90, 256))
+            s_hist, _ = np.histogram(s, bins=166, range=(90, 256))
+            v_hist, _ = np.histogram(v, bins=196, range=(60, 256))
             print("H histogramme:", h_hist)
             print("H histogramme (s>30):", h_hist_valide)
             print("S histogramme:", s_hist)
@@ -479,54 +479,54 @@ class controller:
             # Test de validation du seuil de saturationq (on cherche les pixels suffisament saturés)
             # Conclusion du test. en variant l'éclairage le seuil de détection du stop demeur < 60
             print("Test filtrage par saturation...")
-            s_mask = cv2.inRange(s, 60, 255)
-            save_step(s_mask, 's_gt_60', 'gray')
+            s_mask = cv2.inRange(s, 90, 255)
+            save_step(s_mask, 's_gt_90', 'gray')
 
             # test saturation supplémentaire
-            s_mask2 = cv2.inRange(s, 70, 255)
-            save_step(s_mask2, 's_gt_70', 'gray')
+            s_mask2 = cv2.inRange(s, 130, 255)
+            save_step(s_mask2, 's_gt_130', 'gray')
 
-            s_mask3 = cv2.inRange(s, 80, 255)
-            save_step(s_mask3, 's_gt_80', 'gray')
+            s_mask3 = cv2.inRange(s, 160, 255)
+            save_step(s_mask3, 's_gt_160', 'gray')
 
-            s_mask4 = cv2.inRange(s, 90, 255)
-            save_step(s_mask4, 's_gt_90', 'gray')
+            s_mask4 = cv2.inRange(s, 200, 255)
+            save_step(s_mask4, 's_gt_200', 'gray')
 
             
 
             # Masque des hue ou la saturation est suffisante
             h_mask = np.zeros_like(h, dtype=np.uint8)
-            h_mask[s > 60] = h[s > 60]
-            save_step(h_mask, 'h_where_s_gt_60', 'gray')
+            h_mask[s > 90] = h[s > 90]
+            save_step(h_mask, 'h_where_s_gt_90', 'gray')
             # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
             print("Test filtrage par hue...")
-            h_mask2 = cv2.inRange(h, 0, 255)
-            save_step(h_mask2, 'h_mask_allin', 'gray')
+            h_mask2 = cv2.inRange(h, 80, 255)
+            save_step(h_mask2, 'h_mask_80', 'gray')
 
-            h_mask3 = cv2.inRange(h, 30, 255)
-            save_step(h_mask3, 'h_mask_30', 'gray')
+            h_mask3 = cv2.inRange(h, 120, 255)
+            save_step(h_mask3, 'h_mask_120', 'gray')
 
-            h_mask4 = cv2.inRange(h, 50, 255)
-            save_step(h_mask4, 'h_mask_50', 'gray')
+            h_mask4 = cv2.inRange(h, 150, 255)
+            save_step(h_mask4, 'h_mask_150', 'gray')
 
-            h_mask5 = cv2.inRange(h, 80, 255)
-            save_step(h_mask5, 'h_mask_80', 'gray')
+            h_mask5 = cv2.inRange(h, 180, 255)
+            save_step(h_mask5, 'h_mask_180', 'gray')
 
             print("Test filtrage par value...")
 
             v_mask = np.zeros_like(v, dtype=np.uint8)
-            v_mask[s > 60] = v[s > 60]
-            save_step(v_mask, 'v_where_s_gt_60', 'gray')
+            v_mask[s > 90] = v[s > 90]
+            save_step(v_mask, 'v_where_s_gt_90', 'gray')
 
-            v_mask2 = cv2.inRange(v, 30, 255)
-            save_step(v_mask2, 'v_mask_30', 'gray')
+            v_mask2 = cv2.inRange(v, 60, 255)
+            save_step(v_mask2, 'v_mask_60', 'gray')
 
-            v_mask3 = cv2.inRange(v, 60, 255)
-            save_step(v_mask3, 'v_mask_60', 'gray')
+            v_mask3 = cv2.inRange(v, 90, 255)
+            save_step(v_mask3, 'v_mask_90', 'gray')
 
-            v_mask4 = cv2.inRange(v, 80, 255)
-            save_step(v_mask4, 'v_mask_80', 'gray')
+            v_mask4 = cv2.inRange(v, 130, 255)
+            save_step(v_mask4, 'v_mask_130', 'gray')
 
 
             # combiner les masques h, s, v
