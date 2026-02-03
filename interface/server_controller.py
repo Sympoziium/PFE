@@ -409,9 +409,9 @@ class controller:
                 'hsv'   -> image HSV (sera convertie pour affichage)
                 sauvegarde toutes les images en RGB pour l'affichage web
                 """
-                print("Saving step: {name} ({mode})".format(name=name, mode=mode))
+                print("Saving step: {} ({})".format(name, mode))
 
-                base = 'cv_{name}_{uuid.uuid4().hex[:6]}'.format(name=name, uuid=uuid)
+                base = 'cv_{}_{}'.format(name, uuid.uuid4().hex[:6])
                 out_name = base + '.jpg'
                 out_path = os.path.join(diag_dir, out_name)
 
@@ -428,7 +428,7 @@ class controller:
                     to_save = img
 
                 else:
-                    raise ValueError("Unknown save mode: {mode}".format(mode=mode))
+                    raise ValueError("Unknown save mode: {}".format(mode))
 
                 cv2.imwrite(out_path, to_save)
                 url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
