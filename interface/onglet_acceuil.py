@@ -20,10 +20,19 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     
     /* Boutons */
     .primary-btn { background: #007acc; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-    .command-button { margin: 5px; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color:white; width: 120px;}
+    .command-button { margin: 5px; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color:white; width: 120px; transition: all 0.3s ease;}
     .btn-green { background: #28a745; }
     .btn-red { background: #dc3545; }
     .btn-blue { background: #007bff; }
+    
+    /* --- CLASSE POUR DÉSACTIVER LES BOUTONS --- */
+    .disabled { 
+        background-color: #cccccc !important; 
+        color: #666666 !important; 
+        cursor: not-allowed; 
+        pointer-events: none; 
+        box-shadow: none;
+    }
     
     /* D-PAD */
     .dpad-container { display: grid; grid-template-areas: ". up ." "left center right" ". down ."; gap: 5px; width: 150px; height: 150px; margin-top:20px; }
@@ -34,15 +43,13 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     
     .live-feed img { width: 100%; border-radius: 8px; border: 2px solid #333; margin-top:10px; display:none;}
 
-    /* --- AJOUT CSS POUR LE BOUTON TOGGLE (SWITCH) --- */
+    /* SWITCH CSS */
     .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
     .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
     input:checked + .slider { background-color: #2196F3; }
     input:checked + .slider:before { transform: translateX(26px); }
-    /* ----------------------------------------------- */
-
     </style>
     </head>
     <body>
@@ -79,8 +86,8 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                         <button class='command-button btn-red' onclick="fetch('/bridge/red', {method:'POST'})">Feu Rouge</button>
                     </div>
                     <div>
-                        <button class='command-button btn-blue' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
-                        <button class='command-button btn-blue' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
+                        <button id="btnOpen" class='command-button btn-blue disabled' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
+                        <button id="btnClose" class='command-button btn-blue disabled' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
                     </div>
                 </div>
 
@@ -114,17 +121,29 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
 
-    // --- AJOUT JS POUR LE MODE AUTO ---
+    // --- MODE AUTO ET GESTION UI ---
     function toggleAuto(isAuto) {
-        // Envoie '1' si coché, '0' si décoché
+        // 1. Envoie la commande au serveur
         const val = isAuto ? '1' : '0';
         fetch('/bridge/mode_auto/' + val, { method: 'POST' })
             .then(res => console.log("Mode auto changé: " + val))
             .catch(err => console.error("Erreur:", err));
+
+        // 2. Gestion de l'interface (Griser les boutons)
+        const btnOpen = document.getElementById('btnOpen');
+        const btnClose = document.getElementById('btnClose');
+
+        if (isAuto) {
+            btnOpen.classList.add('disabled');
+            btnClose.classList.add('disabled');
+        } else {
+            btnOpen.classList.remove('disabled');
+            btnClose.classList.remove('disabled');
+        }
     }
     // ----------------------------------
 
-    // Mouvements
+    // Mouvements Zumi
     let moveInterval = null;
     function start(dir) {
         if (moveInterval) return;
