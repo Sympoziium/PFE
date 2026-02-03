@@ -438,6 +438,39 @@ class controller:
             logs.append('Converted to HSV; channels extracted.')
             print("Converted to HSV; channels extracted.")
 
+            print("Génération d'une image filtrée pour la couleur rouge...")
+            red_image = frame_bgr.copy()
+            red_image[:, :, 0] = 0  # Zero Blue
+            red_image[:, :, 1] = 0  # Zero Green
+            save_step(red_image, 'red_filtered_image', is_bgr=True)
+
+            def print_hsv_pixel(x, y, frame_hsv):
+                pixel = frame_hsv[y, x]
+                print("Pixel HSV at ({}, {}): H={}, S={}, V={}".format(x, y, pixel[0], pixel[1], pixel[2]))
+
+            def hsv_red_mask_builder(frame_hsv):
+                # Afficher les valeurs HSV pour un pixel rouge typique au centre
+                print("Construction du masque rouge pixel par pixel...")
+                h, w = frame_hsv.shape[:2]
+                red_mask = np.zeros((h, w,3), dtype=np.uint8)
+                print_hsv_pixel(w // 2, h // 2, frame_hsv)
+                for i in range(h):
+                    for j in range(w):
+                        if frame_hsv[i, j, 1] > 50 \
+                           and frame_hsv[i, j, 2] > 50 \
+                           and (frame_hsv[i, j, 0] <= 10 or frame_hsv[i, j, 0] >= 170):
+                            red_mask[i, j] = frame_hsv[i, j]
+
+                print("Nb pixels rouges détectés (pixel par pixel):", np.count_nonzero(red_mask[:,:,0] + red_mask[:,:,1] + red_mask[:,:,2]))
+                return red_mask
+            
+            # Test des mask pour la couleur rouge
+
+            hsv_red_mask = hsv_red_mask_builder(hsv)
+            save_step(hsv_red_mask, 'hsv_red_pixel_mask', is_bgr=False, is_hsv=True)
+
+            
+
 
             print("Image de format HSV:")
             save_step(hsv, 'hsv_image', is_bgr=False, is_hsv=True)
