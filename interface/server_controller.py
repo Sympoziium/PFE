@@ -441,33 +441,33 @@ class controller:
 
 
             # visualisation saturation image initiale
-            sat_overlay = frame_bgr.copy()
-            sat_overlay[s < 90] = (0, 0, 0)
-            save_step(sat_overlay, 'pixels_with_s_gt_90_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
+            # sat_overlay = frame_bgr.copy()
+            # sat_overlay[s < 90] = (0, 0, 0)
+            # save_step(sat_overlay, 'pixels_with_s_gt_90_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
             
-            print("Canal HSV stats:")
-            print("H min/max:", h.min(), h.max())
-            print("S min/max:", s.min(), s.max())
-            print("V min/max:", v.min(), v.max())
-            print("Moyennes: H {:.2f}, S {:.2f}, V {:.2f}".format(np.mean(h), np.mean(s), np.mean(v)))
-            print("Écarts-types: H {:.2f}, S {:.2f}, V {:.2f}".format(np.std(h), np.std(s), np.std(v)))
+            # print("Canal HSV stats:")
+            # print("H min/max:", h.min(), h.max())
+            # print("S min/max:", s.min(), s.max())
+            # print("V min/max:", v.min(), v.max())
+            # print("Moyennes: H {:.2f}, S {:.2f}, V {:.2f}".format(np.mean(h), np.mean(s), np.mean(v)))
+            # print("Écarts-types: H {:.2f}, S {:.2f}, V {:.2f}".format(np.std(h), np.std(s), np.std(v)))
 
-            print("Histogrammes:")
-            h_valide = h[(s > 90)]
-            h_hist_valide, _ = np.histogram(h_valide, bins=180, range=(0, 180))
-            h_hist, _ = np.histogram(h, bins=166, range=(90, 256))
-            s_hist, _ = np.histogram(s, bins=166, range=(90, 256))
-            v_hist, _ = np.histogram(v, bins=196, range=(60, 256))
-            print("H histogramme:", h_hist)
-            print("H histogramme (s>30):", h_hist_valide)
-            print("S histogramme:", s_hist)
-            print("V histogramme:", v_hist)
-            print("Nb pixels totaux:", h.size)
+            # print("Histogrammes:")
+            # h_valide = h[(s > 90)]
+            # h_hist_valide, _ = np.histogram(h_valide, bins=180, range=(0, 180))
+            # h_hist, _ = np.histogram(h, bins=166, range=(90, 256))
+            # s_hist, _ = np.histogram(s, bins=166, range=(90, 256))
+            # v_hist, _ = np.histogram(v, bins=196, range=(60, 256))
+            # print("H histogramme:", h_hist)
+            # print("H histogramme (s>30):", h_hist_valide)
+            # print("S histogramme:", s_hist)
+            # print("V histogramme:", v_hist)
+            # print("Nb pixels totaux:", h.size)
 
-            print("Extremums des canaux:")
-            print("Nb pixels saturés H=0:", np.sum(h == 0), "H=255:", np.sum(h == 255))
-            print("Nb pixels saturés S=0:", np.sum(s == 0), "S=255:", np.sum(s == 255))
-            print("Nb pixels saturés V=0:", np.sum(v == 0), "V=255:", np.sum(v == 255)) 
+            # print("Extremums des canaux:")
+            # print("Nb pixels saturés H=0:", np.sum(h == 0), "H=255:", np.sum(h == 255))
+            # print("Nb pixels saturés S=0:", np.sum(s == 0), "S=255:", np.sum(s == 255))
+            # print("Nb pixels saturés V=0:", np.sum(v == 0), "V=255:", np.sum(v == 255)) 
 
 
 
@@ -484,18 +484,9 @@ class controller:
             # min saturation pour le rouge > 90 (valeur sur contre les reflets de la lumière)
             s_mask = cv2.inRange(s, 90, 255)
             save_step(s_mask, 's_gt_90', 'gray')
-
-            # test saturation supplémentaire
-            s_mask2 = cv2.inRange(s, 130, 255)
-            save_step(s_mask2, 's_gt_130', 'gray')
-
-            s_mask3 = cv2.inRange(s, 160, 255)
-            save_step(s_mask3, 's_gt_160', 'gray')
-
-            s_mask4 = cv2.inRange(s, 200, 255)
-            save_step(s_mask4, 's_gt_200', 'gray')
-
             
+            s_maskA = cv2.inRange(s, 90, 210)
+            save_step(s_maskA, 's_mask_90_210', 'gray')
 
             # Masque des hue ou la saturation est suffisante
             h_mask = np.zeros_like(h, dtype=np.uint8)
@@ -506,20 +497,10 @@ class controller:
             print("Test filtrage par hue...")
             # max hue pour le rouge 120-150
             # min semble tourner proche du 90
+            # un hue de 115 semble bien faire ressortir le panneau
 
-
-            h_mask2 = cv2.inRange(h, 90, 255)
-            save_step(h_mask2, 'h_mask_90', 'gray')
-
-
-            h_mask3 = cv2.inRange(h, 100, 255)
-            save_step(h_mask3, 'h_mask_100', 'gray')
-
-            h_mask4 = cv2.inRange(h, 115, 255)
-            save_step(h_mask4, 'h_mask_115', 'gray')
-
-            h_mask5 = cv2.inRange(h, 135, 255)
-            save_step(h_mask5, 'h_mask_135', 'gray')
+            h_maskA = cv2.inRange(h, 105, 120)
+            save_step(h_maskA, 'h_mask_105_120', 'gray')
 
             print("Test filtrage par value...")
             # le mask v 130 fait bien ressortir les contours du panneau
@@ -542,7 +523,9 @@ class controller:
             save_step(v_mask_contours, 'v_mask_140_and_s_mask', 'gray')
 
             # combiner les masques h, s, v
-            hsv_combined_mask = cv2.bitwise_and(h_mask, cv2.bitwise_and(s_mask, v_mask))
+            hsv_combined_mask = np.zeros(h.shape, dtype=np.uint8)
+            hsv_combined_mask = cv2.bitwise_and(h_maskA, s_maskA)
+            hsv_combined_mask = cv2.bitwise_xor(hsv_combined_mask, v_mask_contours)
             print("Combining H, S, V masks...")
             print("Valeur moyenne des pixels de chaque canal dans le masque combiné HSV:")
             print("H channel average value : {}".format(np.mean(h_mask)))
@@ -561,20 +544,20 @@ class controller:
             save_step(hsv_combined_binary, 'hsv_combined_binary', 'gray')
 
             # Test de différentes préconfig
-            red_configs = [
-                ((0, 60, 40), (20, 255, 255), 'red_cfg_1'),
-                ((160, 60, 10), (15, 255, 255), 'red_cfg_2'),
-                ((155, 60, 40), (179, 255, 255), 'red_cfg_3'),
-            ]
+            # red_configs = [
+            #     ((0, 60, 40), (20, 255, 255), 'red_cfg_1'),
+            #     ((160, 60, 10), (15, 255, 255), 'red_cfg_2'),
+            #     ((155, 60, 40), (179, 255, 255), 'red_cfg_3'),
+            # ]
 
 
             mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
             
 
-            for low, high, name in red_configs:
-                mask = cv2.inRange(hsv, low, high)
-                save_step(mask, name, 'gray')
-                print(name, "pixels:", cv2.countNonZero(mask))
+            # for low, high, name in red_configs:
+            #     mask = cv2.inRange(hsv, low, high)
+            #     save_step(mask, name, 'gray')
+            #     print(name, "pixels:", cv2.countNonZero(mask))
 
             
             # lower1 = (0, 15, 15)
@@ -631,8 +614,8 @@ class controller:
 
             kernel3 = np.ones((3, 3), np.uint8)
             kernel5 = np.ones((5, 5), np.uint8)
-            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1)
-            mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=2)
+            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=3) # open pour éliminer le bruit
+            mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=3) # close pour boucher
             save_step(mask_open, 'mask_open', mode='gray')
             save_step(mask_close, 'mask_close', mode='gray')
             logs.append('Applied morphology (open + close).')
