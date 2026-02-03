@@ -501,33 +501,34 @@ class controller:
             # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
             print("Test filtrage par hue...")
-            h_mask2 = np.zeros_like(h, dtype=np.uint8)
-            h_mask2[s > 70] = h[s > 70]
-            save_step(h_mask2, 'h_where_s_gt_70', 'gray')
+            h_mask2 = cv2.range(h, 0, 255)
+            save_step(h_mask2, 'h_mask_allin', 'gray')
 
-            h_mask3 = np.zeros_like(h, dtype=np.uint8)
-            h_mask3[s > 80] = h[s > 80]
-            save_step(h_mask3, 'h_where_s_gt_80', 'gray')
+            h_mask3 = cv2.range(h, 30, 255)
+            save_step(h_mask3, 'h_mask_30', 'gray')
 
-            h_mask4 = np.zeros_like(h, dtype=np.uint8)
-            h_mask4[s > 90] = h[s > 90]
-            save_step(h_mask4, 'h_where_s_gt_90', 'gray')
+            h_mask4 = cv2.range(h, 50, 255)
+            save_step(h_mask4, 'h_mask_50', 'gray')
+
+            h_mask5 = cv2.range(h, 80, 255)
+            save_step(h_mask5, 'h_mask_80', 'gray')
+
             print("Test filtrage par value...")
 
             v_mask = np.zeros_like(v, dtype=np.uint8)
             v_mask[s > 60] = v[s > 60]
             save_step(v_mask, 'v_where_s_gt_60', 'gray')
 
-            v_mask2 = np.zeros_like(v, dtype=np.uint8)
-            v_mask2[s > 70] = v[s > 70]
-            save_step(v_mask2, 'v_where_s_gt_70', 'gray')
-            v_mask3 = np.zeros_like(v, dtype=np.uint8)
-            v_mask3[s > 80] = v[s > 80]
-            save_step(v_mask3, 'v_where_s_gt_80', 'gray')
+            v_mask2 = cv2.range(v, 30, 255)
+            save_step(v_mask2, 'v_mask_30', 'gray')
 
-            v_mask4 = np.zeros_like(v, dtype=np.uint8)
-            v_mask4[s > 90] = v[s > 90]
-            save_step(v_mask4, 'v_where_s_gt_90', 'gray')
+            v_mask3 = cv2.range(v, 60, 255)
+            save_step(v_mask3, 'v_mask_60', 'gray')
+
+            v_mask4 = cv2.range(v, 80, 255)
+            save_step(v_mask4, 'v_mask_80', 'gray')
+
+            
             # combiner les masques h, s, v
             hsv_combined_mask = cv2.bitwise_and(h_mask, cv2.bitwise_and(s_mask, v_mask))
             print("Combining H, S, V masks...")
