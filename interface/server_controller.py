@@ -479,6 +479,9 @@ class controller:
             # Test de validation du seuil de saturationq (on cherche les pixels suffisament saturés)
             # Conclusion du test. en variant l'éclairage le seuil de détection du stop demeur < 60
             print("Test filtrage par saturation...")
+
+            # max saturation pour le rouge < 200
+            # min saturation pour le rouge > 90 (valeur sur contre les reflets de la lumière)
             s_mask = cv2.inRange(s, 90, 255)
             save_step(s_mask, 's_gt_90', 'gray')
 
@@ -501,33 +504,42 @@ class controller:
             # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
             print("Test filtrage par hue...")
-            h_mask2 = cv2.inRange(h, 80, 255)
-            save_step(h_mask2, 'h_mask_80', 'gray')
+            # max hue pour le rouge 120-150
+            # min semble tourner proche du 90
 
-            h_mask3 = cv2.inRange(h, 120, 255)
-            save_step(h_mask3, 'h_mask_120', 'gray')
 
-            h_mask4 = cv2.inRange(h, 150, 255)
-            save_step(h_mask4, 'h_mask_150', 'gray')
+            h_mask2 = cv2.inRange(h, 90, 255)
+            save_step(h_mask2, 'h_mask_90', 'gray')
 
-            h_mask5 = cv2.inRange(h, 180, 255)
-            save_step(h_mask5, 'h_mask_180', 'gray')
+
+            h_mask3 = cv2.inRange(h, 100, 255)
+            save_step(h_mask3, 'h_mask_100', 'gray')
+
+            h_mask4 = cv2.inRange(h, 115, 255)
+            save_step(h_mask4, 'h_mask_115', 'gray')
+
+            h_mask5 = cv2.inRange(h, 135, 255)
+            save_step(h_mask5, 'h_mask_135', 'gray')
 
             print("Test filtrage par value...")
+            # le mask v 130 fait bien ressortir les contours du panneau
 
             v_mask = np.zeros_like(v, dtype=np.uint8)
             v_mask[s > 90] = v[s > 90]
             save_step(v_mask, 'v_where_s_gt_90', 'gray')
 
-            v_mask2 = cv2.inRange(v, 60, 255)
-            save_step(v_mask2, 'v_mask_60', 'gray')
+            v_mask2 = cv2.inRange(v, 120, 255)
+            save_step(v_mask2, 'v_mask_120', 'gray')
 
-            v_mask3 = cv2.inRange(v, 90, 255)
-            save_step(v_mask3, 'v_mask_90', 'gray')
+            v_mask3 = cv2.inRange(v, 140, 255)
+            save_step(v_mask3, 'v_mask_140', 'gray')
 
-            v_mask4 = cv2.inRange(v, 130, 255)
-            save_step(v_mask4, 'v_mask_130', 'gray')
+            v_mask4 = cv2.inRange(v, 170, 255)
+            save_step(v_mask4, 'v_mask_170', 'gray')
 
+            v_mask_contours = cv2.bitwise_and(v_mask3, s_mask)
+            v_mask_contours = cv2.bitwise_xor(v_mask_contours, v_mask3)
+            save_step(v_mask_contours, 'v_mask_140_and_s_mask', 'gray')
 
             # combiner les masques h, s, v
             hsv_combined_mask = cv2.bitwise_and(h_mask, cv2.bitwise_and(s_mask, v_mask))
