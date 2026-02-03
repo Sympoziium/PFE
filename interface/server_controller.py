@@ -8,7 +8,7 @@ Centralise la logique des endpoints; `flask_router.py` ne fait que lier les rout
 à ces méthodes.
 """
 
-import os, uuid, time, cv2, itertools
+import os, uuid, time, cv2, itertools, numpy as np
 from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
 from interface.onglet_acceuil import render_accueil_tab
@@ -373,6 +373,136 @@ class controller:
             return jsonify(payload)
         except Exception as e:
             return jsonify({'error': 'diagnostics failed', 'details': str(e)}), 500
+
+    # Diagnostic CV du stop: export des étapes intermédiaires (HSV, masques, morpho, contours)
+    def diagnose_stop_cv(self):
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'Video pipeline not initialized'}), 400
+
+        filename = getattr(self, 'last_captured_filename', None)
+        if not filename:
+            return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
+
+        img_path = os.path.join(self.CAPTURE_DIR, filename)
+        if not os.path.exists(img_path):
+            return jsonify({'error': 'last captured image not found on server'}), 404
+
+        diag_dir = os.path.join(self.CAPTURE_DIR, 'diagnostics')
+        os.makedirs(diag_dir, exist_ok=True)
+
+        try:
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return jsonify({'error': 'failed to read captured image'}), 500
+
+            logs = []
+            steps = []
+
+            def save_step(img, name, is_bgr=True):
+                base = 'cv_{}_{}'.format(name, uuid.uuid4().hex[:6])
+                out_name = base + '.jpg'
+                out_path = os.path.join(diag_dir, out_name)
+                to_save = img
+                if not is_bgr:
+                    # assume RGB/gray; convert to BGR if needed for saving
+                    if len(img.shape) == 2:
+                        to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                    else:
+                        to_save = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(out_path, to_save)
+                url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
+                steps.append({"name": name, "url": url})
+
+            save_step(frame_bgr.copy(), 'original_bgr', is_bgr=True)
+
+            hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+            h, s, v = cv2.split(hsv)
+            save_step(cv2.cvtColor(h, cv2.COLOR_GRAY2RGB), 'h_channel', is_bgr=False)
+            save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2RGB), 's_channel', is_bgr=False)
+            save_step(cv2.cvtColor(v, cv2.COLOR_GRAY2RGB), 'v_channel', is_bgr=False)
+            logs.append('Converted to HSV; channels extracted.')
+
+            lower1 = (0, 70, 50)
+            upper1 = (10, 255, 255)
+            lower2 = (170, 70, 50)
+            upper2 = (180, 255, 255)
+            mask1 = cv2.inRange(hsv, lower1, upper1)
+            mask2 = cv2.inRange(hsv, lower2, upper2)
+            mask = cv2.bitwise_or(mask1, mask2)
+            save_step(cv2.cvtColor(mask1, cv2.COLOR_GRAY2RGB), 'mask1_red_low', is_bgr=False)
+            save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2RGB), 'mask2_red_high', is_bgr=False)
+            save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), 'mask_combined', is_bgr=False)
+            logs.append('Masks created for red ranges; combined mask pixels: {}'.format(int(mask.sum() / 255)))
+
+            kernel3 = np.ones((3, 3), np.uint8)
+            kernel5 = np.ones((5, 5), np.uint8)
+            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1)
+            mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=2)
+            save_step(cv2.cvtColor(mask_open, cv2.COLOR_GRAY2RGB), 'mask_open', is_bgr=False)
+            save_step(cv2.cvtColor(mask_close, cv2.COLOR_GRAY2RGB), 'mask_close', is_bgr=False)
+            logs.append('Applied morphology (open + close).')
+
+            cnts = cv2.findContours(mask_close, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+            logs.append('Contours found: {}'.format(len(cnts)))
+
+            overlay = frame_bgr.copy()
+            best = None
+            best_area = 0
+            for idx, c in enumerate(cnts):
+                area = cv2.contourArea(c)
+                if area < 1:
+                    continue
+                peri = cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+                vtx = len(approx)
+                x, y, w, h = cv2.boundingRect(approx)
+                ratio = float(w) / float(h) if h != 0 else 0.0
+                rect_area = float(w * h)
+                fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0
+                convex = cv2.isContourConvex(approx)
+                logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
+                # draw approx for visualization
+                cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2)
+                # apply filters similar to detector
+                if area <  self._safe_int(self, 'min_area', 500):
+                    continue
+                if vtx < self._safe_int(self, 'poly_min', 6) or vtx > self._safe_int(self, 'poly_max', 10):
+                    continue
+                if not convex:
+                    continue
+                if h == 0 or w == 0:
+                    continue
+                aspect_tol = getattr(vp.get_detectors()[self.selected_detector_index], 'aspect_tol', 0.4)
+                if abs(ratio - 1.0) > float(aspect_tol):
+                    continue
+                if fill_ratio < 0.30:
+                    continue
+                if area > best_area:
+                    best_area = area
+                    best = (x, y, w, h)
+
+            save_step(overlay, 'contours_overlay', is_bgr=True)
+
+            source_url = url_for('static', filename='captured_images/{}'.format(filename))
+            payload = {
+                'source_file_url': source_url,
+                'steps': steps,
+                'logs': logs,
+                'best': { 'bbox': best, 'area': int(best_area) }
+            }
+            return jsonify(payload)
+        except Exception as e:
+            return jsonify({'error': 'diagnose_stop_cv failed', 'details': str(e)}), 500
+
+    # util: safe int attr
+    @staticmethod
+    def _safe_int(obj, name, default):
+        try:
+            return int(getattr(obj, name))
+        except Exception:
+            return int(default)
 
     # Flux vidéo
     def video_feed(self):

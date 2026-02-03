@@ -43,6 +43,7 @@ class StopDetectorCV(BaseDetector):
             }
         """
         try:
+            print("Processing frame in StopDetectorCV...")
             bbox = self._detect_stop_bgr(frame)
         except Exception:
             bbox = None
