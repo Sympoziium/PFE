@@ -439,38 +439,6 @@ class controller:
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             h, s, v = cv2.split(hsv)
 
-
-            # visualisation saturation image initiale
-            # sat_overlay = frame_bgr.copy()
-            # sat_overlay[s < 90] = (0, 0, 0)
-            # save_step(sat_overlay, 'pixels_with_s_gt_90_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
-            
-            # print("Canal HSV stats:")
-            # print("H min/max:", h.min(), h.max())
-            # print("S min/max:", s.min(), s.max())
-            # print("V min/max:", v.min(), v.max())
-            # print("Moyennes: H {:.2f}, S {:.2f}, V {:.2f}".format(np.mean(h), np.mean(s), np.mean(v)))
-            # print("Écarts-types: H {:.2f}, S {:.2f}, V {:.2f}".format(np.std(h), np.std(s), np.std(v)))
-
-            # print("Histogrammes:")
-            # h_valide = h[(s > 90)]
-            # h_hist_valide, _ = np.histogram(h_valide, bins=180, range=(0, 180))
-            # h_hist, _ = np.histogram(h, bins=166, range=(90, 256))
-            # s_hist, _ = np.histogram(s, bins=166, range=(90, 256))
-            # v_hist, _ = np.histogram(v, bins=196, range=(60, 256))
-            # print("H histogramme:", h_hist)
-            # print("H histogramme (s>30):", h_hist_valide)
-            # print("S histogramme:", s_hist)
-            # print("V histogramme:", v_hist)
-            # print("Nb pixels totaux:", h.size)
-
-            # print("Extremums des canaux:")
-            # print("Nb pixels saturés H=0:", np.sum(h == 0), "H=255:", np.sum(h == 255))
-            # print("Nb pixels saturés S=0:", np.sum(s == 0), "S=255:", np.sum(s == 255))
-            # print("Nb pixels saturés V=0:", np.sum(v == 0), "V=255:", np.sum(v == 255)) 
-
-
-
             save_step(h, 'h_channel', mode='gray')
             save_step(s, 's_channel', mode='gray')
             save_step(v, 'v_channel', mode='gray')
@@ -484,9 +452,7 @@ class controller:
             # min saturation pour le rouge > 90 (valeur sur contre les reflets de la lumière)
             s_mask = cv2.inRange(s, 90, 255)
             save_step(s_mask, 's_gt_90', 'gray')
-            s_mask_inverted = cv2.bitwise_not(s_mask)
-            save_step(s_mask_inverted, 's_90_inverted', 'gray')
-
+        
             s_mask_saturation_ext = cv2.inRange(s, 110, 190) # extrait les contour du panneau stop
             save_step(s_mask_saturation_ext, 's_mask_110_190', 'gray')
 
@@ -494,9 +460,9 @@ class controller:
             save_step(s_mask_final, 's_mask_final', 'gray')
 
             # Masque des hue ou la saturation est suffisante
-            h_mask = np.zeros_like(h, dtype=np.uint8)
-            h_mask[s > 90] = h[s > 90]
-            save_step(h_mask, 'h_where_s_gt_90', 'gray')
+            # h_mask = np.zeros_like(h, dtype=np.uint8)
+            # h_mask[s > 90] = h[s > 90]
+            # save_step(h_mask, 'h_where_s_gt_90', 'gray')
             # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
             print("Test filtrage par hue...")
@@ -506,9 +472,6 @@ class controller:
 
             h_mask_Prime = cv2.inRange(h, 120, 180)
             save_step(h_mask_Prime, 'h_mask_120_180', 'gray')
-
-            h_maskA = cv2.inRange(h, 120, 125)
-            save_step(h_maskA, 'h_mask_120_125', 'gray')
 
             h_mask_final = cv2.inRange(h, 120, 130)
             save_step(h_mask_final, 'h_mask_final', 'gray')
@@ -528,15 +491,15 @@ class controller:
             hsv_combined_mask = np.zeros(h.shape, dtype=np.uint8)
             hsv_combined_mask = cv2.bitwise_and(h_mask_final, s_mask_final)
             hsv_combined_mask = cv2.bitwise_and(hsv_combined_mask, v_mask_final)
-            # hsv_combined_mask = cv2.bitwise_xor(hsv_combined_mask, v_mask_contours)
-            print("Combining H, S, V masks...")
-            print("Valeur moyenne des pixels de chaque canal dans le masque combiné HSV:")
-            print("H channel average value : {}".format(np.mean(h_mask_final)))
-            print("S channel average value : {}".format(np.mean(s_mask_final)))
-            print("V channel average value : {}".format(np.mean(v_mask_final)))
-            print("pixels avrege value combiné : {}".format(np.mean(hsv_combined_mask)))
-            print("Nb pixels dans le masque combiné HSV:", cv2.countNonZero(hsv_combined_mask))
-            save_step(hsv_combined_mask, 'hsv_combined_mask', 'gray')
+
+            # print("Combining H, S, V masks...")
+            # print("Valeur moyenne des pixels de chaque canal dans le masque combiné HSV:")
+            # print("H channel average value : {}".format(np.mean(h_mask_final)))
+            # print("S channel average value : {}".format(np.mean(s_mask_final)))
+            # print("V channel average value : {}".format(np.mean(v_mask_final)))
+            # print("pixels avrege value combiné : {}".format(np.mean(hsv_combined_mask)))
+            # print("Nb pixels dans le masque combiné HSV:", cv2.countNonZero(hsv_combined_mask))
+            # save_step(hsv_combined_mask, 'hsv_combined_mask', 'gray')
 
             print("binariser le masque combiné HSV...")
             average_val = np.mean(hsv_combined_mask) 
@@ -544,88 +507,29 @@ class controller:
             max_val = 255
             print("Threshold values: min {:.2f}, max {:.2f}".format(min_val, max_val))
             _, hsv_combined_binary = cv2.threshold(hsv_combined_mask, min_val, max_val, cv2.THRESH_BINARY)
-            save_step(hsv_combined_binary, 'hsv_combined_binary', 'gray')
 
-            # Test de différentes préconfig
-            # red_configs = [
-            #     ((0, 60, 40), (20, 255, 255), 'red_cfg_1'),
-            #     ((160, 60, 10), (15, 255, 255), 'red_cfg_2'),
-            #     ((155, 60, 40), (179, 255, 255), 'red_cfg_3'),
-            # ]
-
-
-            mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+            mask = hsv_combined_binary.copy()
             
-
-            # for low, high, name in red_configs:
-            #     mask = cv2.inRange(hsv, low, high)
-            #     save_step(mask, name, 'gray')
-            #     print(name, "pixels:", cv2.countNonZero(mask))
-
-            
-            # lower1 = (0, 15, 15)
-            # upper1 = (15, 255, 255)
-
-            # lower2 = (165, 15, 15)
-            # upper2 = (179, 255, 255)
-
-
-            # mask1 = cv2.inRange(hsv, lower1, upper1)
-            # mask2 = cv2.inRange(hsv, lower2, upper2)
-            # mask = cv2.bitwise_or(mask1, mask2)
-            # save_step(cv2.cvtColor(mask1, cv2.COLOR_GRAY2RGB), 'mask1_red_low', is_bgr=False)
-            # save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2RGB), 'mask2_red_high', is_bgr=False)
-            # save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), 'mask_combined', is_bgr=False)
-            
-            # pour debug les mask
-            # limite de couleur 2
-            # low1 = np.array([0,50,50])
-            # up1 = np.array([10,255,255])
-            # mask_low_red = cv2.inRange(hsv, low1, up1)
-
-            # low2 =  np.array([170,50,50])
-            # up2 = np.array([180,255,255])
-            # mask_high_red = cv2.inRange(hsv, low2, up2)
-
-            # # combine les deux masques 
-            # mask_test = cv2.bitwise_or(mask_low_red, mask_high_red)
-            # save_step(mask_test, 'mask_test', is_bgr=False)
-            # save_step(mask_low_red, 'mask_low_red', is_bgr=False)
-            # save_step(mask_high_red, 'mask_high_red', is_bgr=False)
-            
-
-
-            # l'image est reçue en BRG, convertie en HSV. il est possible
-            # la méthode save_step convertit mal les masques
-            
-            mask = hsv_combined_binary
-            
-            # combined_pixels = int(mask.sum() / 255)
-            # print("Masks created for red ranges; combined mask pixels: {}".format(combined_pixels))
-
-            # threshold_sparse = max(50, (frame_bgr.shape[0] * frame_bgr.shape[1]) // 500)
-            # if combined_pixels < threshold_sparse:
-            #     b, g, r = cv2.split(frame_bgr)
-            #     r16 = r.astype(np.int16)
-            #     g16 = g.astype(np.int16)
-            #     b16 = b.astype(np.int16)
-            #     ratio_mask = ((r16 > g16 + 10) & (r16 > b16 + 10) & (r > 60)).astype(np.uint8) * 255
-            #     save_step(ratio_mask, 'mask_red_ratio', mode='gray')
-            #     mask = ratio_mask
-            #     logs.append('HSV mask sparse; using RGB ratio fallback.')
-            #     print('HSV mask sparse; using RGB ratio fallback.')
 
             kernel3 = np.ones((3, 3), np.uint8)
             kernel5 = np.ones((5, 5), np.uint8)
             kernel7 = np.ones((7, 7), np.uint8)
-            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=3) # open pour éliminer le bruit
-            mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=3) # close pour boucher
+            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
+            mask_close1 = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=1) # close pour boucher
+            
+            mask_open2 = cv2.morphologyEx(mask_close1, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
+            mask_close2 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=1) # close pour boucher
+            
+            # Test morphologie
+            save_step(mask, 'initial_mask', mode='gray')
+            save_step(mask_close1, 'mask_close1', mode='gray')
+            save_step(mask_open2, 'mask_open2', mode='gray')
             save_step(mask_open, 'mask_open', mode='gray')
-            save_step(mask_close, 'mask_close', mode='gray')
-            logs.append('Applied morphology (open + close).')
+            save_step(mask_close2, 'mask_close2', mode='gray')
+
             print("Applied morphology (open + close).")
 
-            cnts = cv2.findContours(mask_close, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cnts = cv2.findContours(mask_close2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
             logs.append('Contours found: {}'.format(len(cnts)))
             print("Contours found: {}".format(len(cnts)))
