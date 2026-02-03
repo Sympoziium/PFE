@@ -453,9 +453,6 @@ class controller:
             s_mask = cv2.inRange(s, 90, 255)
             save_step(s_mask, 's_gt_90', 'gray')
         
-            s_mask_saturation_ext = cv2.inRange(s, 115, 185) # extrait les contour du panneau stop
-            save_step(s_mask_saturation_ext, 's_mask_115_185', 'gray')
-
             s_mask_final = s_mask
             save_step(s_mask_final, 's_mask_final', 'gray')
 
@@ -480,20 +477,15 @@ class controller:
             # le mask v 130 fait bien ressortir les contours du panneau
 
             v_mask = np.zeros_like(v, dtype=np.uint8)
-            v_mask[s > 90] = v[s > 90]
+            v_mask[s > 90] = 255
             save_step(v_mask, 'v_where_s_gt_90', 'gray')
 
-            v_mask_inverted = cv2.bitwise_not(v_mask)
-            save_step(v_mask_inverted, 'v_mask_inverted', 'gray')
-
-            v_mask_contour = cv2.inRange(v, 140, 255)
-            save_step(v_mask_contour, 'v_mask_contour', 'gray')
-            
-            v_mask_final = cv2.bitwise_not(v_mask_contour)
+            v_mask_final = cv2.bitwise_not(v_mask)
             # combiner les masques h, s, v
             hsv_combined_mask = np.zeros(h.shape, dtype=np.uint8)
             hsv_combined_mask = cv2.bitwise_and(h_mask_final, s_mask_final)
-            hsv_combined_mask = cv2.bitwise_and(hsv_combined_mask, v_mask_final)
+            # filtrer pour la value ne donne pas de bon résultat
+            # hsv_combined_mask = cv2.bitwise_and(hsv_combined_mask, v_mask_final)
 
             # print("Combining H, S, V masks...")
             # print("Valeur moyenne des pixels de chaque canal dans le masque combiné HSV:")
@@ -514,7 +506,7 @@ class controller:
 
             # Appliquer les opérations morphologiques
             # 3. Nettoyage du bruit
-            mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=1)
+            mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=2)
 
             # 4. Reconstruction du panneau
             mask2 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close, iterations=2)
