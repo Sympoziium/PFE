@@ -145,7 +145,7 @@ network={
     ssid="dlink-8D39"
     psk="xdvxj79799"
     key_mgmt=WPA-PSK
-}
+    }
 EOF
 
 sudo ip link set wlan0 up
