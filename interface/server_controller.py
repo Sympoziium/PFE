@@ -427,9 +427,9 @@ class controller:
             logs.append('Converted to HSV; channels extracted.')
             print("Converted to HSV; channels extracted.")
 
-            lower1 = (0, 70, 50)
-            upper1 = (10, 255, 255)
-            lower2 = (170, 70, 50)
+            lower1 = (0, 40, 30)
+            upper1 = (20, 255, 255)
+            lower2 = (160, 40, 30)
             upper2 = (180, 255, 255)
             mask1 = cv2.inRange(hsv, lower1, upper1)
             mask2 = cv2.inRange(hsv, lower2, upper2)
@@ -437,8 +437,21 @@ class controller:
             save_step(cv2.cvtColor(mask1, cv2.COLOR_GRAY2RGB), 'mask1_red_low', is_bgr=False)
             save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2RGB), 'mask2_red_high', is_bgr=False)
             save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), 'mask_combined', is_bgr=False)
-            logs.append('Masks created for red ranges; combined mask pixels: {}'.format(int(mask.sum() / 255)))
-            print("Masks created for red ranges; combined mask pixels: {}".format(int(mask.sum() / 255)))
+            combined_pixels = int(mask.sum() / 255)
+            logs.append('Masks created for red ranges; combined mask pixels: {}'.format(combined_pixels))
+            print("Masks created for red ranges; combined mask pixels: {}".format(combined_pixels))
+
+            threshold_sparse = max(50, (frame_bgr.shape[0] * frame_bgr.shape[1]) // 500)
+            if combined_pixels < threshold_sparse:
+                b, g, r = cv2.split(frame_bgr)
+                r16 = r.astype(np.int16)
+                g16 = g.astype(np.int16)
+                b16 = b.astype(np.int16)
+                ratio_mask = ((r16 > g16 + 10) & (r16 > b16 + 10) & (r > 60)).astype(np.uint8) * 255
+                save_step(cv2.cvtColor(ratio_mask, cv2.COLOR_GRAY2RGB), 'mask_red_ratio', is_bgr=False)
+                mask = ratio_mask
+                logs.append('HSV mask sparse; using RGB ratio fallback.')
+                print('HSV mask sparse; using RGB ratio fallback.')
 
             kernel3 = np.ones((3, 3), np.uint8)
             kernel5 = np.ones((5, 5), np.uint8)
