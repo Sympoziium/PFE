@@ -9,6 +9,8 @@
 from .detector_base import BaseDetector
 from zumi.util.vision import Vision
 
+import cv2
+
 class StopDetector(BaseDetector):
 
     def __init__(self, scale_factor=1.05, min_neighbors=8, min_size=(40, 40)):
@@ -32,7 +34,7 @@ class StopDetector(BaseDetector):
             dict: résultat de la détection (nom du détecteur, état de détection, boîte englobante).
         """
         # Implémentation spécifique pour le Zumi
-
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         detection = self.zumi_vision.find_stop_sign(
             frame,
             scale_factor=self.scaleFactor,
