@@ -463,12 +463,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
 		indicator.textContent = 'Diagnostic en cours...';
-		terminal.textContent = 'Execution du balayage des parametres..."\n"';
+		terminal.textContent = 'Execution du balayage des parametres...\\n';
 		fetch('/diagnose_stop', { method: 'POST' })
 			.then(function(r) { return r.json(); })
 			.then(function(payload) {
 				if (payload.logs && Array.isArray(payload.logs)) {
-					terminal.textContent = payload.logs.join('"\n"');
+					terminal.textContent = payload.logs.join('\\n');
 				} else {
 					terminal.textContent = JSON.stringify(payload, null, 2);
 				}
