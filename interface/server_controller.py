@@ -423,10 +423,9 @@ class controller:
             h, s, v = cv2.split(hsv)
             
 
-            # Visualiser le H uniquement là où S est suffisant
-            h_debug = np.zeros_like(h)
-            h_debug[s > 20] = h[s > 20]
-            save_step(cv2.cvtColor(h_debug, cv2.COLOR_GRAY2RGB), 'h_where_s_gt_20', is_bgr=False)
+            print("S min / max:", s.min(), s.max())
+            print("V min / max:", v.min(), v.max())
+
 
             save_step(cv2.cvtColor(h, cv2.COLOR_GRAY2RGB), 'h_channel', is_bgr=False)
             save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2RGB), 's_channel', is_bgr=False)
