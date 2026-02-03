@@ -525,8 +525,8 @@ class controller:
             mask_close2 = cv2.morphologyEx(mask_open1, cv2.MORPH_CLOSE, kernel5, iterations=3) # close pour boucher
             
 
-            mask_open2 = cv2.morphologyEx(mask_close2, cv2.MORPH_OPEN, kernel5, iterations=2) # open pour éliminer le bruit
-            mask_close3 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=2) # close pour boucher
+            mask_open2 = cv2.morphologyEx(mask_close2, cv2.MORPH_OPEN, kernel3, iterations=2) # open pour éliminer le bruit
+            mask_close3 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=4) # close pour boucher
             
             # Test morphologie
             save_step(mask, 'initial_mask', mode='gray')
