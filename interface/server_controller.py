@@ -493,8 +493,11 @@ class controller:
             s_maskB = cv2.inRange(s, 80, 220) # extrait les contour du panneau stop
             save_step(s_maskB, 's_mask_80_220', 'gray')
 
-            s_maskC = cv2.inRange(s, 100, 200) # extrait les contour du panneau stop
-            save_step(s_maskC, 's_mask_100_200', 'gray')
+            s_maskC = cv2.inRange(s, 110, 190) # extrait les contour du panneau stop
+            save_step(s_maskC, 's_mask_110_190', 'gray')
+
+            s_mask_final = cv2.bitwise_xor(s_mask, s_maskC)
+            save_step(s_mask_final, 's_mask_final', 'gray')
 
             # Masque des hue ou la saturation est suffisante
             h_mask = np.zeros_like(h, dtype=np.uint8)
@@ -507,17 +510,17 @@ class controller:
             # min semble tourner proche du 90
             # un hue de 115 semble bien faire ressortir le panneau
 
-            h_mask_Prime = cv2.inRange(h, 115, 255)
-            save_step(h_mask_Prime, 'h_mask_115_255', 'gray')
+            h_mask_Prime = cv2.inRange(h, 120, 180)
+            save_step(h_mask_Prime, 'h_mask_120_180', 'gray')
 
-            h_maskA = cv2.inRange(h, 105, 120)
-            save_step(h_maskA, 'h_mask_105_120', 'gray')
+            h_maskA = cv2.inRange(h, 120, 125)
+            save_step(h_maskA, 'h_mask_120_125', 'gray')
 
-            h_maskB = cv2.inRange(h, 120, 135)
-            save_step(h_maskB, 'h_mask_120_135', 'gray')
+            h_maskB = cv2.inRange(h, 125, 130)
+            save_step(h_maskB, 'h_mask_125_130', 'gray')
 
-            h_maskC = cv2.inRange(h, 135, 155)
-            save_step(h_maskC, 'h_mask_135_155', 'gray')
+            h_maskC = cv2.inRange(h, 130, 135)
+            save_step(h_maskC, 'h_mask_130_135', 'gray')
 
             print("Test filtrage par value...")
             # le mask v 130 fait bien ressortir les contours du panneau
@@ -530,7 +533,7 @@ class controller:
             save_step(v_mask2, 'v_mask_120', 'gray')
 
             v_mask3 = cv2.inRange(v, 140, 255)
-            save_step(v_mask3, 'v_mask_140', 'gray')
+            save_step(v_mask3, 'v_mask_140 main choice', 'gray')
 
             v_mask4 = cv2.inRange(v, 170, 255)
             save_step(v_mask4, 'v_mask_170', 'gray')
@@ -541,8 +544,9 @@ class controller:
 
             # combiner les masques h, s, v
             hsv_combined_mask = np.zeros(h.shape, dtype=np.uint8)
-            hsv_combined_mask = cv2.bitwise_and(h_maskA, s_maskA)
-            hsv_combined_mask = cv2.bitwise_xor(hsv_combined_mask, v_mask_contours)
+            hsv_combined_mask = cv2.bitwise_and(h_maskA, s_mask_final)
+            hsv_combined_mask = cv2.bitwise_and(hsv_combined_mask, v_mask3)
+            # hsv_combined_mask = cv2.bitwise_xor(hsv_combined_mask, v_mask_contours)
             print("Combining H, S, V masks...")
             print("Valeur moyenne des pixels de chaque canal dans le masque combiné HSV:")
             print("H channel average value : {}".format(np.mean(h_mask)))
