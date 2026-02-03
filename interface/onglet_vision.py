@@ -279,73 +279,71 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
 	<script>
-	// Active l'état du bouton d'onglet selon l'URL courante
+	// Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
 	(function() {
-		const norm = p => (p || '').replace(/\/+$/,'') || '/';
-		const here = norm(location.pathname);
-		document.querySelectorAll('.tab-nav .primary-btn').forEach(btn => {
-			const p = norm(btn.dataset ? btn.dataset.path : btn.getAttribute('data-path'));
+		var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
+		var here = norm(location.pathname);
+		var btns = document.querySelectorAll('.tab-nav .primary-btn');
+		Array.prototype.forEach.call(btns, function(btn) {
+			var p = norm(btn.getAttribute('data-path'));
 			if (p === here) btn.classList.add('active');
 		});
 	})();
 
 	function toggleCamera() { 
-        console.log("toggleCamera() appelée"); // pour debug
-
-        const liveFeed = document.getElementById('liveFeed'); 
-        const btn = document.getElementById('cameraToggleBtn'); 
-        const img = liveFeed.querySelector('img'); 
-
-        const isActive = liveFeed.style.display === 'block';
-
+		console.log('toggleCamera() appelee');
+		var liveFeed = document.getElementById('liveFeed'); 
+		var btn = document.getElementById('cameraToggleBtn'); 
+		var img = liveFeed.querySelector('img'); 
+		var isActive = liveFeed.style.display === 'block';
 		if (!isActive) {
-            // 1. Affiche le conteneur et change le bouton (pour la réactivité)  
-            btn.textContent = '⛔ Stop Camera'; 
-
-            // 2. Envoie la commande de démarrage au serveur 
-			fetch('/start_camera', { method: 'POST' }) 
-				.then(() => {
-                // 3. ATTEND que le serveur ait confirmé le démarrage avant de demander le flux vidéo. 
-                liveFeed.style.display = 'block';
-                img.src = '/video?' + new Date().getTime(); 
-			}); 
-        
+			btn.textContent = '⛔ Stop Camera';
+			fetch('/start_camera', { method: 'POST' })
+				.then(function() {
+					liveFeed.style.display = 'block';
+					img.src = '/video?' + new Date().getTime();
+				});
 		} else {
             // 1. Cache le conteneur et change le bouton 
             liveFeed.style.display = 'none'; 
             btn.textContent = '▶️ Start Camera'; 
             
-            // 2. Vide la source de l'image (arrête le flux gelé) 
+            // 2. Vide la source de l'image (arrete le flux gele) 
             img.src = "";  
             
-            // 3. Envoie la commande d'arrêt au serveur 
+            // 3. Envoie la commande d'arret au serveur 
 			fetch('/close_camera', { method: 'POST' }); 
 		}
 	}
 	
 	function captureImage() {
-        console.log("captureImage() appelée"); // pour debug
+		console.log('captureImage() appelee'); // pour debug
 
-        fetch('/capture_image', { method: 'POST' })
-            .then(response => response.json())
-            .then(({ file_url, download_url, filename, error }) => {
-                if (error) {
-                    alert('Erreur lors de la capture image : ' + error);
-                    return;
-                }
-                alert('Image capturée et enregistrée sur le serveur : ' + download_url);
-                // enregistrement de l'image sur le PC
-                const link = document.createElement('a');
-                link.href = download_url;
-                link.download = filename;
+		fetch('/capture_image', { method: 'POST' })
+			.then(function(response) { return response.json(); })
+			.then(function(data) {
+				var file_url = data.file_url;
+				var download_url = data.download_url;
+				var filename = data.filename;
+				var error = data.error;
+				if (error) {
+					alert('Erreur lors de la capture image : ' + error);
+					return;
+				}
+				alert('Image capturee et enregistree sur le serveur : ' + download_url);
+				// enregistrement de l'image sur le PC
+				var link = document.createElement('a');
+				link.href = download_url;
+				link.download = filename;
 				imageCapturedCallback(file_url); // mise a jour de la dernière image capturée
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-            })
-            .catch(err => { alert('Erreur lors de la communication avec le serveur : ' + err);
-                console.log("Erreur lors de la communication avec le serveur : " + err); // pour debug
-            });
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+			})
+			.catch(function(err) {
+				alert('Erreur lors de la communication avec le serveur : ' + err);
+				console.log('Erreur lors de la communication avec le serveur : ' + err); // pour debug
+			});
 	}
 	
 	function imageCapturedCallback(imageUrl) {
@@ -358,102 +356,101 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 	
 	// --- Détecteurs: chargement, sélection et exécution ---
-	let DETECTORS_MAP = {}; // index -> name
-	let SELECTED_DETECTOR_NAME = null;
+	var DETECTORS_MAP = {}; // index -> name
+	var SELECTED_DETECTOR_NAME = null;
 
 	function loadDetectors() {
 		fetch('/detectors')
-			.then(r => r.json())
-			.then(({ detectors, selected }) => {
-				const sel = document.getElementById('detectorSelect');
+			.then(function(r) { return r.json(); })
+			.then(function(resp) {
+				var detectors = resp.detectors;
+				var selected = resp.selected;
+				var sel = document.getElementById('detectorSelect');
 				sel.innerHTML = '';
 				if (!detectors || detectors.length === 0) {
-					const opt = document.createElement('option');
+					var opt = document.createElement('option');
 					opt.value = -1;
 					opt.textContent = 'Aucun détecteur disponible';
 					sel.appendChild(opt);
 					sel.disabled = true;
 					return;
 				}
-				detectors.forEach(d => {
-					const opt = document.createElement('option');
-					opt.value = d.index;
-					opt.textContent = d.name + ' (#' + d.index + ')';
-					sel.appendChild(opt);
+				for (var i = 0; i < detectors.length; i++) {
+					var d = detectors[i];
+					var opt2 = document.createElement('option');
+					opt2.value = d.index;
+					opt2.textContent = d.name + ' (#' + d.index + ')';
+					sel.appendChild(opt2);
 					DETECTORS_MAP[d.index] = d.name;
-				});
+				}
 				if (selected != null && selected >= 0) {
 					sel.value = String(selected);
 					SELECTED_DETECTOR_NAME = DETECTORS_MAP[selected] || null;
 					updateStopUIPanelVisibility();
 				}
 			})
-			.catch(() => {});
+			.catch(function() {});
 	}
 
 	function onDetectorChange() {
-		const sel = document.getElementById('detectorSelect');
-		const idx = parseInt(sel.value, 10);
+		var sel = document.getElementById('detectorSelect');
+		var idx = parseInt(sel.value, 10);
 		if (isNaN(idx) || idx < 0) return;
 		fetch('/detector', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ index: idx })
-		}).catch(() => {});
+		}).catch(function() {});
 		SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
 		updateStopUIPanelVisibility();
 	}
 
 	function runDetection() {
 		fetch('/run_detection', { method: 'POST' })
-			.then(r => r.json())
-			.then(res => {
-				const zone = document.getElementById('zone-resultats-detection');
+			.then(function(r) { return r.json(); })
+			.then(function(res) {
+				var zone = document.getElementById('zone-resultats-detection');
 				zone.style.display = 'block';
 				zone.textContent = JSON.stringify(res, null, 2);
-
-				// Si une image annotée est disponible, l'afficher dans la zone "Dernière image capturée"
 				if (res && res.annotated_file_url) {
 					imageCapturedCallback(res.annotated_file_url);
 				} else if (res && res.source_file_url) {
-					// Sinon, s'assurer que l'image source s'affiche au besoin
 					imageCapturedCallback(res.source_file_url);
 				}
 			})
-			.catch(err => {
-				const zone = document.getElementById('zone-resultats-detection');
-				zone.style.display = 'block';
-				zone.textContent = 'Erreur: ' + err;
+			.catch(function(err) {
+				var zone2 = document.getElementById('zone-resultats-detection');
+				zone2.style.display = 'block';
+				zone2.textContent = 'Erreur: ' + err;
 			});
 	}
 
 	function updateStopUIPanelVisibility() {
-		const panel = document.getElementById('stopDetectPanel');
+		var panel = document.getElementById('stopDetectPanel');
 		if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
 		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetectorZumi') !== -1) ? 'block' : 'none';
 	}
 
 	function clearOverlayBox() {
-		const box = document.getElementById('bboxOverlay');
+		var box = document.getElementById('bboxOverlay');
 		if (!box) return;
 		box.style.display = 'none';
 		box.style.left = '0px'; box.style.top = '0px'; box.style.width = '0px'; box.style.height = '0px';
 	}
 
 	function updateOverlayBox(bbox) {
-		const img = document.getElementById('lastCapturedImage');
-		const box = document.getElementById('bboxOverlay');
+		var img = document.getElementById('lastCapturedImage');
+		var box = document.getElementById('bboxOverlay');
 		if (!img || !box || !bbox) { clearOverlayBox(); return; }
-		// bbox is [x,y,w,h] in source image coords
-		const rect = img.getBoundingClientRect();
-		const naturalW = img.naturalWidth || rect.width;
-		const naturalH = img.naturalHeight || rect.height;
-		const scaleX = rect.width / naturalW;
-		const scaleY = rect.height / naturalH;
-		const x = bbox[0] * scaleX;
-		const y = bbox[1] * scaleY;
-		const w = bbox[2] * scaleX;
-		const h = bbox[3] * scaleY;
+		var rect = img.getBoundingClientRect();
+		var naturalW = img.naturalWidth || rect.width;
+		var naturalH = img.naturalHeight || rect.height;
+		var scaleX = rect.width / naturalW;
+		var scaleY = rect.height / naturalH;
+		var x = bbox[0] * scaleX;
+		var y = bbox[1] * scaleY;
+		var w = bbox[2] * scaleX;
+		var h = bbox[3] * scaleY;
 		box.style.left = Math.round(x) + 'px';
 		box.style.top = Math.round(y) + 'px';
 		box.style.width = Math.round(w) + 'px';
@@ -462,36 +459,33 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	function runStopDiagnostics() {
-		const indicator = document.getElementById('stopDetectIndicator');
-		const terminal = document.getElementById('stopDetectTerminal');
+		var indicator = document.getElementById('stopDetectIndicator');
+		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
-		indicator.textContent = 'Diagnostic en cours…';
-		terminal.textContent = 'Exécution du balayage des paramètres…\n';
+		indicator.textContent = 'Diagnostic en cours...';
+		terminal.textContent = 'Execution du balayage des parametres...\n';
 		fetch('/diagnose_stop', { method: 'POST' })
-			.then(r => r.json())
-			.then(payload => {
-				// logs
+			.then(function(r) { return r.json(); })
+			.then(function(payload) {
 				if (payload.logs && Array.isArray(payload.logs)) {
 					terminal.textContent = payload.logs.join('\n');
 				} else {
 					terminal.textContent = JSON.stringify(payload, null, 2);
 				}
-				// image update: use best annotated if available, else source
-				const best = payload.best || {};
-				const imgUrl = best.file_url || payload.source_file_url;
+				var best = payload.best || {};
+				var imgUrl = best.file_url || payload.source_file_url;
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				// overlay bbox and indicator
 				if (best.bbox) {
 					updateOverlayBox(best.bbox);
 					indicator.classList.add('on');
-					indicator.textContent = 'STOP détecté';
+					indicator.textContent = 'STOP detecte';
 				} else {
 					clearOverlayBox();
 					indicator.classList.add('off');
-					indicator.textContent = 'Aucune détection';
+					indicator.textContent = 'Aucune detection';
 				}
 			})
-			.catch(err => {
+			.catch(function(err) {
 				terminal.textContent = 'Erreur: ' + err;
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
