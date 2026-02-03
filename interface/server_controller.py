@@ -435,7 +435,6 @@ class controller:
             save_step(cv2.cvtColor(h, cv2.COLOR_GRAY2RGB), 'h_channel', is_bgr=False)
             save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2RGB), 's_channel', is_bgr=False)
             save_step(cv2.cvtColor(v, cv2.COLOR_GRAY2RGB), 'v_channel', is_bgr=False)
-            logs.append('Converted to HSV; channels extracted.')
             print("Converted to HSV; channels extracted.")
 
             print("Génération d'une image filtrée pour la couleur rouge...")
@@ -467,43 +466,41 @@ class controller:
             # Test des mask pour la couleur rouge
 
             hsv_red_mask = hsv_red_mask_builder(hsv)
-            save_step(hsv_red_mask, 'hsv_red_pixel_mask', is_bgr=False, is_hsv=True)
+            save_step(hsv_red_mask, 'hsv_red_pixel_mask', is_bgr=False)
 
             
+            # lower1 = (0, 15, 15)
+            # upper1 = (15, 255, 255)
+
+            # lower2 = (165, 15, 15)
+            # upper2 = (179, 255, 255)
 
 
-            print("Image de format HSV:")
-            save_step(hsv, 'hsv_image', is_bgr=False, is_hsv=True)
-            lower1 = (0, 15, 15)
-            upper1 = (15, 255, 255)
-
-            lower2 = (165, 15, 15)
-            upper2 = (179, 255, 255)
-
-
-            mask1 = cv2.inRange(hsv, lower1, upper1)
-            mask2 = cv2.inRange(hsv, lower2, upper2)
-            mask = cv2.bitwise_or(mask1, mask2)
-            save_step(cv2.cvtColor(mask1, cv2.COLOR_GRAY2RGB), 'mask1_red_low', is_bgr=False)
-            save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2RGB), 'mask2_red_high', is_bgr=False)
-            save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), 'mask_combined', is_bgr=False)
+            # mask1 = cv2.inRange(hsv, lower1, upper1)
+            # mask2 = cv2.inRange(hsv, lower2, upper2)
+            # mask = cv2.bitwise_or(mask1, mask2)
+            # save_step(cv2.cvtColor(mask1, cv2.COLOR_GRAY2RGB), 'mask1_red_low', is_bgr=False)
+            # save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2RGB), 'mask2_red_high', is_bgr=False)
+            # save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), 'mask_combined', is_bgr=False)
             
             # pour debug les mask
             # limite de couleur 2
-            low1 = np.array([0,50,50])
-            up1 = np.array([10,255,255])
-            mask_low_red = cv2.inRange(hsv, low1, up1)
+            # low1 = np.array([0,50,50])
+            # up1 = np.array([10,255,255])
+            # mask_low_red = cv2.inRange(hsv, low1, up1)
 
-            low2 =  np.array([170,50,50])
-            up2 = np.array([180,255,255])
-            mask_high_red = cv2.inRange(hsv, low2, up2)
+            # low2 =  np.array([170,50,50])
+            # up2 = np.array([180,255,255])
+            # mask_high_red = cv2.inRange(hsv, low2, up2)
 
-            # combine les deux masques
-            mask_test = cv2.bitwise_or(mask_low_red, mask_high_red)
-            save_step(mask_test, 'mask_test', is_bgr=False, is_hsv=True)
-            save_step(mask_low_red, 'mask_low_red', is_bgr=False, is_hsv=True)
-            save_step(mask_high_red, 'mask_high_red', is_bgr=False, is_hsv=True)
+            # # combine les deux masques 
+            # mask_test = cv2.bitwise_or(mask_low_red, mask_high_red)
+            # save_step(mask_test, 'mask_test', is_bgr=False)
+            # save_step(mask_low_red, 'mask_low_red', is_bgr=False)
+            # save_step(mask_high_red, 'mask_high_red', is_bgr=False)
             
+
+
             # l'image est reçue en BRG, convertie en HSV. il est possible
             # la méthode save_step convertit mal les masques
             
