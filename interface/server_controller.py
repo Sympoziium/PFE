@@ -401,72 +401,137 @@ class controller:
             logs = []
             steps = []
 
-            def save_step(img, name, is_bgr=True, is_hsv=False):
-                print("Saving step: {}".format(name))
-                base = 'cv_{}_{}'.format(name, uuid.uuid4().hex[:6])
+            def save_step(img, name, mode):
+                """
+                mode:
+                'bgr'   -> image BGR OpenCV
+                'gray'  -> image 1 canal
+                'hsv'   -> image HSV (sera convertie pour affichage)
+                sauvegarde toutes les images en RGB pour l'affichage web
+                """
+                print(f"Saving step: {name} ({mode})")
+
+                base = f'cv_{name}_{uuid.uuid4().hex[:6]}'
                 out_name = base + '.jpg'
                 out_path = os.path.join(diag_dir, out_name)
-                to_save = img
-                if not is_bgr:
-                    # si l'image est en grayscale ou en HSV
-                    if len(img.shape) == 2:
-                        print("Converting gray to BGR for saving...")
-                        to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-                    elif is_hsv:
-                        print("Converting HSV to BGR for saving...")
-                        to_save = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
-                    else:
-                        print("Converting RGB to BGR for saving...")
-                        to_save = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+                if mode == 'bgr':
+                    to_save = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+                elif mode == 'gray':
+                    to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+
+                elif mode == 'hsv':
+                    to_save = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+
+                elif mode == 'RGB':
+                    to_save = img
+
+                else:
+                    raise ValueError(f"Unknown save mode: {mode}")
+
                 cv2.imwrite(out_path, to_save)
                 url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
                 steps.append({"name": name, "url": url})
 
-            save_step(frame_bgr.copy(), 'original_bgr', is_bgr=True)
+            save_step(frame_bgr.copy(), 'original_bgr', mode='bgr')
 
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             h, s, v = cv2.split(hsv)
+
+
+            # visualisation saturation image initiale
+            sat_overlay = frame_bgr.copy()
+            sat_overlay[s < 30] = (0, 0, 0)
+            save_step(sat_overlay, 'pixels_with_s_gt_30_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
             
+            print("Canal HSV stats:")
+            print("H min/max:", h.min(), h.max())
+            print("S min/max:", s.min(), s.max())
+            print("V min/max:", v.min(), v.max())
+            print("Moyennes: H {:.2f}, S {:.2f}, V {:.2f}".format(np.mean(h), np.mean(s), np.mean(v)))
+            print("Écarts-types: H {:.2f}, S {:.2f}, V {:.2f}".format(np.std(h), np.std(s), np.std(v)))
 
-            print("S min / max:", s.min(), s.max())
-            print("V min / max:", v.min(), v.max())
+            print("Histogrammes:")
+            h_valide = h[(s > 30)]
+            h_hist_valide, _ = np.histogram(h_valide, bins=180, range=(0, 180))
+            h_hist, _ = np.histogram(h, bins=256, range=(0, 256))
+            s_hist, _ = np.histogram(s, bins=256, range=(0, 256))
+            v_hist, _ = np.histogram(v, bins=256, range=(0, 256))
+            print("H histogramme:", h_hist)
+            print("H histogramme (s>30):", h_hist_valide)
+            print("S histogramme:", s_hist)
+            print("V histogramme:", v_hist)
+            print("Nb pixels totaux:", h.size)
+
+            print("Extremums des canaux:")
+            print("Nb pixels saturés H=0:", np.sum(h == 0), "H=255:", np.sum(h == 255))
+            print("Nb pixels saturés S=0:", np.sum(s == 0), "S=255:", np.sum(s == 255))
+            print("Nb pixels saturés V=0:", np.sum(v == 0), "V=255:", np.sum(v == 255)) 
 
 
-            save_step(cv2.cvtColor(h, cv2.COLOR_GRAY2RGB), 'h_channel', is_bgr=False)
-            save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2RGB), 's_channel', is_bgr=False)
-            save_step(cv2.cvtColor(v, cv2.COLOR_GRAY2RGB), 'v_channel', is_bgr=False)
+
+            save_step(h, 'h_channel', mode='gray')
+            save_step(s, 's_channel', mode='gray')
+            save_step(v, 'v_channel', mode='gray')
             print("Converted to HSV; channels extracted.")
+
+            # Test de validation du seuil de saturationq (on cherche les pixels suffisament saturés)
+            s_mask = cv2.inRange(s, 30, 255)
+            save_step(s_mask, 's_gt_30', 'gray')
+
+            # Masque des hue ou la saturation est suffisante
+            h_mask = np.zeros_like(h, dtype=np.uint8)
+            h_mask[s > 30] = h[s > 30]
+            save_step(h_mask, 'h_where_s_gt_30', 'gray')
+
+
 
             print("Génération d'une image filtrée pour la couleur rouge...")
             red_image = frame_bgr.copy()
             red_image[:, :, 0] = 0  # Zero Blue
             red_image[:, :, 1] = 0  # Zero Green
-            save_step(red_image, 'red_filtered_image', is_bgr=True)
+            save_step(red_image, 'red_filtered_image', mode='bgr')
 
             def print_hsv_pixel(x, y, frame_hsv):
                 pixel = frame_hsv[y, x]
                 print("Pixel HSV at ({}, {}): H={}, S={}, V={}".format(x, y, pixel[0], pixel[1], pixel[2]))
 
-            def hsv_red_mask_builder(frame_hsv):
-                # Afficher les valeurs HSV pour un pixel rouge typique au centre
-                print("Construction du masque rouge pixel par pixel...")
-                h, w = frame_hsv.shape[:2]
-                red_mask = np.zeros((h, w,3), dtype=np.uint8)
-                print_hsv_pixel(w // 2, h // 2, frame_hsv)
-                for i in range(h):
-                    for j in range(w):
-                        if frame_hsv[i, j, 1] > 50 \
-                           and frame_hsv[i, j, 2] > 50 \
-                           and (frame_hsv[i, j, 0] <= 10 or frame_hsv[i, j, 0] >= 170):
-                            red_mask[i, j] = frame_hsv[i, j]
+            # def hsv_red_mask_builder(frame_hsv):
+            #     # Afficher les valeurs HSV pour un pixel rouge typique au centre
+            #     print("Construction du masque rouge pixel par pixel...")
+            #     h, w = frame_hsv.shape[:2]
+            #     red_mask = np.zeros((h, w,3), dtype=np.uint8)
+            #     print_hsv_pixel(w // 2, h // 2, frame_hsv)
+            #     for i in range(h):
+            #         for j in range(w):
+            #             if frame_hsv[i, j, 1] > 50 \
+            #                and frame_hsv[i, j, 2] > 50 \
+            #                and (frame_hsv[i, j, 0] <= 10 or frame_hsv[i, j, 0] >= 170):
+            #                 red_mask[i, j] = frame_hsv[i, j]
 
-                print("Nb pixels rouges détectés (pixel par pixel):", np.count_nonzero(red_mask[:,:,0] + red_mask[:,:,1] + red_mask[:,:,2]))
-                return red_mask
+            #     print("Nb pixels rouges détectés (pixel par pixel):", np.count_nonzero(red_mask[:,:,0] + red_mask[:,:,1] + red_mask[:,:,2]))
+            #     return red_mask
             
-            # Test des mask pour la couleur rouge
+            # # Test des mask pour la couleur rouge
 
-            hsv_red_mask = hsv_red_mask_builder(hsv)
-            save_step(hsv_red_mask, 'hsv_red_pixel_mask', is_bgr=False)
+            # hsv_red_mask = hsv_red_mask_builder(hsv)
+            # save_step(hsv_red_mask, 'hsv_red_pixel_mask', mode='gray')
+
+            # Test de différentes préconfig
+            red_configs = [
+                ((0, 30, 30), (10, 255, 255), 'red_cfg_1'),
+                ((0, 10, 10), (15, 255, 255), 'red_cfg_2'),
+                ((165, 30, 30), (179, 255, 255), 'red_cfg_3'),
+            ]
+
+
+            mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+
+            for low, high, name in red_configs:
+                mask = cv2.inRange(hsv, low, high)
+                save_step(mask, name, 'gray')
+                print(name, "pixels:", cv2.countNonZero(mask))
 
             
             # lower1 = (0, 15, 15)
@@ -516,7 +581,7 @@ class controller:
                 g16 = g.astype(np.int16)
                 b16 = b.astype(np.int16)
                 ratio_mask = ((r16 > g16 + 10) & (r16 > b16 + 10) & (r > 60)).astype(np.uint8) * 255
-                save_step(cv2.cvtColor(ratio_mask, cv2.COLOR_GRAY2RGB), 'mask_red_ratio', is_bgr=False)
+                save_step(ratio_mask, 'mask_red_ratio', mode='gray')
                 mask = ratio_mask
                 logs.append('HSV mask sparse; using RGB ratio fallback.')
                 print('HSV mask sparse; using RGB ratio fallback.')
@@ -525,8 +590,8 @@ class controller:
             kernel5 = np.ones((5, 5), np.uint8)
             mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1)
             mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=2)
-            save_step(cv2.cvtColor(mask_open, cv2.COLOR_GRAY2RGB), 'mask_open', is_bgr=False)
-            save_step(cv2.cvtColor(mask_close, cv2.COLOR_GRAY2RGB), 'mask_close', is_bgr=False)
+            save_step(mask_open, 'mask_open', mode='gray')
+            save_step(mask_close, 'mask_close', mode='gray')
             logs.append('Applied morphology (open + close).')
             print("Applied morphology (open + close).")
 
@@ -572,7 +637,7 @@ class controller:
                     best_area = area
                     best = (x, y, w, h)
 
-            save_step(overlay, 'contours_overlay', is_bgr=True)
+            save_step(overlay, 'contours_overlay', mode='bgr')
 
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
             payload = {
