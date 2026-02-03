@@ -484,9 +484,17 @@ class controller:
             # min saturation pour le rouge > 90 (valeur sur contre les reflets de la lumière)
             s_mask = cv2.inRange(s, 90, 255)
             save_step(s_mask, 's_gt_90', 'gray')
-            
-            s_maskA = cv2.inRange(s, 90, 210)
+            s_mask_inverted = cv2.bitwise_not(s_mask)
+            save_step(s_mask_inverted, 's_90_inverted', 'gray')
+
+            s_maskA = cv2.inRange(s, 90, 210) # extrait les contour du panneau stop
             save_step(s_maskA, 's_mask_90_210', 'gray')
+
+            s_maskB = cv2.inRange(s, 80, 220) # extrait les contour du panneau stop
+            save_step(s_maskB, 's_mask_80_220', 'gray')
+
+            s_maskC = cv2.inRange(s, 100, 200) # extrait les contour du panneau stop
+            save_step(s_maskC, 's_mask_100_200', 'gray')
 
             # Masque des hue ou la saturation est suffisante
             h_mask = np.zeros_like(h, dtype=np.uint8)
@@ -499,8 +507,17 @@ class controller:
             # min semble tourner proche du 90
             # un hue de 115 semble bien faire ressortir le panneau
 
+            h_mask_Prime = cv2.inRange(h, 115, 255)
+            save_step(h_mask_Prime, 'h_mask_115_255', 'gray')
+
             h_maskA = cv2.inRange(h, 105, 120)
             save_step(h_maskA, 'h_mask_105_120', 'gray')
+
+            h_maskB = cv2.inRange(h, 120, 135)
+            save_step(h_maskB, 'h_mask_120_135', 'gray')
+
+            h_maskC = cv2.inRange(h, 135, 155)
+            save_step(h_maskC, 'h_mask_135_155', 'gray')
 
             print("Test filtrage par value...")
             # le mask v 130 fait bien ressortir les contours du panneau
@@ -614,6 +631,7 @@ class controller:
 
             kernel3 = np.ones((3, 3), np.uint8)
             kernel5 = np.ones((5, 5), np.uint8)
+            kernel7 = np.ones((7, 7), np.uint8)
             mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=3) # open pour éliminer le bruit
             mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=3) # close pour boucher
             save_step(mask_open, 'mask_open', mode='gray')
