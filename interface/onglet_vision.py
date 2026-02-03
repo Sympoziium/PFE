@@ -259,7 +259,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 									<div id='bboxOverlay'></div>
 								</div>
 								<div style='margin-top:8px; text-align:right;'>
-									<button class='primary-btn' onclick='runStopDiagnostics()'>Diagnostiquer Stop</button>
+									<button class='primary-btn' onclick='runStopDiagnostics()'>Diagnostiquer Stop (Zumi)</button>
+									<button class='primary-btn' onclick='runStopDiagnosticsCV()'>Diagnostiquer Stop (CV)</button>
 								</div>
 							</div>
 							<div class='indicator-and-terminal'>
@@ -484,6 +485,56 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					clearOverlayBox();
 					indicator.classList.add('off');
 					indicator.textContent = 'Aucune detection';
+				}
+			})
+			.catch(function(err) {
+				terminal.textContent = 'Erreur: ' + err;
+				indicator.classList.remove('on');
+				indicator.classList.add('off');
+				indicator.textContent = 'Erreur';
+			});
+	}
+
+	function runStopDiagnosticsCV() {
+		var indicator = document.getElementById('stopDetectIndicator');
+		var terminal = document.getElementById('stopDetectTerminal');
+		indicator.classList.remove('on', 'off');
+		indicator.textContent = 'Diagnostic CV en cours...';
+		terminal.textContent = 'Execution du diagnostic CV...\\n';
+		fetch('/diagnose_stop_cv', { method: 'POST' })
+			.then(function(r) { return r.json(); })
+			.then(function(payload) {
+				// logs
+				if (payload.logs && Array.isArray(payload.logs)) {
+					terminal.textContent = payload.logs.join('\\n');
+				} else { terminal.textContent = JSON.stringify(payload, null, 2); }
+				// best bbox overlay
+				var best = payload.best || {};
+				var imgUrl = (payload.steps && payload.steps.length) ? payload.steps[payload.steps.length - 1].url : payload.source_file_url;
+				if (imgUrl) { imageCapturedCallback(imgUrl); }
+				if (best.bbox) {
+					updateOverlayBox(best.bbox);
+					indicator.classList.add('on');
+					indicator.textContent = 'STOP detecte (CV)';
+				} else {
+					clearOverlayBox();
+					indicator.classList.add('off');
+					indicator.textContent = 'Aucune detection (CV)';
+				}
+				// open gallery in new tab
+				if (payload.steps && payload.steps.length) {
+					var w = window.open('', '_blank');
+					if (w) {
+						var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>CV Filters Gallery</title></head><body style="font-family:Arial; padding:12px;">';
+						html += '<h3>Etapes du diagnostic CV</h3>';
+						for (var i = 0; i < payload.steps.length; i++) {
+							var s = payload.steps[i];
+							html += '<div style="margin-bottom:12px;"><div><b>' + s.name + '</b></div><img style="max-width:100%;border:1px solid #ccc" src="' + s.url + '"></div>';
+						}
+						html += '</body></html>';
+						w.document.write(html);
+						w.document.close();
+					}
 				}
 			})
 			.catch(function(err) {

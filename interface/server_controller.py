@@ -376,6 +376,8 @@ class controller:
 
     # Diagnostic CV du stop: export des étapes intermédiaires (HSV, masques, morpho, contours)
     def diagnose_stop_cv(self):
+
+        print("Début du diagnostic Stop CV...")
         vp = self.vision_pipeline
         if vp is None:
             return jsonify({'error': 'Video pipeline not initialized'}), 400
@@ -400,6 +402,7 @@ class controller:
             steps = []
 
             def save_step(img, name, is_bgr=True):
+                print("Saving step: {}".format(name))
                 base = 'cv_{}_{}'.format(name, uuid.uuid4().hex[:6])
                 out_name = base + '.jpg'
                 out_path = os.path.join(diag_dir, out_name)
@@ -422,6 +425,7 @@ class controller:
             save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2RGB), 's_channel', is_bgr=False)
             save_step(cv2.cvtColor(v, cv2.COLOR_GRAY2RGB), 'v_channel', is_bgr=False)
             logs.append('Converted to HSV; channels extracted.')
+            print("Converted to HSV; channels extracted.")
 
             lower1 = (0, 70, 50)
             upper1 = (10, 255, 255)
@@ -434,6 +438,7 @@ class controller:
             save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2RGB), 'mask2_red_high', is_bgr=False)
             save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), 'mask_combined', is_bgr=False)
             logs.append('Masks created for red ranges; combined mask pixels: {}'.format(int(mask.sum() / 255)))
+            print("Masks created for red ranges; combined mask pixels: {}".format(int(mask.sum() / 255)))
 
             kernel3 = np.ones((3, 3), np.uint8)
             kernel5 = np.ones((5, 5), np.uint8)
@@ -442,10 +447,12 @@ class controller:
             save_step(cv2.cvtColor(mask_open, cv2.COLOR_GRAY2RGB), 'mask_open', is_bgr=False)
             save_step(cv2.cvtColor(mask_close, cv2.COLOR_GRAY2RGB), 'mask_close', is_bgr=False)
             logs.append('Applied morphology (open + close).')
+            print("Applied morphology (open + close).")
 
             cnts = cv2.findContours(mask_close, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
             logs.append('Contours found: {}'.format(len(cnts)))
+            print("Contours found: {}".format(len(cnts)))
 
             overlay = frame_bgr.copy()
             best = None
@@ -463,6 +470,7 @@ class controller:
                 fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0
                 convex = cv2.isContourConvex(approx)
                 logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
+                print('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
                 # draw approx for visualization
                 cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2)
                 # apply filters similar to detector
