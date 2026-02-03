@@ -442,8 +442,8 @@ class controller:
 
             # visualisation saturation image initiale
             sat_overlay = frame_bgr.copy()
-            sat_overlay[s < 30] = (0, 0, 0)
-            save_step(sat_overlay, 'pixels_with_s_gt_30_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
+            sat_overlay[s < 60] = (0, 0, 0)
+            save_step(sat_overlay, 'pixels_with_s_gt_60_overlay', 'bgr') # on suprime les pixels peu saturés de l'image
             
             print("Canal HSV stats:")
             print("H min/max:", h.min(), h.max())
@@ -453,10 +453,10 @@ class controller:
             print("Écarts-types: H {:.2f}, S {:.2f}, V {:.2f}".format(np.std(h), np.std(s), np.std(v)))
 
             print("Histogrammes:")
-            h_valide = h[(s > 30)]
+            h_valide = h[(s > 60)]
             h_hist_valide, _ = np.histogram(h_valide, bins=180, range=(0, 180))
             h_hist, _ = np.histogram(h, bins=256, range=(0, 256))
-            s_hist, _ = np.histogram(s, bins=256, range=(0, 256))
+            s_hist, _ = np.histogram(s, bins=256, range=(60, 256))
             v_hist, _ = np.histogram(v, bins=256, range=(0, 256))
             print("H histogramme:", h_hist)
             print("H histogramme (s>30):", h_hist_valide)
@@ -477,59 +477,57 @@ class controller:
             print("Converted to HSV; channels extracted.")
 
             # Test de validation du seuil de saturationq (on cherche les pixels suffisament saturés)
+            # Conclusion du test. en variant l'éclairage le seuil de détection du stop demeur < 60
             print("Test filtrage par saturation...")
-            s_mask = cv2.inRange(s, 30, 255)
-            save_step(s_mask, 's_gt_30', 'gray')
+            s_mask = cv2.inRange(s, 60, 255)
+            save_step(s_mask, 's_gt_60', 'gray')
 
             # test saturation supplémentaire
-            s_mask2 = cv2.inRange(s, 40, 255)
-            save_step(s_mask2, 's_gt_40', 'gray')
+            s_mask2 = cv2.inRange(s, 70, 255)
+            save_step(s_mask2, 's_gt_70', 'gray')
 
-            s_mask3 = cv2.inRange(s, 50, 255)
-            save_step(s_mask3, 's_gt_50', 'gray')
+            s_mask3 = cv2.inRange(s, 80, 255)
+            save_step(s_mask3, 's_gt_80', 'gray')
 
-            s_mask4 = cv2.inRange(s, 60, 255)
-            save_step(s_mask4, 's_gt_60', 'gray')
+            s_mask4 = cv2.inRange(s, 90, 255)
+            save_step(s_mask4, 's_gt_90', 'gray')
 
             
 
             # Masque des hue ou la saturation est suffisante
             h_mask = np.zeros_like(h, dtype=np.uint8)
-            h_mask[s > 30] = h[s > 30]
-            save_step(h_mask, 'h_where_s_gt_30', 'gray')
+            h_mask[s > 60] = h[s > 60]
+            save_step(h_mask, 'h_where_s_gt_60', 'gray')
             # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
             print("Test filtrage par hue...")
             h_mask2 = np.zeros_like(h, dtype=np.uint8)
-            h_mask2[s > 40] = h[s > 40]
-            save_step(h_mask2, 'h_where_s_gt_40', 'gray')
+            h_mask2[s > 70] = h[s > 70]
+            save_step(h_mask2, 'h_where_s_gt_70', 'gray')
 
             h_mask3 = np.zeros_like(h, dtype=np.uint8)
-            h_mask3[s > 50] = h[s > 50]
-            save_step(h_mask3, 'h_where_s_gt_50', 'gray')
+            h_mask3[s > 80] = h[s > 80]
+            save_step(h_mask3, 'h_where_s_gt_80', 'gray')
 
             h_mask4 = np.zeros_like(h, dtype=np.uint8)
-            h_mask4[s > 60] = h[s > 60]
-            save_step(h_mask4, 'h_where_s_gt_60', 'gray')
-
+            h_mask4[s > 90] = h[s > 90]
+            save_step(h_mask4, 'h_where_s_gt_90', 'gray')
             print("Test filtrage par value...")
 
             v_mask = np.zeros_like(v, dtype=np.uint8)
-            v_mask[s > 30] = v[s > 30]
-            save_step(v_mask, 'v_where_s_gt_30', 'gray')
+            v_mask[s > 60] = v[s > 60]
+            save_step(v_mask, 'v_where_s_gt_60', 'gray')
 
             v_mask2 = np.zeros_like(v, dtype=np.uint8)
-            v_mask2[s > 40] = v[s > 40]
-            save_step(v_mask2, 'v_where_s_gt_40', 'gray')
-
+            v_mask2[s > 70] = v[s > 70]
+            save_step(v_mask2, 'v_where_s_gt_70', 'gray')
             v_mask3 = np.zeros_like(v, dtype=np.uint8)
-            v_mask3[s > 50] = v[s > 50]
-            save_step(v_mask3, 'v_where_s_gt_50', 'gray')
+            v_mask3[s > 80] = v[s > 80]
+            save_step(v_mask3, 'v_where_s_gt_80', 'gray')
 
             v_mask4 = np.zeros_like(v, dtype=np.uint8)
-            v_mask4[s > 60] = v[s > 60]
-            save_step(v_mask4, 'v_where_s_gt_60', 'gray')
-            
+            v_mask4[s > 90] = v[s > 90]
+            save_step(v_mask4, 'v_where_s_gt_90', 'gray')
             # combiner les masques h, s, v
             hsv_combined_mask = cv2.bitwise_and(h_mask, cv2.bitwise_and(s_mask, v_mask))
             print("Combining H, S, V masks...")
@@ -549,43 +547,11 @@ class controller:
             _, hsv_combined_binary = cv2.threshold(hsv_combined_mask, min_val, max_val, cv2.THRESH_BINARY)
             save_step(hsv_combined_binary, 'hsv_combined_binary', 'gray')
 
-
-            print("Génération d'une image filtrée pour la couleur rouge...")
-            red_image = frame_bgr.copy()
-            red_image[:, :, 0] = 0  # Zero Blue
-            red_image[:, :, 1] = 0  # Zero Green
-            save_step(red_image, 'red_filtered_image', mode='bgr')
-
-            def print_hsv_pixel(x, y, frame_hsv):
-                pixel = frame_hsv[y, x]
-                print("Pixel HSV at ({}, {}): H={}, S={}, V={}".format(x, y, pixel[0], pixel[1], pixel[2]))
-
-            # def hsv_red_mask_builder(frame_hsv):
-            #     # Afficher les valeurs HSV pour un pixel rouge typique au centre
-            #     print("Construction du masque rouge pixel par pixel...")
-            #     h, w = frame_hsv.shape[:2]
-            #     red_mask = np.zeros((h, w,3), dtype=np.uint8)
-            #     print_hsv_pixel(w // 2, h // 2, frame_hsv)
-            #     for i in range(h):
-            #         for j in range(w):
-            #             if frame_hsv[i, j, 1] > 50 \
-            #                and frame_hsv[i, j, 2] > 50 \
-            #                and (frame_hsv[i, j, 0] <= 10 or frame_hsv[i, j, 0] >= 170):
-            #                 red_mask[i, j] = frame_hsv[i, j]
-
-            #     print("Nb pixels rouges détectés (pixel par pixel):", np.count_nonzero(red_mask[:,:,0] + red_mask[:,:,1] + red_mask[:,:,2]))
-            #     return red_mask
-            
-            # # Test des mask pour la couleur rouge
-
-            # hsv_red_mask = hsv_red_mask_builder(hsv)
-            # save_step(hsv_red_mask, 'hsv_red_pixel_mask', mode='gray')
-
             # Test de différentes préconfig
             red_configs = [
-                ((0, 30, 40), (20, 255, 255), 'red_cfg_1'),
-                ((160, 0, 10), (15, 255, 255), 'red_cfg_2'),
-                ((155, 30, 40), (179, 255, 255), 'red_cfg_3'),
+                ((0, 60, 40), (20, 255, 255), 'red_cfg_1'),
+                ((160, 60, 10), (15, 255, 255), 'red_cfg_2'),
+                ((155, 60, 40), (179, 255, 255), 'red_cfg_3'),
             ]
 
 
@@ -634,7 +600,6 @@ class controller:
             
             
             combined_pixels = int(mask.sum() / 255)
-            logs.append('Masks created for red ranges; combined mask pixels: {}'.format(combined_pixels))
             print("Masks created for red ranges; combined mask pixels: {}".format(combined_pixels))
 
             threshold_sparse = max(50, (frame_bgr.shape[0] * frame_bgr.shape[1]) // 500)
