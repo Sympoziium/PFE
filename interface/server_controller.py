@@ -409,7 +409,7 @@ class controller:
                 'hsv'   -> image HSV (sera convertie pour affichage)
                 sauvegarde toutes les images en RGB pour l'affichage web
                 """
-                print(f"Saving step: {name} ({mode})")
+                print("Saving step: {name} ({mode})".format(name=name, mode=mode))
 
                 base = f'cv_{name}_{uuid.uuid4().hex[:6]}'
                 out_name = base + '.jpg'
