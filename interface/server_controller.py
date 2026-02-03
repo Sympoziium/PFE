@@ -421,16 +421,25 @@ class controller:
 
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             h, s, v = cv2.split(hsv)
+            
+
+            # Visualiser le H uniquement là où S est suffisant
+            h_debug = np.zeros_like(h)
+            h_debug[s > 20] = h[s > 20]
+            save_step(cv2.cvtColor(h_debug, cv2.COLOR_GRAY2RGB), 'h_where_s_gt_20', is_bgr=False)
+
             save_step(cv2.cvtColor(h, cv2.COLOR_GRAY2RGB), 'h_channel', is_bgr=False)
             save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2RGB), 's_channel', is_bgr=False)
             save_step(cv2.cvtColor(v, cv2.COLOR_GRAY2RGB), 'v_channel', is_bgr=False)
             logs.append('Converted to HSV; channels extracted.')
             print("Converted to HSV; channels extracted.")
 
-            lower1 = (0, 40, 30)
-            upper1 = (20, 255, 255)
-            lower2 = (160, 40, 30)
-            upper2 = (180, 255, 255)
+            lower1 = (0, 15, 15)
+            upper1 = (15, 255, 255)
+
+            lower2 = (165, 15, 15)
+            upper2 = (179, 255, 255)
+
             mask1 = cv2.inRange(hsv, lower1, upper1)
             mask2 = cv2.inRange(hsv, lower2, upper2)
             mask = cv2.bitwise_or(mask1, mask2)
