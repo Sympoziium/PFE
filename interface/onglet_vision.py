@@ -428,7 +428,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	function updateStopUIPanelVisibility() {
 		var panel = document.getElementById('stopDetectPanel');
 		if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
-		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetectorZumi') !== -1) ? 'block' : 'none';
+		// Afficher pour tout détecteur de stop (Zumi ou CV)
+		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetector') !== -1) ? 'block' : 'none';
 	}
 
 	function clearOverlayBox() {
