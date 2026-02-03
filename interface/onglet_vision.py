@@ -151,6 +151,60 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		padding: 8px; border-radius: 8px; border: 1px solid #aaa; background: #fff; font-size: 14px;
 	}
 
+	/* --- Stop Detection UI panel --- */
+	.stop-detect-panel {
+		display: none; /* visible seulement pour le détecteur stop */
+		flex: 1;
+		border: 2px solid #00b894;
+		border-radius: 12px;
+		padding: 12px;
+		background: #f7fbff;
+	}
+
+	.stop-detect-layout {
+		display: flex; gap: 12px; align-items: flex-start;
+	}
+
+	.captured-box {
+		position: relative;
+		flex: 2;
+		background: #f0f8ff;
+		border-radius: 12px;
+		padding: 10px;
+		text-align: center;
+	}
+
+	.captured-box img {
+		max-width: 100%; height: auto; border-radius: 8px; border: 4px solid #00BFFF;
+	}
+
+	#bboxOverlay {
+		position: absolute;
+		border: 4px solid #00FF00;
+		border-radius: 4px;
+		display: none;
+		box-shadow: 0 0 8px rgba(0, 255, 0, 0.6);
+		pointer-events: none;
+	}
+
+	.indicator-and-terminal {
+		flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: stretch;
+	}
+
+	.detect-indicator {
+		border-radius: 10px; padding: 10px; text-align: center; font-weight: bold; color: #fff;
+		background: #bdc3c7; /* défaut: gris */
+	}
+
+	.detect-indicator.on { background: #2ecc71; }
+	.detect-indicator.off { background: #e74c3c; }
+
+	.log-terminal {
+		background: #000; color: #fff; font-family: Consolas, monospace; font-size: 13px;
+		border-radius: 10px; padding: 10px; min-height: 120px; max-height: 220px; overflow: auto;
+		white-space: pre-wrap;
+	}
+
 	</style>
 	</head>
 	<body>
@@ -195,8 +249,24 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 						<button class='primary-btn' onclick="runDetection()">Lancer Détection</button>
 						<button class='primary-btn' onclick="toggleResults()">Afficher/masquer Résultats</button>
 					</div>
-					<div class='live-feed' id='lastCapturedImageContainer' style='flex-grow: 1;'>
-						<img id='lastCapturedImage' alt='Dernière image capturée' style='max-width: 300px; display: block; margin-left: auto;'>
+					<!-- Stop detection diagnostic panel -->
+					<div class='stop-detect-panel' id='stopDetectPanel'>
+						<div class='tab-subtitle'>Diagnostic Stop</div>
+						<div class='stop-detect-layout'>
+							<div class='captured-box'>
+								<div style='position:relative; display:inline-block;'>
+									<img id='lastCapturedImage' alt='Dernière image capturée'>
+									<div id='bboxOverlay'></div>
+								</div>
+								<div style='margin-top:8px; text-align:right;'>
+									<button class='primary-btn' onclick='runStopDiagnostics()'>Diagnostiquer Stop</button>
+								</div>
+							</div>
+							<div class='indicator-and-terminal'>
+								<div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
+								<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
+							</div>
+						</div>
 					</div>
 					<!-- ajouter la dernière image capturée -->
 				</div>
@@ -280,13 +350,17 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	
 	function imageCapturedCallback(imageUrl) {
 		console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl); // pour debug
-		const container = document.getElementById('lastCapturedImageContainer');
+		const panel = document.getElementById('stopDetectPanel');
 		const img = document.getElementById('lastCapturedImage');
-		container.style.display = 'block'; 
+		panel.style.display = panel.style.display === 'none' ? 'none' : 'block';
 		img.src = imageUrl;
+		clearOverlayBox();
 	}
 	
 	// --- Détecteurs: chargement, sélection et exécution ---
+	let DETECTORS_MAP = {}; // index -> name
+	let SELECTED_DETECTOR_NAME = null;
+
 	function loadDetectors() {
 		fetch('/detectors')
 			.then(r => r.json())
@@ -306,9 +380,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					opt.value = d.index;
 					opt.textContent = d.name + ' (#' + d.index + ')';
 					sel.appendChild(opt);
+					DETECTORS_MAP[d.index] = d.name;
 				});
 				if (selected != null && selected >= 0) {
 					sel.value = String(selected);
+					SELECTED_DETECTOR_NAME = DETECTORS_MAP[selected] || null;
+					updateStopUIPanelVisibility();
 				}
 			})
 			.catch(() => {});
@@ -323,6 +400,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ index: idx })
 		}).catch(() => {});
+		SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
+		updateStopUIPanelVisibility();
 	}
 
 	function runDetection() {
@@ -345,6 +424,78 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				const zone = document.getElementById('zone-resultats-detection');
 				zone.style.display = 'block';
 				zone.textContent = 'Erreur: ' + err;
+			});
+	}
+
+	function updateStopUIPanelVisibility() {
+		const panel = document.getElementById('stopDetectPanel');
+		if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
+		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetectorZumi') !== -1) ? 'block' : 'none';
+	}
+
+	function clearOverlayBox() {
+		const box = document.getElementById('bboxOverlay');
+		if (!box) return;
+		box.style.display = 'none';
+		box.style.left = '0px'; box.style.top = '0px'; box.style.width = '0px'; box.style.height = '0px';
+	}
+
+	function updateOverlayBox(bbox) {
+		const img = document.getElementById('lastCapturedImage');
+		const box = document.getElementById('bboxOverlay');
+		if (!img || !box || !bbox) { clearOverlayBox(); return; }
+		// bbox is [x,y,w,h] in source image coords
+		const rect = img.getBoundingClientRect();
+		const naturalW = img.naturalWidth || rect.width;
+		const naturalH = img.naturalHeight || rect.height;
+		const scaleX = rect.width / naturalW;
+		const scaleY = rect.height / naturalH;
+		const x = bbox[0] * scaleX;
+		const y = bbox[1] * scaleY;
+		const w = bbox[2] * scaleX;
+		const h = bbox[3] * scaleY;
+		box.style.left = Math.round(x) + 'px';
+		box.style.top = Math.round(y) + 'px';
+		box.style.width = Math.round(w) + 'px';
+		box.style.height = Math.round(h) + 'px';
+		box.style.display = 'block';
+	}
+
+	function runStopDiagnostics() {
+		const indicator = document.getElementById('stopDetectIndicator');
+		const terminal = document.getElementById('stopDetectTerminal');
+		indicator.classList.remove('on', 'off');
+		indicator.textContent = 'Diagnostic en cours…';
+		terminal.textContent = 'Exécution du balayage des paramètres…\n';
+		fetch('/diagnose_stop', { method: 'POST' })
+			.then(r => r.json())
+			.then(payload => {
+				// logs
+				if (payload.logs && Array.isArray(payload.logs)) {
+					terminal.textContent = payload.logs.join('\n');
+				} else {
+					terminal.textContent = JSON.stringify(payload, null, 2);
+				}
+				// image update: use best annotated if available, else source
+				const best = payload.best || {};
+				const imgUrl = best.file_url || payload.source_file_url;
+				if (imgUrl) { imageCapturedCallback(imgUrl); }
+				// overlay bbox and indicator
+				if (best.bbox) {
+					updateOverlayBox(best.bbox);
+					indicator.classList.add('on');
+					indicator.textContent = 'STOP détecté';
+				} else {
+					clearOverlayBox();
+					indicator.classList.add('off');
+					indicator.textContent = 'Aucune détection';
+				}
+			})
+			.catch(err => {
+				terminal.textContent = 'Erreur: ' + err;
+				indicator.classList.remove('on');
+				indicator.classList.add('off');
+				indicator.textContent = 'Erreur';
 			});
 	}
 

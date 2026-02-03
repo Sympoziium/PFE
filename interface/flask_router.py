@@ -30,6 +30,7 @@ def register_routes(ctrl):
     app.add_url_rule('/detectors', 'detectors', lambda: ctrl.detectors())  # GET
     app.add_url_rule('/detector', 'set_detector', lambda: ctrl.set_detector(), methods=['POST'])
     app.add_url_rule('/run_detection', 'run_detection', lambda: ctrl.run_detection(), methods=['POST'])
+    app.add_url_rule('/diagnose_stop', 'diagnose_stop', lambda: ctrl.diagnose_stop(), methods=['POST'])
 
     # Moteur
     app.add_url_rule('/zumi/forward', 'forward', lambda: ctrl.forward())
