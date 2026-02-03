@@ -434,7 +434,7 @@ class controller:
                 url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
                 steps.append({"name": name, "url": url})
 
-            save_step(frame_bgr.copy(), 'original_bgr', mode='bgr')
+            save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
 
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             h, s, v = cv2.split(hsv)
@@ -511,25 +511,33 @@ class controller:
             mask = hsv_combined_binary.copy()
             
 
+            kernel1 = np.ones((1, 1), np.uint8)
             kernel3 = np.ones((3, 3), np.uint8)
             kernel5 = np.ones((5, 5), np.uint8)
             kernel7 = np.ones((7, 7), np.uint8)
-            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
-            mask_close1 = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=1) # close pour boucher
             
-            mask_open2 = cv2.morphologyEx(mask_close1, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
-            mask_close2 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=1) # close pour boucher
+            mask_close1 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel1, iterations=1) # close pour boucher les petits trous
+
+            mask_open1 = cv2.morphologyEx(mask_close1, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
+            mask_close2 = cv2.morphologyEx(mask_open1, cv2.MORPH_CLOSE, kernel5, iterations=1) # close pour boucher
+            
+
+            mask_open2 = cv2.morphologyEx(mask_close2, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
+            mask_close3 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=1) # close pour boucher
             
             # Test morphologie
             save_step(mask, 'initial_mask', mode='gray')
             save_step(mask_close1, 'mask_close1', mode='gray')
-            save_step(mask_open2, 'mask_open2', mode='gray')
-            save_step(mask_open, 'mask_open', mode='gray')
+            save_step(mask_open1, 'mask_open1', mode='gray')
             save_step(mask_close2, 'mask_close2', mode='gray')
+            save_step(mask_open2, 'mask_open2', mode='gray')
+            save_step(mask_close3, 'mask_close3', mode='gray')
 
             print("Applied morphology (open + close).")
 
-            cnts = cv2.findContours(mask_close2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            Image_traitée = mask_close3.copy()
+
+            cnts = cv2.findContours(Image_traitée, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
             logs.append('Contours found: {}'.format(len(cnts)))
             print("Contours found: {}".format(len(cnts)))
