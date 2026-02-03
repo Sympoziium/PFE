@@ -3,12 +3,12 @@
 # onglet_acceuil.py
 
 def render_accueil_tab(title: str = "Accueil") -> str:
-	html = """<!DOCTYPE html><html lang='fr'>
-	<head>
-	<meta charset='UTF-8'>
-	<meta name='viewport' content='width=device-width, initial-scale=1'>
-	<title>{title}</title>
-	<style>
+    html = """<!DOCTYPE html><html lang='fr'>
+    <head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>{title}</title>
+    <style>
     body { margin: 0; padding: 0; width: 100vw; height: 100vh; font-family: Arial; background: linear-gradient(135deg, #40E0D0, #00BFFF); color: #333; display: flex; flex-direction: column; }
     .container { display: flex; justify-content: center; padding: 20px; height: calc(100vh - 40px); }
     .tab-shell { background: rgba(255,255,255,0.95); border-radius: 16px; padding: 18px; width: min(980px, 100%); display:flex; flex-direction:column;}
@@ -33,28 +33,47 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     .dpad-left { grid-area: left; } .dpad-right { grid-area: right; }
     
     .live-feed img { width: 100%; border-radius: 8px; border: 2px solid #333; margin-top:10px; display:none;}
-	</style>
-	</head>
-	<body>
-	<div class='container'>
-		<div class='tab-shell'>
-			<div class='tab-header'>
-				<h2>{title}</h2>
-				<div class='tab-nav'>
+
+    /* --- AJOUT CSS POUR LE BOUTON TOGGLE (SWITCH) --- */
+    .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #2196F3; }
+    input:checked + .slider:before { transform: translateX(26px); }
+    /* ----------------------------------------------- */
+
+    </style>
+    </head>
+    <body>
+    <div class='container'>
+        <div class='tab-shell'>
+            <div class='tab-header'>
+                <h2>{title}</h2>
+                <div class='tab-nav'>
                     <button class='primary-btn' onclick="location.href='/'">Accueil</button>
                     <button class='primary-btn' onclick="location.href='/vision'">Vision</button>
                     <button class='primary-btn' style='background:#dc3545;' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
-				</div>
-			</div>
+                </div>
+            </div>
 
-			<div class='tab-content'>
-				<div class='left-panel'>
+            <div class='tab-content'>
+                <div class='left-panel'>
                     <button class='primary-btn' id='camBtn' onclick='toggleCamera()'>▶️ Start Camera</button>
-					<div class='live-feed'><img id='videoStream'></div>
+                    <div class='live-feed'><img id='videoStream'></div>
 
                     <hr style="width:100%; margin: 20px 0; border: 1px solid #ccc;">
 
                     <h3>🌉 Pont Levis</h3>
+                    
+                    <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
+                        <span style="font-weight:bold;">Mode Auto:</span>
+                        <label class="switch">
+                          <input type="checkbox" id="autoCheck" onchange="toggleAuto(this.checked)" checked>
+                          <span class="slider round"></span>
+                        </label>
+                    </div>
+
                     <div style="margin-bottom:10px;">
                         <button class='command-button btn-green' onclick="fetch('/bridge/green', {method:'POST'})">Feu Vert</button>
                         <button class='command-button btn-red' onclick="fetch('/bridge/red', {method:'POST'})">Feu Rouge</button>
@@ -63,23 +82,23 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                         <button class='command-button btn-blue' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
                         <button class='command-button btn-blue' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
                     </div>
-				</div>
+                </div>
 
-				<div class='right-panel'>
-					<h3>🏎️ Contrôle Zumi</h3>
-					<div class="dpad-container">
-						<button class="dpad-button dpad-up" onmousedown="start('forward')" onmouseup="stop()" ontouchstart="start('forward')" ontouchend="stop()">⬆️</button>
-						<button class="dpad-button dpad-left" onmousedown="start('left')" onmouseup="stop()" ontouchstart="start('left')" ontouchend="stop()">⬅️</button>
-						<button class="dpad-button dpad-center" onclick="stop()">🛑</button>
-						<button class="dpad-button dpad-right" onmousedown="start('right')" onmouseup="stop()" ontouchstart="start('right')" ontouchend="stop()">➡️</button>
-						<button class="dpad-button dpad-down" onmousedown="start('reverse')" onmouseup="stop()" ontouchstart="start('reverse')" ontouchend="stop()">⬇️</button>
-       				</div>
-				</div>	
-			</div>
-		</div>
-	</div>
+                <div class='right-panel'>
+                    <h3>🏎️ Contrôle Zumi</h3>
+                    <div class="dpad-container">
+                        <button class="dpad-button dpad-up" onmousedown="start('forward')" onmouseup="stop()" ontouchstart="start('forward')" ontouchend="stop()">⬆️</button>
+                        <button class="dpad-button dpad-left" onmousedown="start('left')" onmouseup="stop()" ontouchstart="start('left')" ontouchend="stop()">⬅️</button>
+                        <button class="dpad-button dpad-center" onclick="stop()">🛑</button>
+                        <button class="dpad-button dpad-right" onmousedown="start('right')" onmouseup="stop()" ontouchstart="start('right')" ontouchend="stop()">➡️</button>
+                        <button class="dpad-button dpad-down" onmousedown="start('reverse')" onmouseup="stop()" ontouchstart="start('reverse')" ontouchend="stop()">⬇️</button>
+                    </div>
+                </div>  
+            </div>
+        </div>
+    </div>
 
-	<script>
+    <script>
     // Caméra
     function toggleCamera() { 
         const img = document.getElementById('videoStream'); 
@@ -95,6 +114,16 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
 
+    // --- AJOUT JS POUR LE MODE AUTO ---
+    function toggleAuto(isAuto) {
+        // Envoie '1' si coché, '0' si décoché
+        const val = isAuto ? '1' : '0';
+        fetch('/bridge/mode_auto/' + val, { method: 'POST' })
+            .then(res => console.log("Mode auto changé: " + val))
+            .catch(err => console.error("Erreur:", err));
+    }
+    // ----------------------------------
+
     // Mouvements
     let moveInterval = null;
     function start(dir) {
@@ -107,7 +136,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         if (moveInterval) { clearInterval(moveInterval); moveInterval = null; }
         fetch('/zumi/stop');
     }
-	</script>
-	</body></html>
-	"""
-	return html.replace("{title}", title)
+    </script>
+    </body></html>
+    """
+    return html.replace("{title}", title)

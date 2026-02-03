@@ -154,3 +154,13 @@ class controller:
             requests.get("{}/rouge".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
         except: return ("", 500)
+   
+    def bridge_mode_auto(self, etat):
+        # etat doit être '1' (true) ou '0' (false)
+        try:
+            # On appelle l'URL du pont: http://192.168.X.X/majAutoMoteur?etat=1
+            requests.get("{}/majAutoMoteur?etat={}".format(self.BRIDGE_URL, etat), timeout=1)
+            return ("", 204)
+        except Exception as e:
+            print("Erreur Pont Mode Auto:", e)
+            return ("Erreur", 500)
