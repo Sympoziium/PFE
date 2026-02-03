@@ -540,7 +540,7 @@ class controller:
             save_step(mask, 'initial_mask', mode='gray')
             save_step(mask_open, 'mask_open', mode='gray')
             save_step(mask_close1, 'mask_close1', mode='gray')
-            save_step(mask_open1, 'mask_open1', mode='gray')
+            #save_step(mask_open1, 'mask_open1', mode='gray')
             save_step(mask_close2, 'mask_close2', mode='gray')
             save_step(mask_open2, 'mask_open2', mode='gray')
             save_step(mask_close3, 'mask_close3', mode='gray')
