@@ -501,16 +501,16 @@ class controller:
             # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
             print("Test filtrage par hue...")
-            h_mask2 = cv2.range(h, 0, 255)
+            h_mask2 = cv2.inRange(h, 0, 255)
             save_step(h_mask2, 'h_mask_allin', 'gray')
 
-            h_mask3 = cv2.range(h, 30, 255)
+            h_mask3 = cv2.inRange(h, 30, 255)
             save_step(h_mask3, 'h_mask_30', 'gray')
 
-            h_mask4 = cv2.range(h, 50, 255)
+            h_mask4 = cv2.inRange(h, 50, 255)
             save_step(h_mask4, 'h_mask_50', 'gray')
 
-            h_mask5 = cv2.range(h, 80, 255)
+            h_mask5 = cv2.inRange(h, 80, 255)
             save_step(h_mask5, 'h_mask_80', 'gray')
 
             print("Test filtrage par value...")
@@ -519,16 +519,16 @@ class controller:
             v_mask[s > 60] = v[s > 60]
             save_step(v_mask, 'v_where_s_gt_60', 'gray')
 
-            v_mask2 = cv2.range(v, 30, 255)
+            v_mask2 = cv2.inRange(v, 30, 255)
             save_step(v_mask2, 'v_mask_30', 'gray')
 
-            v_mask3 = cv2.range(v, 60, 255)
+            v_mask3 = cv2.inRange(v, 60, 255)
             save_step(v_mask3, 'v_mask_60', 'gray')
 
-            v_mask4 = cv2.range(v, 80, 255)
+            v_mask4 = cv2.inRange(v, 80, 255)
             save_step(v_mask4, 'v_mask_80', 'gray')
 
-            
+
             # combiner les masques h, s, v
             hsv_combined_mask = cv2.bitwise_and(h_mask, cv2.bitwise_and(s_mask, v_mask))
             print("Combining H, S, V masks...")
