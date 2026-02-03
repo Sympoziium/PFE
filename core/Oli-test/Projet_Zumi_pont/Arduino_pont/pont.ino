@@ -1,8 +1,10 @@
-// Code Arduino pour Pont et Lumières - Mode Esclave
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
-const char* ssid = "ZumiAccessoire"; // Le nom du réseau Wi-Fi créé
+// --- CONFIGURATION WIFI (DOIT ÊTRE LE MÊME QUE LE ZUMI) ---
+const char* ssid = "dlink-8D39";      // ⚠️ Mettre le nom de votre WiFi ici
+const char* password = "xdvxj79799";  // ⚠️ Mettre le mot de passe de votre WiFi ici
+
 ESP8266WebServer server(80);
 
 // Définition des GPIOS
@@ -45,11 +47,24 @@ void EnvoyerPulse(int pin, int microsec) {
 void setup() {
   Serial.begin(115200);
   
-  // Configuration du Point d'Accès (Le Zumi se connectera ici)
-  WiFi.softAP(ssid);
-  IPAddress myIP = WiFi.softAPIP();
-  Serial.print("Adresse IP du Pont: ");
-  Serial.println(myIP); // Devrait être 192.168.4.1
+  // --- Connexion au Wi-Fi (Mode Station) ---
+  Serial.println();
+  Serial.print("Connexion a ");
+  Serial.println(ssid);
+
+  WiFi.mode(WIFI_STA); // Important : Mode Station pour rejoindre un réseau existant
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connecte");
+  Serial.print("Adresse IP du Pont : ");
+  Serial.println(WiFi.localIP()); 
+  // ⚠️ NOTEZ CETTE IP POUR LA METTRE DANS server_controller.py ⚠️
 
   // Configuration des Pins
   pinMode(LedVert, OUTPUT);
@@ -63,11 +78,13 @@ void setup() {
   digitalWrite(LedRouge, LOW);
   TournerMoteur(false); // Ferme la porte au démarrage
 
-  // --- Routes API (commandées par le Zumi) ---
-  
+  // --- Routes API ---
   server.on("/", []() {
-    server.send(200, "text/plain", "Pont est en ligne. Connectez-vous au Zumi pour le controler.");
+    server.send(200, "text/plain", "Le Pont est en ligne (Mode Station).");
   });
+
+  // Activation des headers CORS pour permettre les requêtes depuis le Zumi si nécessaire
+  server.enableCORS(true); 
 
   server.on("/ouvrir", []() {
     TournerMoteur(true);
@@ -92,10 +109,9 @@ void setup() {
   });
 
   server.begin();
+  Serial.println("Serveur HTTP demarre");
 }
 
 void loop() {
   server.handleClient();
-  // Note: J'ai retiré la logique automatique complexe pour cet exemple 
-  // afin de garantir que les commandes manuelles du Zumi fonctionnent en priorité.
 }

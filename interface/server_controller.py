@@ -27,7 +27,7 @@ class controller:
         
         # --- CONFIGURATION DU PONT ---
         # ⚠️ REMPLACE CECI PAR L'IP QUE TON ARDUINO A AFFICHÉE
-        self.BRIDGE_IP = "192.168.0.151" 
+        self.BRIDGE_IP = "192.168.0.158" 
         self.BRIDGE_URL = "http://{}".format(self.BRIDGE_IP)
 
     def attach_pipeline_vision(self, pipeline):
