@@ -519,7 +519,12 @@ class controller:
             kernel5 = np.ones((5, 5), np.uint8)
             kernel7 = np.ones((7, 7), np.uint8)
             
-            mask_close1 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel7, iterations=1) # close pour boucher les petits trous
+
+            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
+
+            mask_close1 = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel7, iterations=1) # close pour boucher les petits trous
+
+
 
             mask_open1 = cv2.morphologyEx(mask_close1, cv2.MORPH_OPEN, kernel3, iterations=2) # open pour éliminer le bruit
             mask_close2 = cv2.morphologyEx(mask_open1, cv2.MORPH_CLOSE, kernel5, iterations=3) # close pour boucher
@@ -530,6 +535,7 @@ class controller:
             
             # Test morphologie
             save_step(mask, 'initial_mask', mode='gray')
+            save_step(mask_open, 'mask_open', mode='gray')
             save_step(mask_close1, 'mask_close1', mode='gray')
             save_step(mask_open1, 'mask_open1', mode='gray')
             save_step(mask_close2, 'mask_close2', mode='gray')
