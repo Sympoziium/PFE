@@ -557,6 +557,7 @@ class controller:
 
 
             mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+            
 
             for low, high, name in red_configs:
                 mask = cv2.inRange(hsv, low, high)
@@ -599,21 +600,22 @@ class controller:
             # l'image est reçue en BRG, convertie en HSV. il est possible
             # la méthode save_step convertit mal les masques
             
+            mask = hsv_combined_binary
             
-            combined_pixels = int(mask.sum() / 255)
-            print("Masks created for red ranges; combined mask pixels: {}".format(combined_pixels))
+            # combined_pixels = int(mask.sum() / 255)
+            # print("Masks created for red ranges; combined mask pixels: {}".format(combined_pixels))
 
-            threshold_sparse = max(50, (frame_bgr.shape[0] * frame_bgr.shape[1]) // 500)
-            if combined_pixels < threshold_sparse:
-                b, g, r = cv2.split(frame_bgr)
-                r16 = r.astype(np.int16)
-                g16 = g.astype(np.int16)
-                b16 = b.astype(np.int16)
-                ratio_mask = ((r16 > g16 + 10) & (r16 > b16 + 10) & (r > 60)).astype(np.uint8) * 255
-                save_step(ratio_mask, 'mask_red_ratio', mode='gray')
-                mask = ratio_mask
-                logs.append('HSV mask sparse; using RGB ratio fallback.')
-                print('HSV mask sparse; using RGB ratio fallback.')
+            # threshold_sparse = max(50, (frame_bgr.shape[0] * frame_bgr.shape[1]) // 500)
+            # if combined_pixels < threshold_sparse:
+            #     b, g, r = cv2.split(frame_bgr)
+            #     r16 = r.astype(np.int16)
+            #     g16 = g.astype(np.int16)
+            #     b16 = b.astype(np.int16)
+            #     ratio_mask = ((r16 > g16 + 10) & (r16 > b16 + 10) & (r > 60)).astype(np.uint8) * 255
+            #     save_step(ratio_mask, 'mask_red_ratio', mode='gray')
+            #     mask = ratio_mask
+            #     logs.append('HSV mask sparse; using RGB ratio fallback.')
+            #     print('HSV mask sparse; using RGB ratio fallback.')
 
             kernel3 = np.ones((3, 3), np.uint8)
             kernel5 = np.ones((5, 5), np.uint8)
