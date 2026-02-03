@@ -477,8 +477,21 @@ class controller:
             print("Converted to HSV; channels extracted.")
 
             # Test de validation du seuil de saturationq (on cherche les pixels suffisament saturés)
+            print("Test filtrage par saturation...")
             s_mask = cv2.inRange(s, 30, 255)
             save_step(s_mask, 's_gt_30', 'gray')
+
+            # test saturation supplémentaire
+            s_mask2 = cv2.inRange(s, 40, 255)
+            save_step(s_mask2, 's_gt_40', 'gray')
+
+            s_mask3 = cv2.inRange(s, 50, 255)
+            save_step(s_mask3, 's_gt_50', 'gray')
+
+            s_mask4 = cv2.inRange(s, 60, 255)
+            save_step(s_mask4, 's_gt_60', 'gray')
+
+            
 
             # Masque des hue ou la saturation est suffisante
             h_mask = np.zeros_like(h, dtype=np.uint8)
@@ -486,21 +499,52 @@ class controller:
             save_step(h_mask, 'h_where_s_gt_30', 'gray')
             # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
 
+            print("Test filtrage par hue...")
+            h_mask2 = np.zeros_like(h, dtype=np.uint8)
+            h_mask2[s > 40] = h[s > 40]
+            save_step(h_mask2, 'h_where_s_gt_40', 'gray')
+
+            h_mask3 = np.zeros_like(h, dtype=np.uint8)
+            h_mask3[s > 50] = h[s > 50]
+            save_step(h_mask3, 'h_where_s_gt_50', 'gray')
+
+            h_mask4 = np.zeros_like(h, dtype=np.uint8)
+            h_mask4[s > 60] = h[s > 60]
+            save_step(h_mask4, 'h_where_s_gt_60', 'gray')
+
+            print("Test filtrage par value...")
+
             v_mask = np.zeros_like(v, dtype=np.uint8)
             v_mask[s > 30] = v[s > 30]
             save_step(v_mask, 'v_where_s_gt_30', 'gray')
 
+            v_mask2 = np.zeros_like(v, dtype=np.uint8)
+            v_mask2[s > 40] = v[s > 40]
+            save_step(v_mask2, 'v_where_s_gt_40', 'gray')
+
+            v_mask3 = np.zeros_like(v, dtype=np.uint8)
+            v_mask3[s > 50] = v[s > 50]
+            save_step(v_mask3, 'v_where_s_gt_50', 'gray')
+
+            v_mask4 = np.zeros_like(v, dtype=np.uint8)
+            v_mask4[s > 60] = v[s > 60]
+            save_step(v_mask4, 'v_where_s_gt_60', 'gray')
+            
             # combiner les masques h, s, v
             hsv_combined_mask = cv2.bitwise_and(h_mask, cv2.bitwise_and(s_mask, v_mask))
             print("Combining H, S, V masks...")
-            print("pixels avrege value : {}".format(np.mean(hsv_combined_mask)))
+            print("Valeur moyenne des pixels de chaque canal dans le masque combiné HSV:")
+            print("H channel average value : {}".format(np.mean(h_mask)))
+            print("S channel average value : {}".format(np.mean(s_mask)))
+            print("V channel average value : {}".format(np.mean(v_mask)))
+            print("pixels avrege value combiné : {}".format(np.mean(hsv_combined_mask)))
             print("Nb pixels dans le masque combiné HSV:", cv2.countNonZero(hsv_combined_mask))
             save_step(hsv_combined_mask, 'hsv_combined_mask', 'gray')
 
             print("binariser le masque combiné HSV...")
             average_val = np.mean(hsv_combined_mask) 
-            min_val = average_val - average_val * 0.3
-            max_val = average_val + average_val * 0.3
+            min_val = average_val
+            max_val = 255
             print("Threshold values: min {:.2f}, max {:.2f}".format(min_val, max_val))
             _, hsv_combined_binary = cv2.threshold(hsv_combined_mask, min_val, max_val, cv2.THRESH_BINARY)
             save_step(hsv_combined_binary, 'hsv_combined_binary', 'gray')
@@ -539,9 +583,9 @@ class controller:
 
             # Test de différentes préconfig
             red_configs = [
-                ((0, 30, 30), (10, 255, 255), 'red_cfg_1'),
-                ((0, 10, 10), (15, 255, 255), 'red_cfg_2'),
-                ((165, 30, 30), (179, 255, 255), 'red_cfg_3'),
+                ((0, 30, 40), (20, 255, 255), 'red_cfg_1'),
+                ((160, 0, 10), (15, 255, 255), 'red_cfg_2'),
+                ((155, 30, 40), (179, 255, 255), 'red_cfg_3'),
             ]
 
 
