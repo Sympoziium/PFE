@@ -411,7 +411,7 @@ class controller:
                 """
                 print("Saving step: {name} ({mode})".format(name=name, mode=mode))
 
-                base = f'cv_{name}_{uuid.uuid4().hex[:6]}'
+                base = 'cv_{name}_{uuid.uuid4().hex[:6]}'.format(name=name, uuid=uuid)
                 out_name = base + '.jpg'
                 out_path = os.path.join(diag_dir, out_name)
 
@@ -428,7 +428,7 @@ class controller:
                     to_save = img
 
                 else:
-                    raise ValueError(f"Unknown save mode: {mode}")
+                    raise ValueError("Unknown save mode: {mode}".format(mode=mode))
 
                 cv2.imwrite(out_path, to_save)
                 url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
