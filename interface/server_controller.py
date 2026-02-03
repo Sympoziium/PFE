@@ -456,7 +456,7 @@ class controller:
             s_mask_saturation_ext = cv2.inRange(s, 115, 185) # extrait les contour du panneau stop
             save_step(s_mask_saturation_ext, 's_mask_115_185', 'gray')
 
-            s_mask_final = cv2.bitwise_xor(s_mask, s_mask_saturation_ext)
+            s_mask_final = s_mask
             save_step(s_mask_final, 's_mask_final', 'gray')
 
             # Masque des hue ou la saturation est suffisante
@@ -504,50 +504,27 @@ class controller:
             # print("Nb pixels dans le masque combiné HSV:", cv2.countNonZero(hsv_combined_mask))
             # save_step(hsv_combined_mask, 'hsv_combined_mask', 'gray')
 
-            print("binariser le masque combiné HSV...")
-            average_val = np.mean(hsv_combined_mask) 
-            min_val = average_val
-            max_val = 255
-            print("Threshold values: min {:.2f}, max {:.2f}".format(min_val, max_val))
-            _, hsv_combined_binary = cv2.threshold(hsv_combined_mask, min_val, max_val, cv2.THRESH_BINARY)
-
-            mask = hsv_combined_binary.copy()
+            # Binarisation du masque combiné
+            _, mask = cv2.threshold(hsv_combined_mask, 1, 255, cv2.THRESH_BINARY)
             
+            # Définir les kernels pour la morphologie
+            kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+            kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
+                        
 
-            kernel2 = np.ones((2, 2), np.uint8)
-            kernel3 = np.ones((3, 3), np.uint8)
-            kernel5 = np.ones((5, 5), np.uint8)
-            kernel7 = np.ones((7, 7), np.uint8)
-            
+            # Appliquer les opérations morphologiques
+            # 3. Nettoyage du bruit
+            mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=1)
 
-            mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1) # open pour éliminer le bruit
+            # 4. Reconstruction du panneau
+            mask2 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close, iterations=2)
 
-            mask_close1 = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel7, iterations=1) # close pour boucher les petits trous
-
-
-
-            # mask_open1 = cv2.morphologyEx(mask_close1, cv2.MORPH_OPEN, kernel3, iterations=2) # open pour éliminer le bruit
-            ### dernier changement apparant les autres ne modifie pas l'image
-            
-            
-            mask_close2 = cv2.morphologyEx(mask_close1, cv2.MORPH_CLOSE, kernel5, iterations=3) # close pour boucher
-            
-
-            mask_open2 = cv2.morphologyEx(mask_close2, cv2.MORPH_OPEN, kernel3, iterations=2) # open pour éliminer le bruit
-            mask_close3 = cv2.morphologyEx(mask_open2, cv2.MORPH_CLOSE, kernel7, iterations=10) # close pour boucher
-            
             # Test morphologie
             save_step(mask, 'initial_mask', mode='gray')
-            save_step(mask_open, 'mask_open', mode='gray')
-            save_step(mask_close1, 'mask_close1', mode='gray')
-            #save_step(mask_open1, 'mask_open1', mode='gray')
-            save_step(mask_close2, 'mask_close2', mode='gray')
-            save_step(mask_open2, 'mask_open2', mode='gray')
-            save_step(mask_close3, 'mask_close3', mode='gray')
-
-            print("Applied morphology (open + close).")
-
-            Image_traitée = mask_close3.copy()
+            save_step(mask1, 'mask_open', mode='gray')
+            save_step(mask2, 'mask_close', mode='gray')
+    
+            Image_traitée = mask2.copy()
 
             cnts = cv2.findContours(Image_traitée, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
