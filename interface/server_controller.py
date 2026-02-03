@@ -408,11 +408,13 @@ class controller:
                 out_path = os.path.join(diag_dir, out_name)
                 to_save = img
                 if not is_bgr:
-                    # assume RGB/gray; convert to BGR if needed for saving
+                    # si l'image est en grayscale ou en HSV
                     if len(img.shape) == 2:
+                        print("Converting gray to BGR for saving...")
                         to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                     else:
-                        to_save = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                        print("Converting HSV to RGB for saving...")
+                        to_save = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
                 cv2.imwrite(out_path, to_save)
                 url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
                 steps.append({"name": name, "url": url})
@@ -427,24 +429,49 @@ class controller:
             print("V min / max:", v.min(), v.max())
 
 
-            save_step(cv2.cvtColor(h, cv2.COLOR_GRAY2RGB), 'h_channel', is_bgr=False)
-            save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2RGB), 's_channel', is_bgr=False)
-            save_step(cv2.cvtColor(v, cv2.COLOR_GRAY2RGB), 'v_channel', is_bgr=False)
+            save_step(cv2.cvtColor(h, cv2.COLOR_GRAY2HSV), 'h_channel', is_bgr=False)
+            save_step(cv2.cvtColor(s, cv2.COLOR_GRAY2HSV), 's_channel', is_bgr=False)
+            save_step(cv2.cvtColor(v, cv2.COLOR_GRAY2HSV), 'v_channel', is_bgr=False)
             logs.append('Converted to HSV; channels extracted.')
             print("Converted to HSV; channels extracted.")
 
+
+            print("Image de format HSV:")
+            save_step(hsv, 'hsv_image', is_bgr=False)
             lower1 = (0, 15, 15)
             upper1 = (15, 255, 255)
 
             lower2 = (165, 15, 15)
             upper2 = (179, 255, 255)
 
+
             mask1 = cv2.inRange(hsv, lower1, upper1)
             mask2 = cv2.inRange(hsv, lower2, upper2)
             mask = cv2.bitwise_or(mask1, mask2)
-            save_step(cv2.cvtColor(mask1, cv2.COLOR_GRAY2RGB), 'mask1_red_low', is_bgr=False)
-            save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2RGB), 'mask2_red_high', is_bgr=False)
-            save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), 'mask_combined', is_bgr=False)
+            save_step(cv2.cvtColor(mask1, cv2.COLOR_GRAY2HSV), 'mask1_red_low', is_bgr=False)
+            save_step(cv2.cvtColor(mask2, cv2.COLOR_GRAY2HSV), 'mask2_red_high', is_bgr=False)
+            save_step(cv2.cvtColor(mask, cv2.COLOR_GRAY2HSV), 'mask_combined', is_bgr=False)
+            
+            # pour debug les mask
+            # limite de couleur 2
+            low1 = np.array([0,50,50])
+            up1 = np.array([10,255,255])
+            mask_low_red = cv2.inRange(hsv, low1, up1)
+
+            low2 =  np.array([170,50,50])
+            up2 = np.array([180,255,255])
+            mask_high_red = cv2.inRange(hsv, low2, up2)
+
+            # combine les deux masques
+            mask_test = cv2.bitwise_or(mask_low_red, mask_high_red)
+            save_step(mask_test, 'mask_test', is_bgr=False)
+            save_step(mask_low_red, 'mask_low_red', is_bgr=False)
+            save_step(mask_high_red, 'mask_high_red', is_bgr=False)
+            
+            # l'image est reçue en BRG, convertie en HSV. il est possible
+            # la méthode save_step convertit mal les masques
+            
+            
             combined_pixels = int(mask.sum() / 255)
             logs.append('Masks created for red ranges; combined mask pixels: {}'.format(combined_pixels))
             print("Masks created for red ranges; combined mask pixels: {}".format(combined_pixels))
@@ -456,7 +483,7 @@ class controller:
                 g16 = g.astype(np.int16)
                 b16 = b.astype(np.int16)
                 ratio_mask = ((r16 > g16 + 10) & (r16 > b16 + 10) & (r > 60)).astype(np.uint8) * 255
-                save_step(cv2.cvtColor(ratio_mask, cv2.COLOR_GRAY2RGB), 'mask_red_ratio', is_bgr=False)
+                save_step(cv2.cvtColor(ratio_mask, cv2.COLOR_GRAY2HSV), 'mask_red_ratio', is_bgr=False)
                 mask = ratio_mask
                 logs.append('HSV mask sparse; using RGB ratio fallback.')
                 print('HSV mask sparse; using RGB ratio fallback.')
@@ -465,8 +492,8 @@ class controller:
             kernel5 = np.ones((5, 5), np.uint8)
             mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1)
             mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel5, iterations=2)
-            save_step(cv2.cvtColor(mask_open, cv2.COLOR_GRAY2RGB), 'mask_open', is_bgr=False)
-            save_step(cv2.cvtColor(mask_close, cv2.COLOR_GRAY2RGB), 'mask_close', is_bgr=False)
+            save_step(cv2.cvtColor(mask_open, cv2.COLOR_GRAY2HSV), 'mask_open', is_bgr=False)
+            save_step(cv2.cvtColor(mask_close, cv2.COLOR_GRAY2HSV), 'mask_close', is_bgr=False)
             logs.append('Applied morphology (open + close).')
             print("Applied morphology (open + close).")
 
