@@ -199,6 +199,14 @@ class controller:
 
     # Exécuter la détection sur la dernière image capturée
     def run_detection(self):
+        """
+        Cette fonction exécute le détecteur sélectionné elle devrait servir à
+        - charger le détecteur sélectionné
+        - charger la dernière image capturée
+
+        
+        :param self: Description
+        """
         vp = self.vision_pipeline
         if vp is None:
             return jsonify({'error': 'Video pipeline not initialized'}), 400
@@ -219,6 +227,9 @@ class controller:
                 return jsonify({'error': 'failed to read captured image'}), 500
 
             results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index)
+
+            # !!!!  Retravail le formatage des résultats. la fonction retourne déja un dict 
+            # 
 
             # Si détection, créer et sauvegarder une version annotée
             annotated_url = None
@@ -398,7 +409,7 @@ class controller:
             if frame_bgr is None:
                 return jsonify({'error': 'failed to read captured image'}), 500
 
-            logs = []
+            logs = [] # les logs textuels semblent être ce qui s'affiche sur le terminal
             steps = []
 
             def save_step(img, name, mode):
@@ -445,30 +456,15 @@ class controller:
             print("Converted to HSV; channels extracted.")
 
             # Test de validation du seuil de saturationq (on cherche les pixels suffisament saturés)
-            # Conclusion du test. en variant l'éclairage le seuil de détection du stop demeur < 60
-            print("Test filtrage par saturation...")
-
-            # max saturation pour le rouge < 200
-            # min saturation pour le rouge > 90 (valeur sur contre les reflets de la lumière)
-            s_mask = cv2.inRange(s, 90, 255)
-            save_step(s_mask, 's_gt_90', 'gray')
         
-            s_mask_final = s_mask
+            s_mask_final = cv2.inRange(s, 90, 255)
             save_step(s_mask_final, 's_mask_final', 'gray')
 
-            # Masque des hue ou la saturation est suffisante
-            # h_mask = np.zeros_like(h, dtype=np.uint8)
-            # h_mask[s > 90] = h[s > 90]
-            # save_step(h_mask, 'h_where_s_gt_90', 'gray')
-            # ici on isole bien le panneau et le chat, reste plus qu'a filtrer pour la vibrance
-
+    
             print("Test filtrage par hue...")
             # max hue pour le rouge 120-150
             # min semble tourner proche du 90
             # un hue de 115 semble bien faire ressortir le panneau
-
-            h_mask_Prime = cv2.inRange(h, 120, 180)
-            save_step(h_mask_Prime, 'h_mask_120_180', 'gray')
 
             h_mask_final = cv2.inRange(h, 120, 130)
             save_step(h_mask_final, 'h_mask_final', 'gray')
@@ -480,21 +476,10 @@ class controller:
             v_mask[s > 90] = 255
             save_step(v_mask, 'v_where_s_gt_90', 'gray')
 
-            v_mask_final = cv2.bitwise_not(v_mask)
             # combiner les masques h, s, v
             hsv_combined_mask = np.zeros(h.shape, dtype=np.uint8)
             hsv_combined_mask = cv2.bitwise_and(h_mask_final, s_mask_final)
-            # filtrer pour la value ne donne pas de bon résultat
-            # hsv_combined_mask = cv2.bitwise_and(hsv_combined_mask, v_mask_final)
-
-            # print("Combining H, S, V masks...")
-            # print("Valeur moyenne des pixels de chaque canal dans le masque combiné HSV:")
-            # print("H channel average value : {}".format(np.mean(h_mask_final)))
-            # print("S channel average value : {}".format(np.mean(s_mask_final)))
-            # print("V channel average value : {}".format(np.mean(v_mask_final)))
-            # print("pixels avrege value combiné : {}".format(np.mean(hsv_combined_mask)))
-            # print("Nb pixels dans le masque combiné HSV:", cv2.countNonZero(hsv_combined_mask))
-            # save_step(hsv_combined_mask, 'hsv_combined_mask', 'gray')
+            # le mask v n'apporte pas grand chose de plus
 
             # Binarisation du masque combiné
             _, mask = cv2.threshold(hsv_combined_mask, 1, 255, cv2.THRESH_BINARY)
@@ -503,71 +488,87 @@ class controller:
             kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
             kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
                         
-
             # Appliquer les opérations morphologiques
             # 3. Nettoyage du bruit
             mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=2)
 
             # 4. Reconstruction du panneau
-            mask2 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close, iterations=2)
+            mask2 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close, iterations=4)
 
             # Test morphologie
             save_step(mask, 'initial_mask', mode='gray')
             save_step(mask1, 'mask_open', mode='gray')
             save_step(mask2, 'mask_close', mode='gray')
     
+            # État du développement. présentement l'algorithme parvient 
+            # très bien à isoler les pixels rouges et a dessiner leurs contours.
+            # il ne reste plus qu'a filtrer les contours pour ne garder que ceux
+            # qui correspondent à un panneau stop (forme, aire, convexité, ratio, etc.)
+
             Image_traitée = mask2.copy()
 
             cnts = cv2.findContours(Image_traitée, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cnts = cnts[0] if len(cnts) == 2 else cnts[1]
             logs.append('Contours found: {}'.format(len(cnts)))
-            print("Contours found: {}".format(len(cnts)))
+            # print("Contours found: {}".format(len(cnts)))
 
             overlay = frame_bgr.copy()
-            best = None
+            stop_sign_box = None
             best_area = 0
+
+            # --- Analyse des contours détectés ---
             for idx, c in enumerate(cnts):
-                area = cv2.contourArea(c)
+                # --- Calcul des caractéristiques du contour ---
+                area = cv2.contourArea(c)                                           # Aire du contour
                 if area < 1:
                     continue
-                peri = cv2.arcLength(c, True)
-                approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-                vtx = len(approx)
-                x, y, w, h = cv2.boundingRect(approx)
-                ratio = float(w) / float(h) if h != 0 else 0.0
-                rect_area = float(w * h)
-                fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0
-                convex = cv2.isContourConvex(approx)
+
+                peri = cv2.arcLength(c, True)                                       # Périmètre du contour                        
+                approx = cv2.approxPolyDP(c, 0.02 * peri, True)                     # Approximation polygonale
+                vtx = len(approx)                                                   # Nombre de sommets du polygone approximé
+                x, y, w, h = cv2.boundingRect(approx)                               # Boîte englobante
+                ratio = float(w) / float(h) if h != 0 else 0.0                      # Ratio largeur/hauteur
+                rect_area = float(w * h)                                            # Aire de la boîte englobante
+                fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0      # Ratio de remplissage de la boîte
+                convex = cv2.isContourConvex(approx)                                # Convexité du contour
+
+                # print('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
                 logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
-                print('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
-                # draw approx for visualization
-                cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2)
-                # apply filters similar to detector
+                # --- Filtrage des contours selon les critères du panneau stop ---
+                # Si l'aire est inférieure au minimum, on ignore
                 if area <  self._safe_int(self, 'min_area', 500):
                     continue
+                # Si le nombre de sommets n'est pas dans l'intervalle, on ignore
                 if vtx < self._safe_int(self, 'poly_min', 6) or vtx > self._safe_int(self, 'poly_max', 10):
                     continue
+                # Si le contour n'est pas convexe, on ignore (panneau stop est convexe)
                 if not convex:
                     continue
-                if h == 0 or w == 0:
+                # Si la boite englobante est trop petite, ces soit une abérration ou le panneau est trop loin 
+                if h < 30 or w < 30:
                     continue
-                aspect_tol = getattr(vp.get_detectors()[self.selected_detector_index], 'aspect_tol', 0.4)
+                # Si le ratio largeur/hauteur est proche de 1 la boite est presque carrée, plus ces probable que ce soit un panneau stop
+                aspect_tol = getattr(vp.get_detectors()[self.selected_detector_index], 'aspect_tol', 0.3)
                 if abs(ratio - 1.0) > float(aspect_tol):
                     continue
-                if fill_ratio < 0.30:
+                # Si le ratio de remplissage est trop faible, cela veut dire que le contour est trop irrégulier pour être un octogone
+                if fill_ratio < 0.50:
                     continue
                 if area > best_area:
                     best_area = area
-                    best = (x, y, w, h)
+                    logs.append('Stop détecté : Position=({}, {}); \\n Largeur={}; \\n hauteur={};'.format(x, y, w, h))
+                    stop_sign_box = (x, y, w, h)
+                    cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2) # Dessin du contour détecté
+                    cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2) # Dessin de la boite de détection
 
             save_step(overlay, 'contours_overlay', mode='bgr')
 
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
             payload = {
-                'source_file_url': source_url,
+                'source_file_url': source_url, # voir si on devris renvoyer le url de l'overlay a la place
                 'steps': steps,
-                'logs': logs,
-                'best': { 'bbox': best, 'area': int(best_area) }
+                # 'stop_sign_box': { 'bbox': stop_sign_box, 'area': int(best_area) }, # à retravailler pour le front voir si utile on  trace deja sur l'overlay
+                'logs': logs
             }
             return jsonify(payload)
         except Exception as e:
