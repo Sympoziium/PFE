@@ -6,13 +6,15 @@
 
 import cv2
 import numpy as np
+import os, uuid
+from flask import jsonify, url_for
 
 from .detector_base import BaseDetector
 
 
 class StopDetectorCV(BaseDetector):
 
-    def __init__(self, min_area=500, aspect_tol=0.35, poly_min=6, poly_max=10):
+    def __init__(self, min_area=500, aspect_tol=0.35, poly_min=6, poly_max=10, h_min=30, w_min=30, fill_ratio_min=0.5):
         """Détecteur de panneau STOP en utilisant une approche simple:
         - Segmentation des zones rouges en HSV
         - Extraction des contours
@@ -24,12 +26,26 @@ class StopDetectorCV(BaseDetector):
             aspect_tol (float): tolérance sur le ratio (w/h) autour de 1.0.
             poly_min (int): nombre minimum de sommets du polygone approximé.
             poly_max (int): nombre maximum de sommets du polygone approximé.
+            h_min (int): hauteur minimale du contour pour être considéré.
+            w_min (int): largeur minimale du contour pour être considéré.
+            fill_ratio_min (float): ratio aire/boîte englobante minimale.
         """
         self.min_area = int(min_area)
         self.aspect_tol = float(aspect_tol)
         self.poly_min = int(poly_min)
         self.poly_max = int(poly_max)
+        self.h_min = int(h_min)
+        self.w_min = int(w_min)
+        self.fill_ratio_min = float(fill_ratio_min)  # ratio aire/boîte englobante minimale
         self.name = "StopDetectorCV"
+        self.CAPTURE_DIR = None
+        self.DIAGNOSTIC_DIR = None
+        self.steps = []  # pour stocker les étapes de diagnostique
+        self.logs = []   # pour stocker les logs de diagnostique
+
+    def atach_capture_dir(self, capture_dir):
+        """Attache le dossier de capture d'images au détecteur."""
+        self.CAPTURE_DIR = capture_dir
 
     def process(self, frame):
         """Analyse une image BGR et retourne un dict de résultat.
@@ -64,6 +80,7 @@ class StopDetectorCV(BaseDetector):
                 "Object size": None,
             }
 
+    # Fonction de détection interne buggé
     def _detect_stop_bgr(self, bgr):
         if bgr is None:
             return None
@@ -123,3 +140,272 @@ class StopDetectorCV(BaseDetector):
                 best = (x, y, w, h)
 
         return best
+    
+    # Diagnostic CV du stop: export des étapes intermédiaires (HSV, masques, morpho, contours)
+    def diagnostique_detecteur(self, filename):
+        """
+        Réalise un diagnostique détaillé du détecteur Stop CV sur la dernière image capturée.
+        Retourne un JSON avec les étapes intermédiaires et les résultats. pour afficher dans la console web.
+        """
+        # le detecteur n'a pas accès au pipeline de vision directement mais on lui passe le CAPTURE_DIR
+        # vp = self.vision_pipeline
+        # if vp is None:
+        #     return jsonify({'error': 'Video pipeline not initialized'}), 400
+
+        if not filename:
+            return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
+
+        img_path = os.path.join(self.CAPTURE_DIR, filename)
+        if not os.path.exists(img_path):
+            return jsonify({'error': 'last captured image not found on server'}), 404
+
+        # Crée le dossier de diagnostics s'il n'existe pas (on y stoque les images intermédiaires)
+        self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
+        os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
+
+        try:
+            # Charger l'image capturée
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return jsonify({'error': 'failed to read captured image'}), 500
+
+            # Étape 1: Sauvegarde de l'image originale
+            self._save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
+
+            # Étape 2: Conversion en HSV et séparation des canaux
+            hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+            mask = self._make_HSV_mask(hsv, diagnostic_mode=True)
+
+            # Étape 3: Opérations morphologiques pour nettoyage et reconstruction de l'image
+            mask_morpho = self._make_morphological_mask(mask, diagnostic_mode=True)
+            
+            # Étape 4: Détection des contours sur le masque final
+            Image_traitée = mask_morpho.copy()
+            contours = self._detect_contours(Image_traitée)
+
+            # Étape 5: Analyse des contours et détection finale
+            results = self._analyse_detections(contours, frame_bgr)
+
+            # Étape 6: Formatage de la réponse JSON
+            source_url = url_for('static', filename='captured_images/{}'.format(filename))
+
+            payload = {
+                'source_file_url': source_url,
+                'overlay_url': self.steps[-1]['url'] if self.steps else None,
+                'steps': self.steps,
+                'Stop_detected': results['detected'],
+                'detection_box': results['detection_box'], 
+                'area': int(results['area']),
+                'logs': self.logs
+            }
+
+            return jsonify(payload)
+        
+        except Exception as e:
+            return jsonify({'error': 'diagnose_stop_cv failed', 'details': str(e)}), 500
+
+    def _save_step(self, img, name, mode):
+        """
+        Sauvegarde toutes les images en RGB pour l'affichage web
+
+        mode:
+        'bgr'   -> image BGR OpenCV
+        'gray'  -> image 1 canal
+        'hsv'   -> image HSV (sera convertie pour affichage)
+        
+        """
+        print("Saving step: {} ({})".format(name, mode))
+
+        base = 'Diag_Stop_Detector_CV_{}_{}'.format(name, uuid.uuid4().hex[:6])
+        out_name = base + '.jpg'
+        out_path = os.path.join(self.DIAGNOSTIC_DIR, out_name)
+
+        if mode == 'bgr':
+            to_save = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        elif mode == 'gray':
+            to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+
+        elif mode == 'hsv':
+            to_save = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+
+        elif mode == 'RGB':
+            to_save = img
+
+        else:
+            raise ValueError("Unknown save mode: {}".format(mode))
+
+        cv2.imwrite(out_path, to_save)
+        url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
+        self.steps.append({"name": name, "url": url})
+
+    def _make_HSV_mask(self, hsv, diagnostic_mode=False):
+        """Crée un masque binaire pour les zones rouges dans une image HSV."""
+        
+        if hsv is None:
+            return jsonify({'error': 'No image provided for HSV masking'}), 400
+        
+        # Étape 1: Séparation des canaux HSV 
+        h, s, v = cv2.split(hsv)
+
+        if diagnostic_mode:
+            # Sauvegarde des canaux HSV
+            self._save_step(h, 'h_channel', mode='gray')
+            self._save_step(s, 's_channel', mode='gray')
+            self._save_step(v, 'v_channel', mode='gray')
+
+        # Étape 2: Conception de masques optmisés pour le rouge en HSV
+        # filtrage par saturation
+        s_mask = cv2.inRange(s, 90, 255) # 90 et plus semble bien isoler le rouge
+        if diagnostic_mode:
+            self._save_step(s_mask, 's_mask', 'gray')
+
+        # filtrage par hue
+        h_mask = cv2.inRange(h, 120, 130) # plage optimale pour le rouge du panneau stop max (120-150)
+        if diagnostic_mode:
+            self._save_step(h_mask, 'h_mask', 'gray')
+        # filtrage par value
+        # le filtre v n'apporte pas grand chose de plus mais on le garde pour le debug
+        # il varie énormément selon l'éclairage n'est pas très fiable.
+        v_mask = np.zeros(v.shape, dtype=np.uint8)
+        v_mask[s > 90] = 255
+        if diagnostic_mode:
+            self._save_step(v_mask, 'v_mask', 'gray')
+
+        # Étape 3: Combinaison des masques H, S, V
+        hsv_combined_mask = np.zeros(h.shape, dtype=np.uint8)
+        hsv_combined_mask = cv2.bitwise_and(h_mask, s_mask)
+        # le mask v n'apporte pas grand chose on est mieux sans
+
+        # Binarisation du masque combiné
+        _, mask = cv2.threshold(hsv_combined_mask, 1, 255, cv2.THRESH_BINARY)
+        
+        # Sauvegarde du masque initial
+        if diagnostic_mode:
+            self._save_step(mask, 'initial_mask', mode='gray')
+
+        return mask
+    
+    def _make_morphological_mask(self, mask, diagnostic_mode=False):
+        """
+        Docstring for _make_morphological_mask
+        
+        :param mask: Description
+        :param diagnostic_mode: Description
+        """
+        # A. Définition des kernels pour la morphologie
+        kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
+                    
+        # B. Appliquer les opérations morphologiques
+            # I. Nettoyage du bruit
+        mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=2)
+
+            # II. Reconstruction du panneau
+        mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel_close, iterations=3)
+        
+        if diagnostic_mode:
+            # Sauvegarde des masques morphologiques
+            self._save_step(mask_open, 'mask_open', mode='gray')
+            self._save_step(mask_close, 'mask_close', mode='gray')
+
+        return mask_close
+    
+    def _detect_contours(self, mask):
+        """
+        Docstring for _detect_contours
+        
+        :param mask: Description
+        """
+        # Trouver les contours
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if hierarchy is None or len(hierarchy) == 0:
+            print("No contours found. Hierarchy is empty. voir classe StopDetectorCV méthode _detect_contours") # pour debug retirer plus tard
+            self.logs.append('No contours detected.')
+            return []
+        else:
+            self.logs.append('Contours found: {}'.format(len(contours)))
+     
+        return contours
+
+    def _analyse_detections(self, contours, frame_bgr):
+        """
+        Docstring for _analyse_detections
+        
+        :param contours: Description
+        :param frame_bgr: Description
+        """
+        overlay = frame_bgr.copy()
+        detection_box = None
+        best_area = 0
+        best_gess_idx = -1
+        results = []
+
+        for idx, c in enumerate(contours):
+            # --- Calcul des caractéristiques du contour ---
+            area = cv2.contourArea(c)                                           # Aire du contour
+            if area < 1:
+                continue
+
+            peri = cv2.arcLength(c, True)                                       # Périmètre du contour                        
+            approx = cv2.approxPolyDP(c, 0.02 * peri, True)                     # Approximation polygonale
+            vtx = len(approx)                                                   # Nombre de sommets du polygone approximé
+            x, y, w, h = cv2.boundingRect(approx)                               # Boîte englobante
+            ratio = float(w) / float(h) if h != 0 else 0.0                      # Ratio largeur/hauteur
+            rect_area = float(w * h)                                            # Aire de la boîte englobante
+            fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0      # Ratio de remplissage de la boîte
+            convex = cv2.isContourConvex(approx)                                # Convexité du contour
+
+            self.logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
+
+            # Dessin du contour détecté
+            cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2) 
+
+            # Si l'aire est inférieure au minimum, on ignore
+            if area <  self.min_area:
+                continue
+            # Si le nombre de sommets n'est pas dans l'intervalle, on ignore
+            if vtx < self.poly_min or vtx > self.poly_max:
+                continue
+            # Si le contour n'est pas convexe, on ignore (panneau stop est convexe)
+            if not convex:
+                continue
+            # Si la boite englobante est trop petite, ces soit une abérration ou le panneau est trop loin 
+            if h < self.h_min or w < self.w_min:
+                continue
+            # Si le ratio largeur/hauteur est proche de 1 la boite est presque carrée, plus ces probable que ce soit un panneau stop
+            if abs(ratio - 1.0) > float(self.aspect_tol):
+                continue
+            # Si le ratio de remplissage est trop faible, cela veut dire que le contour est trop irrégulier pour être un octogone
+            if fill_ratio < self.fill_ratio_min:
+                continue
+            # Si c'est le plus grand jusqu'à présent, on le garde comme détection 
+            if area > best_area:
+                best_area = area
+                best_gess_idx = idx
+                
+        
+        if best_gess_idx != -1:
+            c = contours[best_gess_idx]
+            # Recalculer l'approximation et la bounding box du meilleur contour
+            peri_best = cv2.arcLength(c, True)
+            approx_best = cv2.approxPolyDP(c, 0.02 * peri_best, True)
+            x, y, w, h = cv2.boundingRect(approx_best)
+            detection_box = (x, y, w, h)
+            # Dessiner le rectangle vert autour de la meilleure detection
+            cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            # Journaliser la detection
+            self.logs.append('Stop détecté : Position=({}, {}); Largeur={}; hauteur={};'.format(x, y, w, h))
+            # Ajouter un resume dans results (facultatif)
+            results.append({
+                'detected': True,
+                'contour_index': best_gess_idx,
+                'detection_box': detection_box,
+                'area': int(best_area)
+            })
+
+        self._save_step(overlay, 'contours_overlay', mode='bgr')
+
+        return results
+            

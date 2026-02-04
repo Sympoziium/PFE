@@ -16,6 +16,7 @@ Cette classe assure la gestion du pipeline de vision
 import threading
 import time
 
+from flask import jsonify
 
 
 class VisionPipeline:
@@ -25,9 +26,17 @@ class VisionPipeline:
         self.periode = 1.0 / fps
         self.running = False
         self.last_captured_image_url = None
+        self.CAPTURE_DIR = None
         # Buffer de la dernière image et protection de concurrence
         self._lock = threading.Lock()
         self._last_frame = None
+
+    def atach_capture_dir(self, capture_dir):
+        """Attache le dossier de capture d'images au détecteur."""
+        self.CAPTURE_DIR = capture_dir
+        # mise à jour pour chaque détecteur
+        for detector in self.detectors:
+            detector.atach_capture_dir(capture_dir)
 
     def start(self):
         """ appeler pour démarrer le pipeline de vision """
@@ -49,6 +58,7 @@ class VisionPipeline:
         
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
+        detectors.atach_capture_dir(self.CAPTURE_DIR) # transmettre le dossier de capture au détecteur
         self.detectors.append(detectors)
 
     def step(self):
@@ -171,3 +181,22 @@ class VisionPipeline:
         """ obtenir la caméra utilisée dans le pipeline de vision """
         return self.camera
     
+    def get_current_detector_diagnostic(self, detector_index=0, filename=None):
+        """ obtenir le diagnostic du détecteur courant """
+        if not self.detectors:
+            return jsonify({'error': 'Aucun détecteur disponible, ils sont attacher au VP dans le main'}), 400
+        
+        if detector_index < 0 or detector_index >= len(self.detectors):
+            return jsonify({'error': 'Index de détecteur invalide'}), 400
+        
+        if filename is None:
+            return jsonify({'error': 'Aucun fichier d\'image fourni pour le diagnostic'}), 400
+        
+        detector = self.detectors[detector_index]
+        try:
+            diagnostic = detector.diagnostique_detecteur(filename)
+            return diagnostic
+        except Exception as e:
+            print("Erreur lors de l'obtention du diagnostic du détecteur {}: {}".format(detector, e))
+            return jsonify({'error': 'Erreur lors de l\'obtention du diagnostic du détecteur'}), 500
+
