@@ -14,3 +14,10 @@ class BaseDetector(ABC):
         Analyse une image et retourne un résultat.
         """
         pass
+
+    @abstractmethod
+    def atach_capture_dir(self, capture_dir):
+        """
+        Attache le dossier de capture d'images au détecteur.
+        """
+        pass

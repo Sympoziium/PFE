@@ -44,3 +44,7 @@ class LuminosityDetector(BaseDetector):
         # voir si on doit convertir en niveaux de gris
 
         return frame
+    
+    def atach_capture_dir(self, capture_dir):
+        """Attache le dossier de capture d'images au détecteur."""
+        self.CAPTURE_DIR = capture_dir

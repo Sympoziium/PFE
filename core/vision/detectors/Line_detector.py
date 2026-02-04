@@ -16,3 +16,7 @@ class LineDetector(BaseDetector):
 
 
         return {"detector": "line", "value": self.detect_lines(frame)}
+    
+    def atach_capture_dir(self, capture_dir):
+        """Attache le dossier de capture d'images au détecteur."""
+        self.CAPTURE_DIR = capture_dir
