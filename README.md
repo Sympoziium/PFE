@@ -231,4 +231,5 @@ servira de base pour comparer avec nos propres détecteurs.
 
   - ajout d'un toggle button sur le UI de vision pour activer ou désactiver le download automatique des images capturé.
   - bug fix, on ferme le livefeed vidéo quand on change d'onglet
-  
+  - added un seul bouton pour lancer le diagnostique du detecteur actif.
+  - removed le boutton toggle d'affichage des resultats sous la boite de capture.

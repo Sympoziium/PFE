@@ -101,15 +101,26 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
 	}
 
+	.detector-btn {
+		background: #28a745; color: white; border: none; /* vert */
+		padding: 10px 18px; border-radius: 10px;
+		cursor: pointer; font-size: 15px;
+		active_detector: none;
+	}
+
+	.detector-btn:hover { background: #218838; } /* vert foncé au survol */
+
+
+
 	/* style bouton toggle */
 	.remoteDL-toggle-btn {
-	color: white; 
-	border: none; 
-	padding: 10px 18px; 
-	border-radius: 10px; 
-	cursor: pointer; 
-	margin-top: 15px; 
-	font-size: 15px;
+		color: white; 
+		border: none; 
+		padding: 10px 18px; 
+		border-radius: 10px; 
+		cursor: pointer; 
+		margin-top: 15px; 
+		font-size: 15px;
 	}
 
 	/* Etats explicites pour plus de robustesse */
@@ -263,8 +274,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 						<select id='detectorSelect' class='select-detector' onchange='onDetectorChange()'>
 							<!-- options remplies dynamiquement -->
 						</select>
-						<button class='primary-btn' onclick="runDetection()">Lancer Détection</button>
-						<button class='primary-btn' onclick="toggleResults()">Afficher/masquer Résultats</button>
+						<button class='detector-btn' id='runDetectionBtn' onclick="runDetection()">Lancer Détection</button>
+						<button class='detector-btn' id='runDiagnosticsBtn' onclick="runDiagnostics()">Diagnostique Détecteur</button>
 					</div>
 					<!-- Stop detection diagnostic panel -->
 					<div class='stop-detect-panel' id='stopDetectPanel'>
@@ -275,10 +286,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 									<img id='lastCapturedImage' alt='Dernière image capturée'>
 									<div id='bboxOverlay'></div> <!-- RETIRER PLUS TARD -->
 								</div>
-								<div style='margin-top:8px; text-align:right;'>
-									<button class='primary-btn' onclick='runStopDiagnostics()'>Diagnostiquer Stop (Zumi)</button>
-									<button class='primary-btn' onclick='runStopDiagnosticsCV()'>Diagnostiquer Stop (CV)</button>
-								</div>
 							</div>
 							<div class='indicator-and-terminal'>
 								<div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
@@ -288,9 +295,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					</div>
 					<!-- ajouter la dernière image capturée -->
 				</div>
-				
-				<!-- RETIRER CETTE SECTION -->
-				<div id='zone-resultats-detection' style='display:none;'></div>
 			</div>
 		</div>
 	</div>
@@ -614,9 +618,16 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			});
 	}
 
-	function toggleResults() {
-		const zone = document.getElementById('zone-resultats-detection');
-		zone.style.display = (zone.style.display === 'none' || zone.style.display === '') ? 'block' : 'none';
+	function runDiagnostics() {
+		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
+
+		if (detectorName === 'StopDetector') {
+			runStopDiagnostics();
+		} else if (detectorName === 'StopDetectorCV') {
+			runStopDiagnosticsCV();
+		} else {
+			alert('Aucun diagnostique disponible pour le détecteur sélectionné : ' + detectorName);
+		}
 	}
 
 	// Charger la liste des détecteurs au chargement de la page
