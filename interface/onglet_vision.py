@@ -102,8 +102,25 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	/* style bouton toggle */
+	.remoteDL-toggle-btn {
+	color: white; 
+	border: none; 
+	padding: 10px 18px; 
+	border-radius: 10px; 
+	cursor: pointer; 
+	margin-top: 15px; 
+	font-size: 15px;
+	}
+
+	/* Etats explicites pour plus de robustesse */
+	.remoteDL-toggle-btn.off { background: #dc3545; }
+	.remoteDL-toggle-btn.off:hover { background: #bd2130; }
+	.remoteDL-toggle-btn.on { background: #28a745; }
+	.remoteDL-toggle-btn.on:hover { background: #218838; }
+
+	/* style bouton toggle */
 	.toggle-btn {
-        background: #007acc; 
+        background: #007acc; /* bleu par défaut */
         color: white; 
         border: none; 
         padding: 10px 18px; 
@@ -227,7 +244,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<!-- AJOUT DES FONCTIONS DE CAPTURE -->
 				<button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>▶️ Start Camera</button>
 				<button class='primary-btn' onclick='captureImage()'>📸 Capture Image</button> 
-				
+				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false' onclick='toggleDownloadCaptured()'> 💾 Off</button>
 				<div id='zone-resultats'></div>
 				<!-- Conteneur du flux vidéo en direct -->
 				<div class='live-feed' id='liveFeed' style = 'display:none;'>
@@ -256,7 +273,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 							<div class='captured-box'>
 								<div style='position:relative; display:inline-block;'>
 									<img id='lastCapturedImage' alt='Dernière image capturée'>
-									<div id='bboxOverlay'></div>
+									<div id='bboxOverlay'></div> <!-- RETIRER PLUS TARD -->
 								</div>
 								<div style='margin-top:8px; text-align:right;'>
 									<button class='primary-btn' onclick='runStopDiagnostics()'>Diagnostiquer Stop (Zumi)</button>
@@ -272,6 +289,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					<!-- ajouter la dernière image capturée -->
 				</div>
 				
+				<!-- RETIRER CETTE SECTION -->
 				<div id='zone-resultats-detection' style='display:none;'></div>
 			</div>
 		</div>
@@ -300,9 +318,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		if (!isActive) {
 			btn.textContent = '⛔ Stop Camera';
 			fetch('/start_camera', { method: 'POST' })
-				.then(function() {
+				.then(function(response) {
+					if (!response.ok) throw new Error('start_camera failed: ' + response.status);
 					liveFeed.style.display = 'block';
 					img.src = '/video?' + new Date().getTime();
+				})
+				.catch(function(err) {
+					console.log('Erreur lors du demarrage de la camera : ' + err);
+					btn.textContent = '▶️ Start Camera';
 				});
 		} else {
             // 1. Cache le conteneur et change le bouton 
@@ -316,12 +339,27 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			fetch('/close_camera', { method: 'POST' }); 
 		}
 	}
-	
+
+	function toggleDownloadCaptured() {
+		console.log('toggleDownloadCaptured() appelee'); // pour debug
+		var btn = document.getElementById('toggleDownloadCapturedBtn');
+		var isActive = btn.getAttribute('aria-pressed') === 'true';
+		var nextActive = !isActive;
+		btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+		btn.classList.toggle('on', nextActive);
+		btn.classList.toggle('off', !nextActive);
+		btn.textContent = nextActive ? ' 💾 On' : ' 💾 Off';
+	}
+
 	function captureImage() {
 		console.log('captureImage() appelee'); // pour debug
+		var downloadEnabled = document.getElementById('toggleDownloadCapturedBtn').getAttribute('aria-pressed') === 'true';
 
 		fetch('/capture_image', { method: 'POST' })
-			.then(function(response) { return response.json(); })
+			.then(function(response) { 
+				if (!response.ok) throw new Error('Capture image echouee: ' + response.status);
+				return response.json();
+			})
 			.then(function(data) {
 				var file_url = data.file_url;
 				var download_url = data.download_url;
@@ -331,15 +369,19 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					alert('Erreur lors de la capture image : ' + error);
 					return;
 				}
-				alert('Image capturee et enregistree sur le serveur : ' + download_url);
-				// enregistrement de l'image sur le PC
-				var link = document.createElement('a');
-				link.href = download_url;
-				link.download = filename;
+
+				// enregistrement de l'image sur le PC client si demandé
+				if (downloadEnabled) {
+					alert('Image capturee et enregistree sur le serveur : ' + download_url);
+					var link = document.createElement('a');
+					link.href = download_url;
+					link.download = filename;
+					document.body.appendChild(link);
+					link.click();
+					link.remove();
+				}
+
 				imageCapturedCallback(file_url); // mise a jour de la dernière image capturée
-				document.body.appendChild(link);
-				link.click();
-				link.remove();
 			})
 			.catch(function(err) {
 				alert('Erreur lors de la communication avec le serveur : ' + err);
@@ -508,11 +550,21 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				if (payload.logs && Array.isArray(payload.logs)) {
 					terminal.textContent = payload.logs.join('\\n');
 				} else { terminal.textContent = JSON.stringify(payload, null, 2); }
+				// Stop detecte
+				if (payload.Stop_detected) {
+					indicator.classList.add('on');
+					indicator.textContent = 'STOP detecte (CV)';
+				} else {
+					indicator.classList.add('off');
+					indicator.textContent = 'Aucune detection (CV)';
+				}
+
 				// best bbox overlay
 				var best = payload.best || {};
 				var imgUrl = (payload.steps && payload.steps.length) ? payload.steps[payload.steps.length - 1].url : payload.source_file_url;
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				if (best.bbox) {
+				// enleve le draw de la bbox on le fait directement dans le backend sur une copie de l'image qu'on affiche ensuite
+				if (best.bbox) { 
 					updateOverlayBox(best.bbox);
 					indicator.classList.add('on');
 					indicator.textContent = 'STOP detecte (CV)';

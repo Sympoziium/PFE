@@ -225,3 +225,8 @@ servira de base pour comparer avec nos propres détecteurs.
 
 - Note technique:
   - Les frames caméra sont des `ndarray` au format BGR (OpenCV). Conversion en RGB uniquement si exigée par un détecteur (`cv2.cvtColor(..., cv2.COLOR_BGR2RGB)`).
+
+
+  ### Cleanup pré merge
+
+  - ajout d'un toggle button sur le UI de vision pour activer ou désactiver le download automatique des images capturé.
