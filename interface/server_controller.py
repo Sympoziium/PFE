@@ -567,7 +567,8 @@ class controller:
             payload = {
                 'source_file_url': source_url, # voir si on devris renvoyer le url de l'overlay a la place
                 'steps': steps,
-                # 'stop_sign_box': { 'bbox': stop_sign_box, 'area': int(best_area) }, # à retravailler pour le front voir si utile on  trace deja sur l'overlay
+                'Stop_detected': stop_sign_box is not None,
+                'stop_sign_box': { 'bbox': stop_sign_box, 'area': int(best_area) }, # à retravailler pour le front voir si utile on  trace deja sur l'overlay
                 'logs': logs
             }
             return jsonify(payload)
