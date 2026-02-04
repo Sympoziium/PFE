@@ -230,3 +230,5 @@ servira de base pour comparer avec nos propres détecteurs.
   ### Cleanup pré merge
 
   - ajout d'un toggle button sur le UI de vision pour activer ou désactiver le download automatique des images capturé.
+  - bug fix, on ferme le livefeed vidéo quand on change d'onglet
+  

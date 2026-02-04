@@ -231,9 +231,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<h2 class='tab-title'>{title}</h2>
 				<!-- Boutons de navigation entre onglets -->
 				<div class='tab-nav'>
-					<button class='primary-btn' data-path="/" onclick="location.href='/'">Accueil</button>
-					<button class='primary-btn' data-path="/vision" onclick="location.href='/vision'">Vision</button>
-					<button class='primary-btn' data-path="/onglet_template" onclick="location.href='/onglet_template'">Template</button>
+					<button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
+					<button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
+					<button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
 				</div>
 			</div>
 
@@ -308,6 +308,23 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			if (p === here) btn.classList.add('active');
 		});
 	})();
+
+	// Navigation helper: close camera feed if active before redirecting
+	function navigateTo(path) {
+		try {
+			var liveFeed = document.getElementById('liveFeed');
+			var isActive = liveFeed && liveFeed.style.display === 'block';
+			if (isActive) {
+				fetch('/close_camera', { method: 'POST' })
+					.then(function() { location.href = path; })
+					.catch(function() { location.href = path; });
+			} else {
+				location.href = path;
+			}
+		} catch (e) {
+			location.href = path;
+		}
+	}
 
 	function toggleCamera() { 
 		console.log('toggleCamera() appelee');
