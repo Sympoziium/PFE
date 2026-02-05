@@ -94,6 +94,17 @@ class RobotZumi(RobotBase):
         
         self.zumi.control_motors(left_speed, right_speed)
 
+    def turn(self, desired_angle, duration=1.5, max_speed=25, accuracy=1):
+        """
+        Effectue une rotation précise en utilisant le gyroscope interne.
+        """
+        try:
+            # On appelle la méthode de la bibliothèque Zumi originale
+            self.zumi.turn(desired_angle, duration, max_speed, accuracy)
+        except Exception as e:
+            print("Erreur lors de la rotation (turn): {}".format(e))
+
+            
     def stop(self):
         """
         Arrête les moteurs du Zumi.
