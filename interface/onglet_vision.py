@@ -319,14 +319,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		if (!term) return;
 		var newLines = Array.isArray(lineOrLines)
 			? lineOrLines
-			: String(lineOrLines).split('\n');
+			: String(lineOrLines).split('\\n');
 		var oldText = term.textContent || '';
-		var oldLines = oldText ? oldText.split('\n') : [];
+		var oldLines = oldText ? oldText.split('\\n') : [];
 		var combined = oldLines.concat(newLines);
 		if (combined.length > MAX_TERMINAL_LINES) {
 			combined = combined.slice(-MAX_TERMINAL_LINES);
 		}
-		term.textContent = combined.join('\n');
+		term.textContent = combined.join('\\n');
 		term.scrollTop = term.scrollHeight;
 	}
 
