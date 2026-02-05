@@ -14,7 +14,7 @@ from .detector_base import BaseDetector
 
 class StopDetectorCV(BaseDetector):
 
-    def __init__(self, min_area=500, aspect_tol=0.35, poly_min=6, poly_max=10, h_min=30, w_min=30, fill_ratio_min=0.5):
+    def __init__(self, min_area=500, aspect_tol=0.35, poly_min=5, poly_max=10, h_min=30, w_min=30, fill_ratio_min=0.5):
         """Détecteur de panneau STOP en utilisant une approche simple:
         - Segmentation des zones rouges en HSV
         - Extraction des contours
@@ -178,6 +178,7 @@ class StopDetectorCV(BaseDetector):
             # Étape 2: Conversion en HSV et séparation des canaux
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             mask = self._make_HSV_mask(hsv, diagnostic_mode=True)
+            mask = self._fill_holes(mask) # remplir les trous laisser par le texte du panneau
 
             # Étape 3: Opérations morphologiques pour nettoyage et reconstruction de l'image
             mask_morpho = self._make_morphological_mask(mask, diagnostic_mode=True)
@@ -281,22 +282,6 @@ class StopDetectorCV(BaseDetector):
         hsv_combined_mask = cv2.bitwise_and(h_mask, s_mask)
         # le mask v n'apporte pas grand chose on est mieux sans
 
-        # TEST HSV MASK PROPOSED PAR CHATGPT
-        # Rouge bas
-        lower_red1 = np.array([0, 80, 50])
-        upper_red1 = np.array([10, 255, 255])
-
-        # Rouge haut
-        lower_red2 = np.array([170, 80, 50])
-        upper_red2 = np.array([180, 255, 255])
-
-        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-
-        hsv_mask = cv2.bitwise_or(mask1, mask2)
-        if diagnostic_mode:
-            self._save_step(hsv_mask, 'hsv_full_mask', 'gray')
-
         # Binarisation du masque combiné
         _, mask = cv2.threshold(hsv_combined_mask, 1, 255, cv2.THRESH_BINARY)
         
@@ -305,6 +290,19 @@ class StopDetectorCV(BaseDetector):
             self._save_step(mask, 'initial_mask', mode='gray')
 
         return mask
+    
+    def _fill_holes(self, mask):
+        h, w = mask.shape
+        flood = mask.copy()
+
+        # Masque pour floodFill (obligatoire: +2 pixels)
+        ff_mask = np.zeros((h+2, w+2), np.uint8)
+
+        cv2.floodFill(flood, ff_mask, (0, 0), 255)
+        flood_inv = cv2.bitwise_not(flood)
+
+        return mask | flood_inv
+
     
     def _make_morphological_mask(self, mask, diagnostic_mode=False):
         """
@@ -396,7 +394,9 @@ class StopDetectorCV(BaseDetector):
             if vtx < self.poly_min or vtx > self.poly_max:
                 continue
             # Si le contour n'est pas convexe, on ignore (panneau stop est convexe)
-            if not convex:
+            hull = cv2.convexHull(c)
+            hull_area = cv2.contourArea(hull)
+            if area / hull_area < 0.85:
                 continue
             # Si la boite englobante est trop petite, ces soit une abérration ou le panneau est trop loin 
             if h < self.h_min or w < self.w_min:
