@@ -77,7 +77,7 @@ def control_loop():
             print('L = ', l_speed, 'R = ', r_speed)
 
             if (3 < abs(line_val) < 25):
-                zumi.stop()
+                zumi.turn(-line_val, duration=1.5, max_speed=25, accuracy=1)
                 #zumi.control_motors(r_speed, l_speed)
         else:
             zumi.stop()
