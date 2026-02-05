@@ -312,6 +312,29 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		});
 	})();
 
+	// --- Terminal helpers: append + trim ---
+	var MAX_TERMINAL_LINES = 300;
+	function appendTerminalLines(lineOrLines) {
+		var term = document.getElementById('stopDetectTerminal');
+		if (!term) return;
+		var newLines = Array.isArray(lineOrLines)
+			? lineOrLines
+			: String(lineOrLines).split('\n');
+		var oldText = term.textContent || '';
+		var oldLines = oldText ? oldText.split('\n') : [];
+		var combined = oldLines.concat(newLines);
+		if (combined.length > MAX_TERMINAL_LINES) {
+			combined = combined.slice(-MAX_TERMINAL_LINES);
+		}
+		term.textContent = combined.join('\n');
+		term.scrollTop = term.scrollHeight;
+	}
+
+	function clearTerminal() {
+		var term = document.getElementById('stopDetectTerminal');
+		if (term) term.textContent = '';
+	}
+
 	// Navigation helper: close camera feed if active before redirecting
 	function navigateTo(path) {
 		try {
@@ -527,14 +550,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
 		indicator.textContent = 'Diagnostic en cours...';
-		terminal.textContent = 'Execution du balayage des parametres...\\n';
+		appendTerminalLines('Execution du balayage des parametres...');
 		fetch('/diagnose_stop', { method: 'POST' })
 			.then(function(r) { return r.json(); })
 			.then(function(payload) {
 				if (payload.logs && Array.isArray(payload.logs)) {
-					terminal.textContent = payload.logs.join('\\n');
+					appendTerminalLines(payload.logs);
 				} else {
-					terminal.textContent = JSON.stringify(payload, null, 2);
+					appendTerminalLines(JSON.stringify(payload, null, 2));
 				}
 				var best = payload.best || {};
 				var imgUrl = best.file_url || payload.source_file_url;
@@ -550,7 +573,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 			})
 			.catch(function(err) {
-				terminal.textContent = 'Erreur: ' + err;
+				appendTerminalLines('Erreur: ' + err);
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
 				indicator.textContent = 'Erreur';
@@ -562,14 +585,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
 		indicator.textContent = 'Diagnostic CV en cours...';
-		terminal.textContent = 'Execution du diagnostic CV...\\n';
+		appendTerminalLines('Execution du diagnostic CV...');
 		fetch('/diagnose_stop_cv', { method: 'POST' })
 			.then(function(r) { return r.json(); })
 			.then(function(payload) {
 				// logs
 				if (payload.logs && Array.isArray(payload.logs)) {
-					terminal.textContent = payload.logs.join('\\n');
-				} else { terminal.textContent = JSON.stringify(payload, null, 2); }
+					appendTerminalLines(payload.logs);
+				} else { appendTerminalLines(JSON.stringify(payload, null, 2)); }
 				// Stop detecte
 				if (payload.Stop_detected) {
 					indicator.classList.add('on');
@@ -610,7 +633,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 			})
 			.catch(function(err) {
-				terminal.textContent = 'Erreur: ' + err;
+				appendTerminalLines('Erreur: ' + err);
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
 				indicator.textContent = 'Erreur';
