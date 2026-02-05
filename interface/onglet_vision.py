@@ -206,6 +206,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		max-width: 100%; height: auto; border-radius: 8px; border: 4px solid #00BFFF;
 	}
 
+	/*
 	#bboxOverlay {
 		position: absolute;
 		border: 4px solid #00FF00;
@@ -214,6 +215,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		box-shadow: 0 0 8px rgba(0, 255, 0, 0.6);
 		pointer-events: none;
 	}
+	*/
 
 	.indicator-and-terminal {
 		flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: stretch;
@@ -242,9 +244,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<h2 class='tab-title'>{title}</h2>
 				<!-- Boutons de navigation entre onglets -->
 				<div class='tab-nav'>
-					<button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
-					<button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
-					<button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
+					<button class='primary-btn' data-path="/">Accueil</button>
+					<button class='primary-btn' data-path="/vision">Vision</button>
+					<button class='primary-btn' data-path="/onglet_template">Template</button>
 				</div>
 			</div>
 
@@ -253,9 +255,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					<h3 class='tab-subtitle'>Capture image</h3>
 				</div>
 				<!-- AJOUT DES FONCTIONS DE CAPTURE -->
-				<button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>▶️ Start Camera</button>
-				<button class='primary-btn' onclick='captureImage()'>📸 Capture Image</button> 
-				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false' onclick='toggleDownloadCaptured()'> 💾 Off</button>
+				<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
+				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button> 
+				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
 				<div id='zone-resultats'></div>
 				<!-- Conteneur du flux vidéo en direct -->
 				<div class='live-feed' id='liveFeed' style = 'display:none;'>
@@ -271,11 +273,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<div class='tab-row'>
 					<div class='tab-btn-group'>
 						<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
-						<select id='detectorSelect' class='select-detector' onchange='onDetectorChange()'>
+						<select id='detectorSelect' class='select-detector'>
 							<!-- options remplies dynamiquement -->
 						</select>
-						<button class='detector-btn' id='runDetectionBtn' onclick="runDetection()">Lancer Détection</button>
-						<button class='detector-btn' id='runDiagnosticsBtn' onclick="runDiagnostics()">Diagnostique Détecteur</button>
+						<button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
+						<button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
 					</div>
 					<!-- Stop detection diagnostic panel -->
 					<div class='stop-detect-panel' id='stopDetectPanel'>
@@ -335,6 +337,29 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		if (term) term.textContent = '';
 	}
 
+	// --- Unified error logging: console + UI terminal ---
+	function nowTS() { return new Date().toISOString(); }
+	function logError(context, error, extra) {
+		var lines = [];
+		lines.push('[' + nowTS() + '] ERROR in ' + context);
+		if (extra) {
+			try { lines.push('Details: ' + JSON.stringify(extra)); } catch (e) {}
+		}
+		var msg = (error && error.message) ? error.message : String(error);
+		lines.push('Message: ' + msg);
+		if (error && error.stack) { lines.push('Stack: ' + error.stack); }
+		appendTerminalLines(lines);
+		console.error('[UI]', context, error, extra || '');
+	}
+
+	// Global error hooks for maximum visibility
+	window.addEventListener('error', function(e) {
+		logError('window.onerror', e.error || e.message);
+	});
+	window.addEventListener('unhandledrejection', function(e) {
+		logError('window.unhandledrejection', e.reason);
+	});
+
 	// Navigation helper: close camera feed if active before redirecting
 	function navigateTo(path) {
 		try {
@@ -343,11 +368,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			if (isActive) {
 				fetch('/close_camera', { method: 'POST' })
 					.then(function() { location.href = path; })
-					.catch(function() { location.href = path; });
+					.catch(function(err) { logError('navigateTo: /close_camera', err, { path: path }); location.href = path; });
 			} else {
 				location.href = path;
 			}
 		} catch (e) {
+			logError('navigateTo', e, { path: path });
 			location.href = path;
 		}
 	}
@@ -362,12 +388,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			btn.textContent = '⛔ Stop Camera';
 			fetch('/start_camera', { method: 'POST' })
 				.then(function(response) {
-					if (!response.ok) throw new Error('start_camera failed: ' + response.status);
+					if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
 					liveFeed.style.display = 'block';
 					img.src = '/video?' + new Date().getTime();
 				})
 				.catch(function(err) {
-					console.log('Erreur lors du demarrage de la camera : ' + err);
+					logError('toggleCamera: /start_camera', err);
 					btn.textContent = '▶️ Start Camera';
 				});
 		} else {
@@ -379,7 +405,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
             img.src = "";  
             
             // 3. Envoie la commande d'arret au serveur 
-			fetch('/close_camera', { method: 'POST' }); 
+			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); }); 
 		}
 	}
 
@@ -400,7 +426,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 		fetch('/capture_image', { method: 'POST' })
 			.then(function(response) { 
-				if (!response.ok) throw new Error('Capture image echouee: ' + response.status);
+				if (!response.ok) throw new Error('capture_image failed: ' + response.status + ' ' + response.statusText);
 				return response.json();
 			})
 			.then(function(data) {
@@ -409,6 +435,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				var filename = data.filename;
 				var error = data.error;
 				if (error) {
+					logError('captureImage: server payload error', new Error(error), { filename: filename });
 					alert('Erreur lors de la capture image : ' + error);
 					return;
 				}
@@ -427,8 +454,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				imageCapturedCallback(file_url); // mise a jour de la dernière image capturée
 			})
 			.catch(function(err) {
+				logError('captureImage: /capture_image', err);
 				alert('Erreur lors de la communication avec le serveur : ' + err);
-				console.log('Erreur lors de la communication avec le serveur : ' + err); // pour debug
 			});
 	}
 	
@@ -438,7 +465,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		const img = document.getElementById('lastCapturedImage');
 		panel.style.display = panel.style.display === 'none' ? 'none' : 'block';
 		img.src = imageUrl;
-		clearOverlayBox();
 	}
 	
 	// --- Détecteurs: chargement, sélection et exécution ---
@@ -447,7 +473,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 	function loadDetectors() {
 		fetch('/detectors')
-			.then(function(r) { return r.json(); })
+			.then(function(r) { if (!r.ok) throw new Error('detectors failed: ' + r.status + ' ' + r.statusText); return r.json(); })
 			.then(function(resp) {
 				var detectors = resp.detectors;
 				var selected = resp.selected;
@@ -475,7 +501,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					updateStopUIPanelVisibility();
 				}
 			})
-			.catch(function() {});
+			.catch(function(err) { logError('loadDetectors: /detectors', err); });
 	}
 
 	function onDetectorChange() {
@@ -486,18 +512,18 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ index: idx })
-		}).catch(function() {});
+		}).catch(function(err) { logError('onDetectorChange: /detector', err, { index: idx }); });
 		SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
 		updateStopUIPanelVisibility();
 	}
 
 	function runDetection() {
 		fetch('/run_detection', { method: 'POST' })
-			.then(function(r) { return r.json(); })
+			.then(function(r) { if (!r.ok) throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText); return r.json(); })
 			.then(function(res) {
-				var zone = document.getElementById('zone-resultats-detection');
-				zone.style.display = 'block';
-				zone.textContent = JSON.stringify(res, null, 2);
+				var terminal = document.getElementById('stopDetectTerminal');
+				terminal.style.display = 'block';
+				terminal.textContent = JSON.stringify(res, null, 2);
 				if (res && res.annotated_file_url) {
 					imageCapturedCallback(res.annotated_file_url);
 				} else if (res && res.source_file_url) {
@@ -505,9 +531,10 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 			})
 			.catch(function(err) {
-				var zone2 = document.getElementById('zone-resultats-detection');
-				zone2.style.display = 'block';
-				zone2.textContent = 'Erreur: ' + err;
+				logError('runDetection: /run_detection', err);
+				var terminal = document.getElementById('stopDetectTerminal');
+				terminal.style.display = 'block';
+				terminal.textContent = 'Erreur: ' + err;
 			});
 	}
 
@@ -518,6 +545,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetector') !== -1) ? 'block' : 'none';
 	}
 
+	/*
 	function clearOverlayBox() {
 		var box = document.getElementById('bboxOverlay');
 		if (!box) return;
@@ -525,6 +553,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		box.style.left = '0px'; box.style.top = '0px'; box.style.width = '0px'; box.style.height = '0px';
 	}
 
+	
 	function updateOverlayBox(bbox) {
 		var img = document.getElementById('lastCapturedImage');
 		var box = document.getElementById('bboxOverlay');
@@ -544,6 +573,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		box.style.height = Math.round(h) + 'px';
 		box.style.display = 'block';
 	}
+	*/
 
 	function runStopDiagnostics() {
 		var indicator = document.getElementById('stopDetectIndicator');
@@ -552,7 +582,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		indicator.textContent = 'Diagnostic en cours...';
 		appendTerminalLines('Execution du balayage des parametres...');
 		fetch('/diagnose_stop', { method: 'POST' })
-			.then(function(r) { return r.json(); })
+			.then(function(r) { if (!r.ok) throw new Error('diagnose_stop failed: ' + r.status + ' ' + r.statusText); return r.json(); })
 			.then(function(payload) {
 				if (payload.logs && Array.isArray(payload.logs)) {
 					appendTerminalLines(payload.logs);
@@ -563,17 +593,15 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				var imgUrl = best.file_url || payload.source_file_url;
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
 				if (best.bbox) {
-					updateOverlayBox(best.bbox);
 					indicator.classList.add('on');
 					indicator.textContent = 'STOP detecte';
 				} else {
-					clearOverlayBox();
 					indicator.classList.add('off');
 					indicator.textContent = 'Aucune detection';
 				}
 			})
 			.catch(function(err) {
-				appendTerminalLines('Erreur: ' + err);
+				logError('runStopDiagnostics: /diagnose_stop', err);
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
 				indicator.textContent = 'Erreur';
@@ -587,7 +615,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		indicator.textContent = 'Diagnostic CV en cours...';
 		appendTerminalLines('Execution du diagnostic CV...');
 		fetch('/diagnose_stop_cv', { method: 'POST' })
-			.then(function(r) { return r.json(); })
+			.then(function(r) { if (!r.ok) throw new Error('diagnose_stop_cv failed: ' + r.status + ' ' + r.statusText); return r.json(); })
 			.then(function(payload) {
 				// logs
 				if (payload.logs && Array.isArray(payload.logs)) {
@@ -608,11 +636,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
 				// enleve le draw de la bbox on le fait directement dans le backend sur une copie de l'image qu'on affiche ensuite
 				if (best.bbox) { 
-					updateOverlayBox(best.bbox);
 					indicator.classList.add('on');
 					indicator.textContent = 'STOP detecte (CV)';
 				} else {
-					clearOverlayBox();
 					indicator.classList.add('off');
 					indicator.textContent = 'Aucune detection (CV)';
 				}
@@ -633,7 +659,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 			})
 			.catch(function(err) {
-				appendTerminalLines('Erreur: ' + err);
+				logError('runStopDiagnosticsCV: /diagnose_stop_cv', err);
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
 				indicator.textContent = 'Erreur';
@@ -652,8 +678,36 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		}
 	}
 
-	// Charger la liste des détecteurs au chargement de la page
-	window.addEventListener('DOMContentLoaded', loadDetectors);
+	// Charger la liste des détecteurs au chargement de la page et lier les événements
+	window.addEventListener('DOMContentLoaded', function() {
+		loadDetectors();
+		// Navigation buttons
+		var navBtns = document.querySelectorAll('.tab-nav .primary-btn');
+		Array.prototype.forEach.call(navBtns, function(btn) {
+			btn.addEventListener('click', function() {
+				var path = btn.getAttribute('data-path');
+				navigateTo(path);
+			});
+		});
+		// Camera toggle
+		var camBtn = document.getElementById('cameraToggleBtn');
+		if (camBtn) camBtn.addEventListener('click', toggleCamera);
+		// Capture image
+		var capBtn = document.getElementById('captureImageBtn');
+		if (capBtn) capBtn.addEventListener('click', captureImage);
+		// Toggle download
+		var dlBtn = document.getElementById('toggleDownloadCapturedBtn');
+		if (dlBtn) dlBtn.addEventListener('click', toggleDownloadCaptured);
+		// Run detection
+		var runDetBtn = document.getElementById('runDetectionBtn');
+		if (runDetBtn) runDetBtn.addEventListener('click', runDetection);
+		// Run diagnostics
+		var runDiagBtn = document.getElementById('runDiagnosticsBtn');
+		if (runDiagBtn) runDiagBtn.addEventListener('click', runDiagnostics);
+		// Detector select change
+		var sel = document.getElementById('detectorSelect');
+		if (sel) sel.addEventListener('change', onDetectorChange);
+	});
 
 	// --- Exposer les fonctions au scope global pour les onclick inline ---
 	window.navigateTo = navigateTo;
