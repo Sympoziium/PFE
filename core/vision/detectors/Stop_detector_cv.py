@@ -281,6 +281,22 @@ class StopDetectorCV(BaseDetector):
         hsv_combined_mask = cv2.bitwise_and(h_mask, s_mask)
         # le mask v n'apporte pas grand chose on est mieux sans
 
+        # TEST HSV MASK PROPOSED PAR CHATGPT
+        # Rouge bas
+        lower_red1 = np.array([0, 80, 50])
+        upper_red1 = np.array([10, 255, 255])
+
+        # Rouge haut
+        lower_red2 = np.array([170, 80, 50])
+        upper_red2 = np.array([180, 255, 255])
+
+        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+
+        hsv_mask = cv2.bitwise_or(mask1, mask2)
+        if diagnostic_mode:
+            self._save_step(hsv_mask, 'hsv_full_mask', 'gray')
+
         # Binarisation du masque combiné
         _, mask = cv2.threshold(hsv_combined_mask, 1, 255, cv2.THRESH_BINARY)
         
