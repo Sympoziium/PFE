@@ -53,10 +53,10 @@ class LineFollowerControl:
         #    return 0, 0  # On s'arrête si on perd la ligne
         # Calcul de la correction (steering)
         # Si line_error > 0 (ligne à droite), turn_output sera positif
-        turn_output = line_error * self.kp
+        output = line_error * self.kp
 
         # Calcul des vitesses pour chaque roue
-        left_speed = self.base_speed + turn_output
-        right_speed = self.base_speed - turn_output
-        return int(left_speed), int(right_speed)
+        #left_speed = self.base_speed + turn_output
+        #right_speed = self.base_speed - turn_output
+        return output
         #return 0,0

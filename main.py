@@ -73,12 +73,12 @@ def control_loop():
         
         # 4. Logique de suivi
         if line_val is not None:
-            l_speed, r_speed = follower.compute_commands(line_val)
-            print('L = ', l_speed, 'R = ', r_speed)
-
+            #l_speed, r_speed = follower.compute_commands(line_val)
+            #print('L = ', l_speed, 'R = ', r_speed)
+            output = follower.compute_commands(line_val)
             if (3 < abs(line_val) <80):
                            
-                zumi.turn(-line_val/3, duration=1.5, max_speed=25, accuracy=1)
+                zumi.turn(output, duration=1.5, max_speed=25, accuracy=1)
                 #zumi.control_motors(r_speed, l_speed)
         else:
             zumi.stop()
