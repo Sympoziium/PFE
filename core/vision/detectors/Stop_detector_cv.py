@@ -260,7 +260,7 @@ class StopDetectorCV(BaseDetector):
 
         # Étape 2: Conception de masques optmisés pour le rouge en HSV
         # filtrage par saturation
-        s_mask = cv2.inRange(s, 90, 255) # 90 et plus semble bien isoler le rouge
+        s_mask = cv2.inRange(s, 95, 255) # 90 et plus semble bien isoler le rouge
         if diagnostic_mode:
             self._save_step(s_mask, 's_mask', 'gray')
 
@@ -272,7 +272,7 @@ class StopDetectorCV(BaseDetector):
         # le filtre v n'apporte pas grand chose de plus mais on le garde pour le debug
         # il varie énormément selon l'éclairage n'est pas très fiable.
         v_mask = np.zeros(v.shape, dtype=np.uint8)
-        v_mask[s > 90] = 255
+        v_mask[s > 95] = 255
         if diagnostic_mode:
             self._save_step(v_mask, 'v_mask', 'gray')
 
@@ -303,10 +303,10 @@ class StopDetectorCV(BaseDetector):
                     
         # B. Appliquer les opérations morphologiques
             # I. Nettoyage du bruit
-        mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=2)
+        mask_open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=3)
 
             # II. Reconstruction du panneau
-        mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel_close, iterations=3)
+        mask_close = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel_close, iterations=4)
         
         if diagnostic_mode:
             # Sauvegarde des masques morphologiques
