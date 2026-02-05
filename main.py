@@ -70,10 +70,12 @@ def control_loop():
             if res.get("detector") == "line":
                 line_val = res.get("value")
         print(line_val)
+        l_speed, r_speed = follower.compute_commands(line_val)
+        print('L = ', l_speed, 'R = ', r_speed)
         # 4. Logique de suivi
         if line_val is not None and (3 < abs(line_val) < 20):
             # Utilisez vos variables de vitesse (follower.compute_commands)
-            l_speed, r_speed = follower.compute_commands(line_val)
+            
             zumi.control_motors(r_speed, l_speed)
         else:
             zumi.stop()
