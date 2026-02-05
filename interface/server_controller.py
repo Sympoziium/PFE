@@ -400,6 +400,7 @@ class controller:
         
         try:
             diagnostic = vp.get_current_detector_diagnostic(filename=filename, detector_index=self.selected_detector_index)
+            # Le détecteur retourne un dict; on jsonify ici pour standardiser les endpoints.
             return jsonify(diagnostic)
         except Exception as e:
             return jsonify({'error': 'diagnose_stop_cv failed', 'details': str(e)}), 500

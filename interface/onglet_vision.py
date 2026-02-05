@@ -229,7 +229,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 	.log-terminal {
 		background: #000; color: #fff; font-family: Consolas, monospace; font-size: 13px;
-		border-radius: 10px; padding: 10px; min-height: 120px; max-height: 220px; overflow: auto;
+		border-radius: 10px; padding: 10px; min-height: 200px; min-width: 100px; overflow: auto;
 		white-space: pre-wrap;
 	}
 
@@ -284,7 +284,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 							<div class='captured-box'>
 								<div style='position:relative; display:inline-block;'>
 									<img id='lastCapturedImage' alt='Dernière image capturée'>
-									<div id='bboxOverlay'></div> <!-- RETIRER PLUS TARD -->
 								</div>
 							</div>
 							<div class='indicator-and-terminal'>

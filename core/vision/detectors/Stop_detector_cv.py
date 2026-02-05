@@ -7,7 +7,7 @@
 import cv2
 import numpy as np
 import os, uuid
-from flask import jsonify, url_for
+from flask import url_for
 
 from .detector_base import BaseDetector
 
@@ -152,12 +152,15 @@ class StopDetectorCV(BaseDetector):
         # if vp is None:
         #     return jsonify({'error': 'Video pipeline not initialized'}), 400
 
+        # Réinitialiser et valider l'entrée
+        self.steps = []
+        self.logs = []
         if not filename:
-            return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
+            return {'error': 'no captured image available. Please capture an image first.'}
 
         img_path = os.path.join(self.CAPTURE_DIR, filename)
         if not os.path.exists(img_path):
-            return jsonify({'error': 'last captured image not found on server'}), 404
+            return {'error': 'last captured image not found on server'}
 
         # Crée le dossier de diagnostics s'il n'existe pas (on y stoque les images intermédiaires)
         self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
@@ -167,7 +170,7 @@ class StopDetectorCV(BaseDetector):
             # Charger l'image capturée
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
-                return jsonify({'error': 'failed to read captured image'}), 500
+                return {'error': 'failed to read captured image'}
 
             # Étape 1: Sauvegarde de l'image originale
             self._save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
@@ -193,16 +196,17 @@ class StopDetectorCV(BaseDetector):
                 'source_file_url': source_url,
                 'overlay_url': self.steps[-1]['url'] if self.steps else None,
                 'steps': self.steps,
-                'Stop_detected': results['detected'],
-                'detection_box': results['detection_box'], 
-                'area': int(results['area']),
+                'Stop_detected': bool(results.get('detected')),
+                'best': {'bbox': results.get('detection_box'), 'area': int(results.get('area', 0))},
+                'detection_box': results.get('detection_box'),
+                'area': int(results.get('area', 0)),
                 'logs': self.logs
             }
 
-            return jsonify(payload)
+            return payload
         
         except Exception as e:
-            return jsonify({'error': 'diagnose_stop_cv failed', 'details': str(e)}), 500
+            return {'error': 'diagnose_stop_cv failed', 'details': str(e)}
 
     def _save_step(self, img, name, mode):
         """
@@ -243,7 +247,7 @@ class StopDetectorCV(BaseDetector):
         """Crée un masque binaire pour les zones rouges dans une image HSV."""
         
         if hsv is None:
-            return jsonify({'error': 'No image provided for HSV masking'}), 400
+            raise ValueError('No image provided for HSV masking')
         
         # Étape 1: Séparation des canaux HSV 
         h, s, v = cv2.split(hsv)
@@ -340,7 +344,8 @@ class StopDetectorCV(BaseDetector):
         detection_box = None
         best_area = 0
         best_gess_idx = -1
-        results = []
+        # Résumé final
+        summary = {'detected': False, 'detection_box': None, 'area': 0}
 
         for idx, c in enumerate(contours):
             # --- Calcul des caractéristiques du contour ---
@@ -397,15 +402,14 @@ class StopDetectorCV(BaseDetector):
             cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
             # Journaliser la detection
             self.logs.append('Stop détecté : Position=({}, {}); Largeur={}; hauteur={};'.format(x, y, w, h))
-            # Ajouter un resume dans results (facultatif)
-            results.append({
+            # Mettre à jour le résumé
+            summary = {
                 'detected': True,
-                'contour_index': best_gess_idx,
                 'detection_box': detection_box,
                 'area': int(best_area)
-            })
+            }
 
         self._save_step(overlay, 'contours_overlay', mode='bgr')
 
-        return results
+        return summary
             

@@ -16,8 +16,6 @@ Cette classe assure la gestion du pipeline de vision
 import threading
 import time
 
-from flask import jsonify
-
 
 class VisionPipeline:
     def __init__(self, camera, detectors=None, fps=30):
@@ -184,13 +182,13 @@ class VisionPipeline:
     def get_current_detector_diagnostic(self, detector_index=0, filename=None):
         """ obtenir le diagnostic du détecteur courant """
         if not self.detectors:
-            return jsonify({'error': 'Aucun détecteur disponible, ils sont attacher au VP dans le main'}), 400
+            return {'error': 'Aucun détecteur disponible, ils sont attacher au VP dans le main'}
         
         if detector_index < 0 or detector_index >= len(self.detectors):
-            return jsonify({'error': 'Index de détecteur invalide'}), 400
+            return {'error': 'Index de détecteur invalide'}
         
         if filename is None:
-            return jsonify({'error': 'Aucun fichier d\'image fourni pour le diagnostic'}), 400
+            return {'error': "Aucun fichier d'image fourni pour le diagnostic"}
         
         detector = self.detectors[detector_index]
         try:
@@ -198,5 +196,5 @@ class VisionPipeline:
             return diagnostic
         except Exception as e:
             print("Erreur lors de l'obtention du diagnostic du détecteur {}: {}".format(detector, e))
-            return jsonify({'error': 'Erreur lors de l\'obtention du diagnostic du détecteur'}), 500
+            return {'error': "Erreur lors de l'obtention du diagnostic du détecteur", 'details': str(e)}
 
