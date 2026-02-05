@@ -72,7 +72,7 @@ def control_loop():
         print(line_val)
         
         # 4. Logique de suivi
-        if line_val is not None
+        if line_val is not None:
             l_speed, r_speed = follower.compute_commands(line_val)
             print('L = ', l_speed, 'R = ', r_speed)
 
