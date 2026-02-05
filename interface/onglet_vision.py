@@ -654,6 +654,15 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 	// Charger la liste des détecteurs au chargement de la page
 	window.addEventListener('DOMContentLoaded', loadDetectors);
+
+	// --- Exposer les fonctions au scope global pour les onclick inline ---
+	window.navigateTo = navigateTo;
+	window.toggleCamera = toggleCamera;
+	window.toggleDownloadCaptured = toggleDownloadCaptured;
+	window.captureImage = captureImage;
+	window.runDetection = runDetection;
+	window.runDiagnostics = runDiagnostics;
+	window.onDetectorChange = onDetectorChange;
 	</script>
 	</body></html>
 	"""
