@@ -321,10 +321,16 @@ class StopDetectorCV(BaseDetector):
         
         :param mask: Description
         """
-        # Trouver les contours
-        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Trouver les contours (compatibilité OpenCV 3/4)
+        result = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if len(result) == 2:
+            contours, hierarchy = result
+        elif len(result) == 3:
+            _, contours, hierarchy = result
+        else:
+            contours, hierarchy = [], None
 
-        if hierarchy is None or len(hierarchy) == 0:
+        if hierarchy is None or (hasattr(hierarchy, '__len__') and len(hierarchy) == 0):
             print("No contours found. Hierarchy is empty. voir classe StopDetectorCV méthode _detect_contours") # pour debug retirer plus tard
             self.logs.append('No contours detected.')
             return []
