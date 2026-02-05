@@ -62,7 +62,8 @@ def control_loop():
     
     while True:
 
-
+        if is_calibrating:
+            zumi.calibrate()
         results = vision_pipeline.step()
         
         line_val = None

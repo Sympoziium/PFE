@@ -104,6 +104,15 @@ class RobotZumi(RobotBase):
         except Exception as e:
             print("Erreur lors de la rotation (turn): {}".format(e))
 
+    def calibrate(self):
+        """
+        Reset MPU
+        """
+        try:
+            self.zumi.mpu.calibrate_MPU(count=500)
+        except Exception as e:
+            print("Erreur lors de la rcalibration {}".format(e))
+
             
     def stop(self):
         """
