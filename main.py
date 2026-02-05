@@ -76,7 +76,7 @@ def control_loop():
             l_speed, r_speed = follower.compute_commands(line_val)
             print('L = ', l_speed, 'R = ', r_speed)
 
-            if (3 < abs(line_val) <50):
+            if (3 < abs(line_val) <80):
                            
                 zumi.turn(-line_val/3, duration=1.5, max_speed=25, accuracy=1)
                 #zumi.control_motors(r_speed, l_speed)
