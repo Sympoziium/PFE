@@ -61,17 +61,8 @@ def control_loop():
     vision_pipeline.start()
     
     while True:
-        # 1. Vérification du flag de calibration
-        if is_calibrating:
-            time.sleep(0.1)
-            continue
 
-        # 2. Vérification que la caméra tourne
-        if not vision_pipeline.is_running():
-            time.sleep(0.1)
-            continue
 
-        # 3. Traitement de la vision
         results = vision_pipeline.step()
         
         line_val = None
@@ -82,8 +73,8 @@ def control_loop():
         # 4. Logique de suivi
         if line_val is not None and (3 < abs(line_val) < 20):
             # Utilisez vos variables de vitesse (follower.compute_commands)
-            # l_speed, r_speed = follower.compute_commands(line_val)
-            zumi.control_motors(10, 0)
+            l_speed, r_speed = follower.compute_commands(line_val)
+            #zumi.control_motors(10, 0)
         else:
             zumi.stop()
 
