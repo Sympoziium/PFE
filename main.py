@@ -76,6 +76,7 @@ def control_loop():
             #l_speed, r_speed = follower.compute_commands(line_val)
             #print('L = ', l_speed, 'R = ', r_speed)
             output = follower.compute_commands(line_val)
+            print('output = ', output)
             if (3 < abs(line_val) <80):
                            
                 zumi.turn(output, duration=1.5, max_speed=25, accuracy=1)
