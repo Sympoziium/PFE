@@ -227,7 +227,7 @@ class controller:
             if frame_bgr is None:
                 return jsonify({'error': 'failed to read captured image'}), 500
 
-            results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index)
+            results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index, filename=filename)
 
             # !!!!  Retravail le formatage des résultats. la fonction retourne déja un dict 
             # 

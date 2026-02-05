@@ -47,7 +47,7 @@ class StopDetectorCV(BaseDetector):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
-    def process(self, frame):
+    def process(self, frame, filename=None):
         """Analyse une image BGR et retourne un dict de résultat.
 
         Returns:
@@ -58,27 +58,84 @@ class StopDetectorCV(BaseDetector):
                 "Object size": (w, h) or None
             }
         """
-        try:
-            print("Processing frame in StopDetectorCV...")
-            bbox = self._detect_stop_bgr(frame)
-        except Exception:
-            bbox = None
 
-        if bbox is not None:
-            x, y, w, h = bbox
-            return {
-                "Detector": self.name,
-                "Object detected": True,
-                "Object coordinates": (int(x), int(y)),
-                "Object size": (int(w), int(h)),
+        
+        # Réinitialiser et valider l'entrée
+        self.steps = []
+        self.logs = []
+        if not filename:
+            return {'error': 'no captured image available. Please capture an image first.'}
+
+        img_path = os.path.join(self.CAPTURE_DIR, filename)
+        if not os.path.exists(img_path):
+            return {'error': 'last captured image not found on server'}
+
+        # Crée le dossier de diagnostics s'il n'existe pas (on y stoque les images intermédiaires)
+        self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
+        os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
+
+        try:
+            # Charger l'image capturée
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return {'error': 'failed to read captured image'}
+
+            # Étape 2: Conversion en HSV et séparation des canaux
+            hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+            mask = self._make_HSV_mask(hsv)
+            mask = self._fill_holes(mask) # remplir les trous laisser par le texte du panneau
+
+            # Étape 3: Opérations morphologiques pour nettoyage et reconstruction de l'image
+            mask_morpho = self._make_morphological_mask(mask)
+            
+            # Étape 4: Détection des contours sur le masque final
+            Image_traitée = mask_morpho.copy()
+            contours = self._detect_contours(Image_traitée)
+
+            # Étape 5: Analyse des contours et détection finale
+            results = self._analyse_detections(contours, frame_bgr)
+
+            # Étape 6: Formatage de la réponse JSON
+            source_url = url_for('static', filename='captured_images/{}'.format(filename))
+
+            payload = {
+                'source_file_url': source_url,
+                'overlay_url': self.steps[-1]['url'] if self.steps else None,
+                'steps': self.steps,
+                'Stop_detected': bool(results.get('detected')),
+                'best': {'bbox': results.get('detection_box'), 'area': int(results.get('area', 0))},
+                'detection_box': results.get('detection_box'),
+                'area': int(results.get('area', 0)),
+                'logs': self.logs
             }
-        else:
-            return {
-                "Detector": self.name,
-                "Object detected": False,
-                "Object coordinates": None,
-                "Object size": None,
-            }
+
+            return payload
+        
+        except Exception as e:
+            return {'error': 'diagnose_stop_cv failed', 'details': str(e)}
+        # try:
+        #     print("Processing frame in StopDetectorCV...")
+        #     bbox = self._detect_stop_bgr(frame)
+        # except Exception:
+        #     bbox = None
+
+        # if bbox is not None:
+        #     x, y, w, h = bbox
+        #     return {
+        #         "Detector": self.name,
+        #         "Object detected": True,
+        #         "Object coordinates": (int(x), int(y)),
+        #         "Object size": (int(w), int(h)),
+        #     }
+        # else:
+        #     return {
+        #         "Detector": self.name,
+        #         "Object detected": False,
+        #         "Object coordinates": None,
+        #         "Object size": None,
+        #     }
+
+
 
     # Fonction de détection interne buggé
     def _detect_stop_bgr(self, bgr):
@@ -147,10 +204,6 @@ class StopDetectorCV(BaseDetector):
         Réalise un diagnostique détaillé du détecteur Stop CV sur la dernière image capturée.
         Retourne un JSON avec les étapes intermédiaires et les résultats. pour afficher dans la console web.
         """
-        # le detecteur n'a pas accès au pipeline de vision directement mais on lui passe le CAPTURE_DIR
-        # vp = self.vision_pipeline
-        # if vp is None:
-        #     return jsonify({'error': 'Video pipeline not initialized'}), 400
 
         # Réinitialiser et valider l'entrée
         self.steps = []

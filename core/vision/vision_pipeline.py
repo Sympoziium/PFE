@@ -96,7 +96,7 @@ class VisionPipeline:
         
         return results
     
-    def process_frame(self, frame, detetor_index=0):
+    def process_frame(self, frame, detetor_index=0, filename=None):
         """ traiter un frame spécifique avec un détecteur spécifique """
 
         # camera_was_running = False
@@ -113,7 +113,7 @@ class VisionPipeline:
         detector = self.detectors[detetor_index]
         
         try:
-            detection = detector.process(frame)
+            detection = detector.process(frame, filename=filename)
             elapsed_time = time.time() - start_time
             detection["Processing time"] = elapsed_time
 
