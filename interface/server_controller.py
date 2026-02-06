@@ -16,6 +16,78 @@ from interface.onglet_vision import render_vision_tab
 from interface.onglet_template import render_template_tab  # Exemple d'onglet template générique
 
 
+# --- Fonction helper pour formater les résultats de détection ---
+def format_detection_result(results, detector_name="Détecteur"):
+    """
+    Formate les résultats de détection pour un affichage lisible dans les logs.
+
+    Args:
+        results (dict): Résultats de détection du détecteur
+        detector_name (str): Nom du détecteur
+
+    Returns:
+        str: Résultats formatés pour affichage
+    """
+    lines = []
+    lines.append('=' * 60)
+    lines.append('RÉSULTATS DE DÉTECTION - {}'.format(detector_name))
+    lines.append('=' * 60)
+
+    # Détection générale
+    detected = results.get('Stop_detected', results.get('Object detected', False))
+    lines.append('Objet détecté: {}'.format('OUI' if detected else 'NON'))
+
+    # Boîte de détection
+    bbox = results.get('detection_box') or results.get('Object coordinates')
+    if bbox:
+        if len(bbox) == 4:  # (x, y, w, h)
+            x, y, w, h = bbox
+            lines.append('Position: x={}, y={}'.format(int(x), int(y)))
+            lines.append('Taille: largeur={}, hauteur={}'.format(int(w), int(h)))
+        elif len(bbox) == 2:  # (x, y)
+            x, y = bbox
+            lines.append('Position: x={}, y={}'.format(int(x), int(y)))
+            size = results.get('Object size')
+            if size and len(size) == 2:
+                w, h = size
+                lines.append('Taille: largeur={}, hauteur={}'.format(int(w), int(h)))
+
+    # Confiance (si disponible)
+    conf = results.get('confidence')
+    if conf is not None and conf > 0:
+        lines.append('Confiance: {:.1%}'.format(float(conf)))
+
+    # Aire (si disponible)
+    area = results.get('area')
+    if area is not None and area > 0:
+        lines.append('Aire du contour: {} pixels'.format(int(area)))
+
+    # Temps de traitement
+    proc_time = results.get('Processing time')
+    if proc_time:
+        lines.append('Temps de traitement: {:.3f}s'.format(float(proc_time)))
+
+    # Logs du détecteur (si disponibles)
+    logs = results.get('logs')
+    if logs and len(logs) > 0:
+        lines.append('')
+        lines.append('--- Détails du traitement ---')
+        for log in logs:
+            lines.append(log)
+
+    # Erreurs
+    error = results.get('error')
+    if error:
+        lines.append('')
+        lines.append('ERREUR: {}'.format(error))
+        details = results.get('details')
+        if details:
+            lines.append('Détails: {}'.format(details))
+
+    lines.append('=' * 60)
+    return '\n'.join(lines)
+
+
 # --- Variables pour le contrôle des moteurs ---
 DRIVE_SPEED = 20
 TURN_SPEED = 15
@@ -231,6 +303,10 @@ class controller:
 
             results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index, filename=filename)
 
+            # Afficher les résultats formatés dans les logs
+            detector_name = vp.get_detectors()[self.selected_detector_index].name if hasattr(vp.get_detectors()[self.selected_detector_index], 'name') else 'Unknown'
+            print(format_detection_result(results, detector_name))
+
             # Si détection, créer et sauvegarder une version annotée
             annotated_url = None
             annotated_filename = None
@@ -389,222 +465,29 @@ class controller:
     def diagnose_detector(self):
         """Route générique pour diagnostiquer n'importe quel détecteur.
         Délègue l'opération au détecteur actuellement sélectionné via son index."""
-        print("[DEBUG diagnose_detector] Route /diagnose_detector called")
 
         vp = self.vision_pipeline
         if vp is None:
-            print("[DEBUG diagnose_detector] ERROR: Video pipeline not initialized")
             return jsonify({'error': 'Video pipeline not initialized'}), 400
 
         filename = getattr(self, 'last_captured_filename', None)
-        print("[DEBUG diagnose_detector] last_captured_filename: {}".format(filename))
         if not filename:
-            print("[DEBUG diagnose_detector] ERROR: No captured image")
             return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
 
-        print("[DEBUG diagnose_detector] Selected detector index: {}".format(self.selected_detector_index))
         try:
-            print("[DEBUG diagnose_detector] Calling vp.get_current_detector_diagnostic()...")
             diagnostic = vp.get_current_detector_diagnostic(filename=filename, detector_index=self.selected_detector_index)
-            print("[DEBUG diagnose_detector] get_current_detector_diagnostic() returned")
-            print("[DEBUG diagnose_detector] Diagnostic type: {}".format(type(diagnostic)))
-            # Le détecteur retourne un dict; on jsonify ici pour standardiser les endpoints.
-            print("[DEBUG diagnose_detector] Calling jsonify()...")
-            result = jsonify(diagnostic)
-            print("[DEBUG diagnose_detector] jsonify() succeeded, returning response")
-            return result
+
+            # Afficher les résultats formatés dans les logs
+            detector_name = vp.get_detectors()[self.selected_detector_index].name if hasattr(vp.get_detectors()[self.selected_detector_index], 'name') else 'Unknown'
+            print(format_detection_result(diagnostic, detector_name + ' (Diagnostic)'))
+
+            return jsonify(diagnostic)
         except Exception as e:
-            print("[DEBUG diagnose_detector] EXCEPTION: {}".format(str(e)))
+            print("Erreur lors du diagnostic: {}".format(str(e)))
             import traceback
             traceback.print_exc()
             return jsonify({'error': 'diagnose_detector failed', 'details': str(e)}), 500
 
-
-    #     img_path = os.path.join(self.CAPTURE_DIR, filename)
-    #     if not os.path.exists(img_path):
-    #         return jsonify({'error': 'last captured image not found on server'}), 404
-
-    #     diag_dir = os.path.join(self.CAPTURE_DIR, 'diagnostics')
-    #     os.makedirs(diag_dir, exist_ok=True)
-
-    #     try:
-    #         frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
-    #         if frame_bgr is None:
-    #             return jsonify({'error': 'failed to read captured image'}), 500
-
-    #         logs = [] # les logs textuels semblent être ce qui s'affiche sur le terminal
-    #         steps = []
-
-    #         def save_step(img, name, mode):
-    #             """
-    #             mode:
-    #             'bgr'   -> image BGR OpenCV
-    #             'gray'  -> image 1 canal
-    #             'hsv'   -> image HSV (sera convertie pour affichage)
-    #             sauvegarde toutes les images en RGB pour l'affichage web
-    #             """
-    #             print("Saving step: {} ({})".format(name, mode))
-
-    #             base = 'cv_{}_{}'.format(name, uuid.uuid4().hex[:6])
-    #             out_name = base + '.jpg'
-    #             out_path = os.path.join(diag_dir, out_name)
-
-    #             if mode == 'bgr':
-    #                 to_save = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-    #             elif mode == 'gray':
-    #                 to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-
-    #             elif mode == 'hsv':
-    #                 to_save = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
-
-    #             elif mode == 'RGB':
-    #                 to_save = img
-
-    #             else:
-    #                 raise ValueError("Unknown save mode: {}".format(mode))
-
-    #             cv2.imwrite(out_path, to_save)
-    #             url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
-    #             steps.append({"name": name, "url": url})
-
-    #         save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
-
-    #         hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-    #         h, s, v = cv2.split(hsv)
-
-    #         save_step(h, 'h_channel', mode='gray')
-    #         save_step(s, 's_channel', mode='gray')
-    #         save_step(v, 'v_channel', mode='gray')
-    #         print("Converted to HSV; channels extracted.")
-
-    #         # Test de validation du seuil de saturationq (on cherche les pixels suffisament saturés)
-        
-    #         s_mask_final = cv2.inRange(s, 90, 255)
-    #         save_step(s_mask_final, 's_mask_final', 'gray')
-
-    
-    #         print("Test filtrage par hue...")
-    #         # max hue pour le rouge 120-150
-    #         # min semble tourner proche du 90
-    #         # un hue de 115 semble bien faire ressortir le panneau
-
-    #         h_mask_final = cv2.inRange(h, 120, 130)
-    #         save_step(h_mask_final, 'h_mask_final', 'gray')
-
-    #         print("Test filtrage par value...")
-    #         # le mask v 130 fait bien ressortir les contours du panneau
-
-    #         v_mask = np.zeros_like(v, dtype=np.uint8)
-    #         v_mask[s > 90] = 255
-    #         save_step(v_mask, 'v_where_s_gt_90', 'gray')
-
-    #         # combiner les masques h, s, v
-    #         hsv_combined_mask = np.zeros(h.shape, dtype=np.uint8)
-    #         hsv_combined_mask = cv2.bitwise_and(h_mask_final, s_mask_final)
-    #         # le mask v n'apporte pas grand chose de plus
-
-    #         # Binarisation du masque combiné
-    #         _, mask = cv2.threshold(hsv_combined_mask, 1, 255, cv2.THRESH_BINARY)
-            
-    #         # Définir les kernels pour la morphologie
-    #         kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
-    #         kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
-                        
-    #         # Appliquer les opérations morphologiques
-    #         # 3. Nettoyage du bruit
-    #         mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open, iterations=2)
-
-    #         # 4. Reconstruction du panneau
-    #         mask2 = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close, iterations=4)
-
-    #         # Test morphologie
-    #         save_step(mask, 'initial_mask', mode='gray')
-    #         save_step(mask1, 'mask_open', mode='gray')
-    #         save_step(mask2, 'mask_close', mode='gray')
-    
-    #         # État du développement. présentement l'algorithme parvient 
-    #         # très bien à isoler les pixels rouges et a dessiner leurs contours.
-    #         # il ne reste plus qu'a filtrer les contours pour ne garder que ceux
-    #         # qui correspondent à un panneau stop (forme, aire, convexité, ratio, etc.)
-
-    #         Image_traitée = mask2.copy()
-
-    #         cnts = cv2.findContours(Image_traitée, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    #         cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-    #         logs.append('Contours found: {}'.format(len(cnts)))
-    #         # print("Contours found: {}".format(len(cnts)))
-
-    #         overlay = frame_bgr.copy()
-    #         stop_sign_box = None
-    #         best_area = 0
-
-    #         # --- Analyse des contours détectés ---
-    #         for idx, c in enumerate(cnts):
-    #             # --- Calcul des caractéristiques du contour ---
-    #             area = cv2.contourArea(c)                                           # Aire du contour
-    #             if area < 1:
-    #                 continue
-
-    #             peri = cv2.arcLength(c, True)                                       # Périmètre du contour                        
-    #             approx = cv2.approxPolyDP(c, 0.02 * peri, True)                     # Approximation polygonale
-    #             vtx = len(approx)                                                   # Nombre de sommets du polygone approximé
-    #             x, y, w, h = cv2.boundingRect(approx)                               # Boîte englobante
-    #             ratio = float(w) / float(h) if h != 0 else 0.0                      # Ratio largeur/hauteur
-    #             rect_area = float(w * h)                                            # Aire de la boîte englobante
-    #             fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0      # Ratio de remplissage de la boîte
-    #             convex = cv2.isContourConvex(approx)                                # Convexité du contour
-
-    #             # print('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
-    #             logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
-    #             # --- Filtrage des contours selon les critères du panneau stop ---
-    #             # Si l'aire est inférieure au minimum, on ignore
-    #             if area <  self._safe_int(self, 'min_area', 500):
-    #                 continue
-    #             # Si le nombre de sommets n'est pas dans l'intervalle, on ignore
-    #             if vtx < self._safe_int(self, 'poly_min', 6) or vtx > self._safe_int(self, 'poly_max', 10):
-    #                 continue
-    #             # Si le contour n'est pas convexe, on ignore (panneau stop est convexe)
-    #             if not convex:
-    #                 continue
-    #             # Si la boite englobante est trop petite, ces soit une abérration ou le panneau est trop loin 
-    #             if h < 30 or w < 30:
-    #                 continue
-    #             # Si le ratio largeur/hauteur est proche de 1 la boite est presque carrée, plus ces probable que ce soit un panneau stop
-    #             aspect_tol = getattr(vp.get_detectors()[self.selected_detector_index], 'aspect_tol', 0.3)
-    #             if abs(ratio - 1.0) > float(aspect_tol):
-    #                 continue
-    #             # Si le ratio de remplissage est trop faible, cela veut dire que le contour est trop irrégulier pour être un octogone
-    #             if fill_ratio < 0.50:
-    #                 continue
-    #             if area > best_area:
-    #                 best_area = area
-    #                 logs.append('Stop détecté : Position=({}, {}); \\n Largeur={}; \\n hauteur={};'.format(x, y, w, h))
-    #                 stop_sign_box = (x, y, w, h)
-    #                 cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2) # Dessin du contour détecté
-    #                 cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2) # Dessin de la boite de détection
-
-    #         save_step(overlay, 'contours_overlay', mode='bgr')
-
-    #         source_url = url_for('static', filename='captured_images/{}'.format(filename))
-    #         payload = {
-    #             'source_file_url': source_url, # voir si on devris renvoyer le url de l'overlay a la place
-    #             'steps': steps,
-    #             'Stop_detected': stop_sign_box is not None,
-    #             'stop_sign_box': { 'bbox': stop_sign_box, 'area': int(best_area) }, # à retravailler pour le front voir si utile on  trace deja sur l'overlay
-    #             'logs': logs
-    #         }
-    #         return jsonify(payload)
-    #     except Exception as e:
-    #         return jsonify({'error': 'diagnose_stop_cv failed', 'details': str(e)}), 500
-
-    # # util: safe int attr
-    # @staticmethod
-    # def _safe_int(obj, name, default):
-    #     try:
-    #         return int(getattr(obj, name))
-    #     except Exception:
-    #         return int(default)
 
     # Flux vidéo
     def video_feed(self):

@@ -174,61 +174,52 @@ class StopDetectorMatt(BaseDetector):
         """
         Réalise un diagnostic détaillé avec toutes les étapes intermédiaires.
         """
-        print("[DEBUG Stop_detector_matt.diagnostique_detecteur] START - filename: {}".format(filename))
         # Réinitialiser
         self.steps = []
         self.logs = []
 
         if not filename:
-            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] ERROR: No filename")
             return {'error': 'no captured image available. Please capture an image first.'}
 
         img_path = os.path.join(self.CAPTURE_DIR, filename)
-        print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Image path: {}".format(img_path))
         if not os.path.exists(img_path):
-            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] ERROR: File does not exist")
             return {'error': 'last captured image not found on server'}
 
         self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
-            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Starting diagnostic processing...")
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
-                print("[DEBUG Stop_detector_matt.diagnostique_detecteur] ERROR: Failed to read image")
                 return {'error': 'failed to read captured image'}
 
-            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Image loaded, shape: {}".format(frame_bgr.shape))
+            self.logs.append('=== DIAGNOSTIC STOP DETECTOR MATT ===')
+            self.logs.append('Image dimensions: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
+            self.logs.append('Configuration: min_area={}, min_score={}'.format(self.min_area, self.min_score))
 
             # Étape 0: Image originale
             self._save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
 
-            # Étape diagnostic: Test du format BGR/RGB
-            self.logs.append('')  # Ligne vide pour lisibilité
-            format_ok = self.diagnostic_bgr_rgb_format(frame_bgr)
-            self.logs.append('')  # Ligne vide pour lisibilité
-
-            # Étape diagnostic: Analyse HSV approfondie
-            self.logs.append('')  # Ligne vide pour lisibilité
-            self.diagnostic_hsv_analysis(frame_bgr)
-            self.logs.append('')  # Ligne vide pour lisibilité
-
-            # Étape 1: Masque rouge
+            # Étape 1: Détection des zones rouges
+            self.logs.append('--- Étape 1: Segmentation HSV du rouge ---')
             red_mask = self._get_red_mask(frame_bgr, diagnostic_mode=True)
+            self.logs.append('Filtres HSV: H=[{}-{}]+[{}-{}], S=[{}-{}], V=[{}-{}]'.format(
+                self.h_low_min, self.h_low_max, self.h_high_min, self.h_high_max,
+                self.s_min, self.s_max, self.v_min, self.v_max))
 
             # Étape 2: Détection des contours
+            self.logs.append('--- Étape 2: Extraction des contours ---')
             result = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            # Compatibilité OpenCV 3.x (3 valeurs) et 4.x (2 valeurs)
             contours = result[0] if len(result) == 2 else result[1]
-            self.logs.append('Found {} contours'.format(len(contours)))
+            self.logs.append('Contours trouvés: {}'.format(len(contours)))
 
-            # Créer une image pour visualiser tous les contours
+            # Visualiser tous les contours
             all_contours_img = frame_bgr.copy()
             cv2.drawContours(all_contours_img, contours, -1, (255, 0, 0), 2)
             self._save_step(all_contours_img, 'all_contours', mode='bgr')
 
-            # Étape 3: Détection avec diagnostic détaillé
+            # Étape 3: Analyse approfondie et détection
+            self.logs.append('--- Étape 3: Analyse des candidats ---')
             detections = self._detect_stop_signs(frame_bgr, diagnostic_mode=True)
 
             # Créer l'overlay final
@@ -260,7 +251,6 @@ class StopDetectorMatt(BaseDetector):
                     'confidence': float(conf),
                     'logs': self.logs
                 }
-                print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Returning DETECTED payload, conf: {}".format(conf))
             else:
                 payload = {
                     'source_file_url': source_url,
@@ -272,13 +262,11 @@ class StopDetectorMatt(BaseDetector):
                     'confidence': 0.0,
                     'logs': self.logs
                 }
-                print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Returning NOT DETECTED payload")
 
-            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Payload created, steps count: {}, logs count: {}".format(len(self.steps), len(self.logs)))
+            self.logs.append('=== FIN DIAGNOSTIC ===')
             return payload
 
         except Exception as e:
-            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] EXCEPTION: {}".format(str(e)))
             import traceback
             traceback.print_exc()
             return {'error': 'diagnostic failed', 'details': str(e)}
@@ -536,181 +524,3 @@ class StopDetectorMatt(BaseDetector):
         url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
         self.steps.append({"name": name, "url": url})
 
-    def diagnostic_bgr_rgb_format(self, frame):
-        """Détecte si l'image est en format BGR ou RGB (ou inversée).
-
-        Cette fonction analyse les canaux de couleur pour détecter une éventuelle
-        inversion BGR↔RGB qui causerait des problèmes de détection.
-        """
-        self.logs.append('=== BGR/RGB FORMAT DIAGNOSTIC (Matt Detector) ===')
-
-        b, g, r = cv2.split(frame)
-
-        # Statistiques par canal
-        b_mean, b_std = float(b.mean()), float(b.std())
-        g_mean, g_std = float(g.mean()), float(g.std())
-        r_mean, r_std = float(r.mean()), float(r.std())
-
-        self.logs.append('Channel Statistics (as loaded):')
-        self.logs.append('  Channel 0 (B if BGR): Mean={:.2f}, Std={:.2f}'.format(b_mean, b_std))
-        self.logs.append('  Channel 1 (G):        Mean={:.2f}, Std={:.2f}'.format(g_mean, g_std))
-        self.logs.append('  Channel 2 (R if BGR): Mean={:.2f}, Std={:.2f}'.format(r_mean, r_std))
-
-        # Compter les pixels avec forte composante rouge vs bleu
-        red_dominant = np.sum((r > 150) & (r > b + 30) & (r > g + 30))
-        blue_dominant = np.sum((b > 150) & (b > r + 30) & (b > g + 30))
-
-        self.logs.append('')
-        self.logs.append('Dominant Color Analysis (for red object detection):')
-        self.logs.append('  Pixels with dominant RED (channel 2):  {} pixels'.format(red_dominant))
-        self.logs.append('  Pixels with dominant BLUE (channel 0): {} pixels'.format(blue_dominant))
-
-        # Diagnostic
-        if red_dominant > blue_dominant * 2:
-            self.logs.append('  → VERDICT: Image appears to be in correct BGR format ✓')
-            format_ok = True
-        elif blue_dominant > red_dominant * 2:
-            self.logs.append('  → VERDICT: Image appears to be in RGB format (INVERTED!) ✗')
-            self.logs.append('  → PROBLEM: Red objects will appear BLUE, causing HSV detection to fail!')
-            format_ok = False
-        else:
-            self.logs.append('  → VERDICT: Inconclusive (no strong red/blue dominance)')
-            format_ok = None
-
-        # Créer des visualisations des canaux
-        self._save_step(r, 'channel_2_red_if_bgr', mode='gray')
-        self._save_step(g, 'channel_1_green', mode='gray')
-        self._save_step(b, 'channel_0_blue_if_bgr', mode='gray')
-
-        # Test avec conversion forcée
-        if not format_ok:
-            self.logs.append('')
-            self.logs.append('Testing with forced BGR→RGB conversion...')
-            frame_corrected = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            self._save_step(frame_corrected, 'corrected_rgb_to_bgr', mode='RGB')
-            self.logs.append('  Corrected image saved as corrected_rgb_to_bgr')
-            self.logs.append('  Try reprocessing with this corrected image!')
-
-        self.logs.append('=== END BGR/RGB DIAGNOSTIC ===')
-        return format_ok
-
-    def diagnostic_hsv_analysis(self, frame):
-        """Analyse approfondie des caractéristiques HSV de l'image.
-
-        Cette fonction génère des statistiques détaillées pour comparer
-        les images entre différents environnements (Zumi vs PiCamera2).
-        """
-        self.logs.append('=== DIAGNOSTIC HSV ANALYSIS (Matt Detector) ===')
-
-        # Info de base sur l'image
-        h, w, c = frame.shape
-        total_pixels = h * w
-        self.logs.append('Image dimensions: {}x{} ({} channels)'.format(w, h, c))
-        self.logs.append('Total pixels: {}'.format(total_pixels))
-
-        # Conversion en HSV
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        h_channel, s_channel, v_channel = cv2.split(hsv)
-
-        # Statistiques par canal HSV
-        self.logs.append('--- H Channel (Hue) ---')
-        self.logs.append('  Min: {}, Max: {}, Mean: {:.2f}, Std: {:.2f}'.format(
-            int(h_channel.min()), int(h_channel.max()),
-            float(h_channel.mean()), float(h_channel.std())))
-
-        self.logs.append('--- S Channel (Saturation) ---')
-        self.logs.append('  Min: {}, Max: {}, Mean: {:.2f}, Std: {:.2f}'.format(
-            int(s_channel.min()), int(s_channel.max()),
-            float(s_channel.mean()), float(s_channel.std())))
-
-        self.logs.append('--- V Channel (Value) ---')
-        self.logs.append('  Min: {}, Max: {}, Mean: {:.2f}, Std: {:.2f}'.format(
-            int(v_channel.min()), int(v_channel.max()),
-            float(v_channel.mean()), float(v_channel.std())))
-
-        # Détection de pixels rouges avec la méthode de Matt
-        self.logs.append('--- Red Pixel Detection (Matt Method) ---')
-
-        mask_low = cv2.inRange(hsv, np.array([0, 70, 50]), np.array([10, 255, 255]))
-        mask_high = cv2.inRange(hsv, np.array([160, 70, 50]), np.array([180, 255, 255]))
-        mask_combined = cv2.bitwise_or(mask_low, mask_high)
-
-        red_pixels_low = cv2.countNonZero(mask_low)
-        red_pixels_high = cv2.countNonZero(mask_high)
-        red_pixels_total = cv2.countNonZero(mask_combined)
-
-        percent_low = (red_pixels_low / float(total_pixels)) * 100.0
-        percent_high = (red_pixels_high / float(total_pixels)) * 100.0
-        percent_total = (red_pixels_total / float(total_pixels)) * 100.0
-
-        self.logs.append('  H=[0-10]: {} pixels ({:.2f}%)'.format(red_pixels_low, percent_low))
-        self.logs.append('  H=[160-180]: {} pixels ({:.2f}%)'.format(red_pixels_high, percent_high))
-        self.logs.append('  Total red: {} pixels ({:.2f}%)'.format(red_pixels_total, percent_total))
-
-        # Distribution des teintes dans la plage rouge
-        red_range_low = np.sum((h_channel >= 0) & (h_channel <= 10))
-        red_range_mid = np.sum((h_channel >= 160) & (h_channel <= 170))
-        red_range_high = np.sum((h_channel >= 170) & (h_channel <= 180))
-
-        self.logs.append('--- Hue Distribution in Red Range ---')
-        self.logs.append('  H in [0, 10]: {} pixels'.format(red_range_low))
-        self.logs.append('  H in [160, 170]: {} pixels'.format(red_range_mid))
-        self.logs.append('  H in [170, 180]: {} pixels'.format(red_range_high))
-
-        # Créer une visualisation des histogrammes
-        # TEMPORAIREMENT DÉSACTIVÉ - matplotlib bloque sur Raspberry Pi
-        # self._create_histogram_visualization(h_channel, s_channel, v_channel)
-        self.logs.append('Histogram visualization disabled (matplotlib blocking issue on Pi)')
-
-        self.logs.append('=== END DIAGNOSTIC ===')
-
-    def _create_histogram_visualization(self, h_channel, s_channel, v_channel):
-        """Crée une visualisation des histogrammes HSV."""
-        try:
-            import matplotlib
-            matplotlib.use('Agg')  # Backend sans affichage
-            import matplotlib.pyplot as plt
-
-            fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-
-            # Histogramme H
-            axes[0].hist(h_channel.ravel(), bins=180, range=(0, 180), color='red', alpha=0.7)
-            axes[0].set_title('Hue (H) Distribution')
-            axes[0].set_xlabel('Hue Value (0-180)')
-            axes[0].set_ylabel('Pixel Count')
-            axes[0].axvspan(0, 10, alpha=0.2, color='green', label='Red Low [0-10]')
-            axes[0].axvspan(160, 180, alpha=0.2, color='blue', label='Red High [160-180]')
-            axes[0].legend()
-
-            # Histogramme S
-            axes[1].hist(s_channel.ravel(), bins=256, range=(0, 256), color='orange', alpha=0.7)
-            axes[1].set_title('Saturation (S) Distribution')
-            axes[1].set_xlabel('Saturation Value (0-255)')
-            axes[1].set_ylabel('Pixel Count')
-            axes[1].axvline(70, color='red', linestyle='--', label='Threshold S=70')
-            axes[1].legend()
-
-            # Histogramme V
-            axes[2].hist(v_channel.ravel(), bins=256, range=(0, 256), color='purple', alpha=0.7)
-            axes[2].set_title('Value (V) Distribution')
-            axes[2].set_xlabel('Value (0-255)')
-            axes[2].set_ylabel('Pixel Count')
-            axes[2].axvline(50, color='red', linestyle='--', label='Threshold V=50')
-            axes[2].legend()
-
-            plt.tight_layout()
-
-            # Sauvegarder le graphique
-            hist_path = os.path.join(self.DIAGNOSTIC_DIR, 'hsv_histograms_matt_{}.png'.format(uuid.uuid4().hex[:6]))
-            plt.savefig(hist_path, dpi=100, bbox_inches='tight')
-            plt.close()
-
-            # Ajouter à la liste des étapes
-            hist_url = url_for('static', filename='captured_images/diagnostics/{}'.format(os.path.basename(hist_path)))
-            self.steps.append({"name": "hsv_histograms_matt", "url": hist_url})
-
-            self.logs.append('Histograms saved as: {}'.format(os.path.basename(hist_path)))
-        except ImportError:
-            self.logs.append('Warning: matplotlib not available, skipping histogram visualization')
-        except Exception as e:
-            self.logs.append('Error creating histogram: {}'.format(str(e)))
