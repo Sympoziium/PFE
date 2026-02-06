@@ -174,24 +174,32 @@ class StopDetectorMatt(BaseDetector):
         """
         Réalise un diagnostic détaillé avec toutes les étapes intermédiaires.
         """
+        print("[DEBUG Stop_detector_matt.diagnostique_detecteur] START - filename: {}".format(filename))
         # Réinitialiser
         self.steps = []
         self.logs = []
 
         if not filename:
+            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] ERROR: No filename")
             return {'error': 'no captured image available. Please capture an image first.'}
 
         img_path = os.path.join(self.CAPTURE_DIR, filename)
+        print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Image path: {}".format(img_path))
         if not os.path.exists(img_path):
+            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] ERROR: File does not exist")
             return {'error': 'last captured image not found on server'}
 
         self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
+            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Starting diagnostic processing...")
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
+                print("[DEBUG Stop_detector_matt.diagnostique_detecteur] ERROR: Failed to read image")
                 return {'error': 'failed to read captured image'}
+
+            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Image loaded, shape: {}".format(frame_bgr.shape))
 
             # Étape 0: Image originale
             self._save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
@@ -252,6 +260,7 @@ class StopDetectorMatt(BaseDetector):
                     'confidence': float(conf),
                     'logs': self.logs
                 }
+                print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Returning DETECTED payload, conf: {}".format(conf))
             else:
                 payload = {
                     'source_file_url': source_url,
@@ -263,10 +272,15 @@ class StopDetectorMatt(BaseDetector):
                     'confidence': 0.0,
                     'logs': self.logs
                 }
+                print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Returning NOT DETECTED payload")
 
+            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] Payload created, steps count: {}, logs count: {}".format(len(self.steps), len(self.logs)))
             return payload
 
         except Exception as e:
+            print("[DEBUG Stop_detector_matt.diagnostique_detecteur] EXCEPTION: {}".format(str(e)))
+            import traceback
+            traceback.print_exc()
             return {'error': 'diagnostic failed', 'details': str(e)}
 
     # ========== Méthodes internes de détection (adaptées de hsv_matt.py) ==========

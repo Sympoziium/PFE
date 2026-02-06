@@ -389,20 +389,34 @@ class controller:
     def diagnose_detector(self):
         """Route générique pour diagnostiquer n'importe quel détecteur.
         Délègue l'opération au détecteur actuellement sélectionné via son index."""
+        print("[DEBUG diagnose_detector] Route /diagnose_detector called")
 
         vp = self.vision_pipeline
         if vp is None:
+            print("[DEBUG diagnose_detector] ERROR: Video pipeline not initialized")
             return jsonify({'error': 'Video pipeline not initialized'}), 400
 
         filename = getattr(self, 'last_captured_filename', None)
+        print("[DEBUG diagnose_detector] last_captured_filename: {}".format(filename))
         if not filename:
+            print("[DEBUG diagnose_detector] ERROR: No captured image")
             return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
 
+        print("[DEBUG diagnose_detector] Selected detector index: {}".format(self.selected_detector_index))
         try:
+            print("[DEBUG diagnose_detector] Calling vp.get_current_detector_diagnostic()...")
             diagnostic = vp.get_current_detector_diagnostic(filename=filename, detector_index=self.selected_detector_index)
+            print("[DEBUG diagnose_detector] get_current_detector_diagnostic() returned")
+            print("[DEBUG diagnose_detector] Diagnostic type: {}".format(type(diagnostic)))
             # Le détecteur retourne un dict; on jsonify ici pour standardiser les endpoints.
-            return jsonify(diagnostic)
+            print("[DEBUG diagnose_detector] Calling jsonify()...")
+            result = jsonify(diagnostic)
+            print("[DEBUG diagnose_detector] jsonify() succeeded, returning response")
+            return result
         except Exception as e:
+            print("[DEBUG diagnose_detector] EXCEPTION: {}".format(str(e)))
+            import traceback
+            traceback.print_exc()
             return jsonify({'error': 'diagnose_detector failed', 'details': str(e)}), 500
 
 

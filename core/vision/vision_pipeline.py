@@ -181,20 +181,26 @@ class VisionPipeline:
     
     def get_current_detector_diagnostic(self, detector_index=0, filename=None):
         """ obtenir le diagnostic du détecteur courant """
+        print("[DEBUG get_current_detector_diagnostic] Called with detector_index={}, filename={}".format(detector_index, filename))
         if not self.detectors:
             return {'error': 'Aucun détecteur disponible, ils sont attacher au VP dans le main'}
-        
+
         if detector_index < 0 or detector_index >= len(self.detectors):
             return {'error': 'Index de détecteur invalide'}
-        
+
         if filename is None:
             return {'error': "Aucun fichier d'image fourni pour le diagnostic"}
-        
+
         detector = self.detectors[detector_index]
+        print("[DEBUG get_current_detector_diagnostic] Calling diagnostique_detecteur() on detector: {}".format(detector.name if hasattr(detector, 'name') else type(detector).__name__))
         try:
             diagnostic = detector.diagnostique_detecteur(filename)
+            print("[DEBUG get_current_detector_diagnostic] diagnostique_detecteur() returned successfully")
+            print("[DEBUG get_current_detector_diagnostic] Return keys: {}".format(diagnostic.keys() if isinstance(diagnostic, dict) else 'not a dict'))
             return diagnostic
         except Exception as e:
             print("Erreur lors de l'obtention du diagnostic du détecteur {}: {}".format(detector, e))
+            import traceback
+            traceback.print_exc()
             return {'error': "Erreur lors de l'obtention du diagnostic du détecteur", 'details': str(e)}
 

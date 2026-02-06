@@ -204,15 +204,19 @@ class StopDetectorCV(BaseDetector):
         Réalise un diagnostique détaillé du détecteur Stop CV sur la dernière image capturée.
         Retourne un JSON avec les étapes intermédiaires et les résultats. pour afficher dans la console web.
         """
+        print("[DEBUG Stop_detector_cv.diagnostique_detecteur] START - filename: {}".format(filename))
 
         # Réinitialiser et valider l'entrée
         self.steps = []
         self.logs = []
         if not filename:
+            print("[DEBUG Stop_detector_cv.diagnostique_detecteur] ERROR: No filename")
             return {'error': 'no captured image available. Please capture an image first.'}
 
         img_path = os.path.join(self.CAPTURE_DIR, filename)
+        print("[DEBUG Stop_detector_cv.diagnostique_detecteur] Image path: {}".format(img_path))
         if not os.path.exists(img_path):
+            print("[DEBUG Stop_detector_cv.diagnostique_detecteur] ERROR: File does not exist")
             return {'error': 'last captured image not found on server'}
 
         # Crée le dossier de diagnostics s'il n'existe pas (on y stoque les images intermédiaires)
@@ -220,10 +224,14 @@ class StopDetectorCV(BaseDetector):
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
+            print("[DEBUG Stop_detector_cv.diagnostique_detecteur] Starting diagnostic processing...")
             # Charger l'image capturée
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
+                print("[DEBUG Stop_detector_cv.diagnostique_detecteur] ERROR: Failed to read image")
                 return {'error': 'failed to read captured image'}
+
+            print("[DEBUG Stop_detector_cv.diagnostique_detecteur] Image loaded, shape: {}".format(frame_bgr.shape))
 
             # Étape 0: Image originale
             self._save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
@@ -278,9 +286,14 @@ class StopDetectorCV(BaseDetector):
                 'logs': self.logs
             }
 
+            print("[DEBUG Stop_detector_cv.diagnostique_detecteur] Payload created, steps count: {}, logs count: {}".format(len(self.steps), len(self.logs)))
+            print("[DEBUG Stop_detector_cv.diagnostique_detecteur] Returning payload, Stop_detected: {}".format(payload['Stop_detected']))
             return payload
-        
+
         except Exception as e:
+            print("[DEBUG Stop_detector_cv.diagnostique_detecteur] EXCEPTION: {}".format(str(e)))
+            import traceback
+            traceback.print_exc()
             return {'error': 'diagnose_stop_cv failed', 'details': str(e)}
 
     def _save_step(self, img, name, mode):
