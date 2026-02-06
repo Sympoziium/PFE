@@ -88,13 +88,13 @@ class StopDetectorMatt(BaseDetector):
             for (x, y, w, h, conf) in detections:
                 # Dessiner les détections
                 cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                cv2.putText(overlay, f"STOP {conf:.0%}", (x, y - 8),
+                cv2.putText(overlay, "STOP {:.0%}".format(conf), (x, y - 8),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
                 # Garder la meilleure détection
                 if best_detection is None:
                     best_detection = (x, y, w, h, conf)
-                    self.logs.append(f'Best detection: x={x}, y={y}, w={w}, h={h}, confidence={conf:.2%}')
+                    self.logs.append('Best detection: x={}, y={}, w={}, h={}, confidence={:.2%}'.format(x, y, w, h, conf))
 
             # Sauvegarder l'overlay
             self._save_step(overlay, 'final_detections', mode='bgr')
@@ -166,7 +166,7 @@ class StopDetectorMatt(BaseDetector):
 
             # Étape 2: Détection des contours
             contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            self.logs.append(f'Found {len(contours)} contours')
+            self.logs.append('Found {} contours'.format(len(contours)))
 
             # Créer une image pour visualiser tous les contours
             all_contours_img = frame_bgr.copy()
@@ -182,7 +182,7 @@ class StopDetectorMatt(BaseDetector):
 
             for (x, y, w, h, conf) in detections:
                 cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                cv2.putText(overlay, f"STOP {conf:.0%}", (x, y - 8),
+                cv2.putText(overlay, "STOP {:.0%}".format(conf), (x, y - 8),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
                 if best_detection is None:
@@ -291,9 +291,9 @@ class StopDetectorMatt(BaseDetector):
             roi_bgr = frame[y1:y2, x1:x2].copy()
             red_overlay = cv2.cvtColor(red_mask, cv2.COLOR_GRAY2BGR)
             white_overlay = cv2.cvtColor(white_mask, cv2.COLOR_GRAY2BGR)
-            self._save_step(roi_bgr, f'roi_x{x}_y{y}', mode='bgr')
-            self._save_step(red_overlay, f'roi_red_mask_x{x}_y{y}', mode='bgr')
-            self._save_step(white_overlay, f'roi_white_mask_x{x}_y{y}', mode='bgr')
+            self._save_step(roi_bgr, 'roi_x{}_y{}'.format(x, y), mode='bgr')
+            self._save_step(red_overlay, 'roi_red_mask_x{}_y{}'.format(x, y), mode='bgr')
+            self._save_step(white_overlay, 'roi_white_mask_x{}_y{}'.format(x, y), mode='bgr')
 
         # 1) Ratio rouge/blanc
         red_ratio = red_count / total_pixels if total_pixels > 0 else 0
@@ -348,8 +348,9 @@ class StopDetectorMatt(BaseDetector):
         aspect = w / float(h) if h > 0 else 0
         aspect_score = max(0, 1.0 - abs(aspect - 1.0) * 2.0)
 
-        self.logs.append(f'  Blob analysis: red_ratio={red_ratio:.2f}, white_ratio={white_ratio:.2f}, '
-                        f'center_score={center_score:.2f}, edge_score={edge_score:.2f}, aspect_score={aspect_score:.2f}')
+        self.logs.append('  Blob analysis: red_ratio={:.2f}, white_ratio={:.2f}, '
+                        'center_score={:.2f}, edge_score={:.2f}, aspect_score={:.2f}'.format(
+                            red_ratio, white_ratio, center_score, edge_score, aspect_score))
 
         return {
             "ratio": ratio_score,
@@ -367,7 +368,7 @@ class StopDetectorMatt(BaseDetector):
         contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         detections = []
-        self.logs.append(f'Analyzing {len(contours)} contours...')
+        self.logs.append('Analyzing {} contours...'.format(len(contours)))
 
         for idx, cnt in enumerate(contours):
             area = cv2.contourArea(cnt)
@@ -379,7 +380,7 @@ class StopDetectorMatt(BaseDetector):
             hull_area = cv2.contourArea(hull)
             solidity = area / hull_area if hull_area > 0 else 0
             if solidity < 0.45:
-                self.logs.append(f'  Contour {idx}: rejected (low solidity={solidity:.2f})')
+                self.logs.append('  Contour {}: rejected (low solidity={:.2f})'.format(idx, solidity))
                 continue
 
             x, y, w, h = cv2.boundingRect(cnt)
@@ -387,19 +388,19 @@ class StopDetectorMatt(BaseDetector):
             # Aspect ratio rapide
             aspect = w / float(h) if h > 0 else 0
             if aspect < 0.5 or aspect > 2.0:
-                self.logs.append(f'  Contour {idx}: rejected (bad aspect={aspect:.2f})')
+                self.logs.append('  Contour {}: rejected (bad aspect={:.2f})'.format(idx, aspect))
                 continue
 
             # Rejeter les blobs trop grands
             if w > frame.shape[1] * 0.4 or h > frame.shape[0] * 0.4:
-                self.logs.append(f'  Contour {idx}: rejected (too large)')
+                self.logs.append('  Contour {}: rejected (too large)'.format(idx))
                 continue
 
             # Densité rouge
             bbox_area = w * h
             red_density = area / bbox_area if bbox_area > 0 else 0
             if red_density < 0.3:
-                self.logs.append(f'  Contour {idx}: rejected (low red density={red_density:.2f})')
+                self.logs.append('  Contour {}: rejected (low red density={:.2f})'.format(idx, red_density))
                 continue
 
             # Analyse approfondie
@@ -415,11 +416,12 @@ class StopDetectorMatt(BaseDetector):
             )
             confidence = round(min(1.0, confidence), 2)
 
-            self.logs.append(f'  Contour {idx}: confidence={confidence:.2f} '
-                           f'(area={int(area)}, solidity={solidity:.2f})')
+            self.logs.append('  Contour {}: confidence={:.2f} '
+                           '(area={}, solidity={:.2f})'.format(idx, confidence, int(area), solidity))
 
             if confidence < self.min_score:
-                self.logs.append(f'  Contour {idx}: rejected (confidence={confidence:.2f} < {self.min_score})')
+                self.logs.append('  Contour {}: rejected (confidence={:.2f} < {})'.format(
+                    idx, confidence, self.min_score))
                 continue
 
             detections.append((x, y, w, h, confidence))
@@ -428,7 +430,7 @@ class StopDetectorMatt(BaseDetector):
         detections.sort(key=lambda d: d[4], reverse=True)
 
         if detections:
-            self.logs.append(f'Found {len(detections)} valid detection(s)')
+            self.logs.append('Found {} valid detection(s)'.format(len(detections)))
         else:
             self.logs.append('No valid detections found')
 
