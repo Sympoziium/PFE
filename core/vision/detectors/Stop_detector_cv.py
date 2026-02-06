@@ -233,6 +233,15 @@ class StopDetectorCV(BaseDetector):
             mask = self._make_HSV_mask(hsv, diagnostic_mode=True)
             mask = self._fill_holes(mask) # remplir les trous laisser par le texte du panneau
 
+
+
+
+            # test rapide du filtre HSV pour debug
+            self.test_hsv_filter(frame_bgr) 
+
+            
+             
+
             # Étape 3: Opérations morphologiques pour nettoyage et reconstruction de l'image
             mask_morpho = self._make_morphological_mask(mask, diagnostic_mode=True)
             
@@ -341,6 +350,7 @@ class StopDetectorCV(BaseDetector):
         # Sauvegarde du masque initial
         if diagnostic_mode:
             self._save_step(mask, 'initial_mask', mode='gray')
+        
 
         return mask
     
@@ -488,3 +498,16 @@ class StopDetectorCV(BaseDetector):
 
         return summary
             
+
+### fonction de test rapide pour debug 
+
+    def test_hsv_filter(self, frame_bgr):
+        """Test rapide du filtre HSV pour le rouge sur une image BGR.
+        Retourne le masque binaire résultant.
+        """
+        hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+        mask_red_low = cv2.inRange(hsv, (0, 70, 50), (10, 255, 255))
+        mask_red_high = cv2.inRange(hsv, (170, 70, 50), (180, 255, 255))
+        mask = cv2.bitwise_or(mask_red_low, mask_red_high)
+        self._save_step(mask, 'test_hsv_red_mask', mode='gray')
+        return mask
