@@ -603,13 +603,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					appendTerminalLines(JSON.stringify(res, null, 2));
 				}
 
-				if (res && res.overlay_url) {
-					imageCapturedCallback(res.overlay_url);
+				if (res && res.annotated_url) {
+					imageCapturedCallback(res.annotated_url);
 				} else if (res && res.source_file_url) {
 					imageCapturedCallback(res.source_file_url);
 				}
 
-				if (res.Stop_detected) {
+				// Utiliser Object_detected au lieu de Stop_detected
+				if (res.Object_detected) {
 					indicator.classList.add('on');
 					indicator.textContent = 'STOP detecte';
 				} else {
@@ -679,8 +680,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				if (payload.logs && Array.isArray(payload.logs)) {
 					appendTerminalLines(payload.logs);
 				} else { appendTerminalLines(JSON.stringify(payload, null, 2)); }
-				// Stop detecté
-				if (payload.Stop_detected) {
+				// Stop detecté - utiliser Object_detected
+				if (payload.Object_detected) {
 					indicator.classList.add('on');
 					indicator.textContent = 'STOP detecte';
 				} else {
@@ -688,12 +689,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					indicator.textContent = 'Aucune detection';
 				}
 
-				// best bbox overlay
-				var best = payload.best || {};
+				// best bbox overlay - utiliser annotated_url
 				var imgUrl = (payload.steps && payload.steps.length) ? payload.steps[payload.steps.length - 1].url : payload.source_file_url;
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
 				// enleve le draw de la bbox on le fait directement dans le backend sur une copie de l'image qu'on affiche ensuite
-				if (best.bbox) {
+				if (payload.detection_box) {
 					indicator.classList.add('on');
 					indicator.textContent = 'STOP detecte';
 				} else {
@@ -728,9 +728,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
 		console.log('[DEBUG runDiagnostics] SELECTED_DETECTOR_NAME:', detectorName);
 
-		if (detectorName === 'StopDetector') {
+		if (detectorName === 'StopDetectorZumi') {
 			// Détecteur Zumi spécifique avec balayage de paramètres
-			console.log('[DEBUG runDiagnostics] Matched exact "StopDetector", calling runStopDiagnostics');
+			console.log('[DEBUG runDiagnostics] Matched "StopDetectorZumi", calling runStopDiagnostics');
 			runStopDiagnostics();
 		} else if (detectorName.indexOf('StopDetector') !== -1) {
 			// Tous les autres détecteurs de stop (CV, Matt, etc.) utilisent la route générique

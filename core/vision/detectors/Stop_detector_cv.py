@@ -48,18 +48,21 @@ class StopDetectorCV(BaseDetector):
         self.CAPTURE_DIR = capture_dir
 
     def process(self, frame, filename=None):
-        """Analyse une image BGR et retourne un dict de résultat.
+        """Analyse une image BGR et retourne un dict de résultat standardisé.
 
         Returns:
             dict: {
-                "Detector": name,
-                "Object detected": bool,
-                "Object coordinates": (x, y) or None,
-                "Object size": (w, h) or None
+                "Object_detected": bool,
+                "detection_box": (x, y, w, h) or None,
+                "confidence": float or None,
+                "area": int or None,
+                "logs": list,
+                "source_file_url": str or None,
+                "annotated_url": str or None
             }
         """
 
-        
+
         # Réinitialiser et valider l'entrée
         self.steps = []
         self.logs = []
@@ -101,7 +104,7 @@ class StopDetectorCV(BaseDetector):
             # Étape 5: Analyse des contours et détection finale
             results = self._analyse_detections(contours, frame_bgr)
 
-            # Étape 6: Formatage de la réponse JSON
+            # Étape 6: Formatage de la réponse JSON avec format standardisé
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
 
             # Ajouter le résultat aux logs
@@ -118,18 +121,21 @@ class StopDetectorCV(BaseDetector):
 
             self.logs.append('=== FIN DETECTION ===')
 
+            # Format standardisé avec clés cohérentes
             payload = {
-                'Stop_detected': bool(results.get('detected')),
+                'Object_detected': bool(results.get('detected')),
+                'detection_box': results.get('detection_box'),
+                'confidence': 1.0 if results.get('detected') else 0.0,  # CV detector a pas de score, on met 1.0/0.0
+                'area': results.get('area'),
                 'logs': self.logs,
                 'source_file_url': source_url,
-                'steps': self.steps,
-                'overlay_url': self.steps[-1]['url'] if self.steps else None,
+                'annotated_url': self.steps[-1]['url'] if self.steps else None,
             }
 
             return payload
-        
+
         except Exception as e:
-            return {'error': 'diagnose_stop_cv failed', 'details': str(e)}
+            return {'error': 'process failed', 'details': str(e)}
 
     
     # Diagnostic CV du stop: export des étapes intermédiaires (HSV, masques, morpho, contours)
@@ -137,6 +143,9 @@ class StopDetectorCV(BaseDetector):
         """
         Réalise un diagnostique détaillé du détecteur Stop CV sur la dernière image capturée.
         Retourne un JSON avec les étapes intermédiaires et les résultats. pour afficher dans la console web.
+
+        Returns:
+            dict: Format standardisé avec clés 'Object_detected', 'detection_box', 'confidence', 'area', 'logs', 'steps', 'annotated_url'
         """
         # Réinitialiser et valider l'entrée
         self.steps = []
@@ -187,16 +196,17 @@ class StopDetectorCV(BaseDetector):
             self.logs.append('--- Étape 4: Analyse des contours ---')
             results = self._analyse_detections(contours, frame_bgr)
 
-            # Étape 5: Formatage de la réponse JSON
+            # Étape 5: Formatage de la réponse JSON avec format standardisé
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
 
+            # Format standardisé
             payload = {
                 'source_file_url': source_url,
-                'overlay_url': self.steps[-1]['url'] if self.steps else None,
+                'annotated_url': self.steps[-1]['url'] if self.steps else None,
                 'steps': self.steps,
-                'Stop_detected': bool(results.get('detected')),
-                'best': {'bbox': results.get('detection_box'), 'area': int(results.get('area', 0))},
+                'Object_detected': bool(results.get('detected')),
                 'detection_box': results.get('detection_box'),
+                'confidence': 1.0 if results.get('detected') else 0.0,
                 'area': int(results.get('area', 0)),
                 'logs': self.logs
             }
@@ -211,13 +221,15 @@ class StopDetectorCV(BaseDetector):
 
     def _save_step(self, img, name, mode):
         """
-        Sauvegarde toutes les images en RGB pour l'affichage web
+        Sauvegarde toutes les images pour l'affichage web.
+        cv2.imwrite() attend du BGR, donc on convertit tout vers BGR avant sauvegarde.
 
         mode:
-        'bgr'   -> image BGR OpenCV
-        'gray'  -> image 1 canal
-        'hsv'   -> image HSV (sera convertie pour affichage)
-        
+        'bgr'   -> image BGR OpenCV (deja en BGR, pas de conversion)
+        'gray'  -> image 1 canal (converti vers BGR 3 canaux)
+        'hsv'   -> image HSV (convertie vers BGR)
+        'RGB'   -> image RGB (convertie vers BGR)
+
         """
         print("Saving step: {} ({})".format(name, mode))
 
@@ -226,21 +238,21 @@ class StopDetectorCV(BaseDetector):
         out_path = os.path.join(self.DIAGNOSTIC_DIR, out_name)
 
         if mode == 'bgr':
-            to_save = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            to_save = img  # Deja en BGR, pas de conversion
 
         elif mode == 'gray':
-            to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+            to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)  # 1 canal -> 3 canaux BGR
 
         elif mode == 'hsv':
-            to_save = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+            to_save = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)  # HSV -> BGR
 
         elif mode == 'RGB':
-            to_save = img
+            to_save = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # RGB -> BGR
 
         else:
             raise ValueError("Unknown save mode: {}".format(mode))
 
-        cv2.imwrite(out_path, to_save)
+        cv2.imwrite(out_path, to_save)  # imwrite attend BGR
         url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
         self.steps.append({"name": name, "url": url})
 

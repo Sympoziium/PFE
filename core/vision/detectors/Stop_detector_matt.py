@@ -79,17 +79,17 @@ class StopDetectorMatt(BaseDetector):
 
     def process(self, frame, filename=None):
         """
-        Analyse une image BGR et retourne un dict de résultat.
+        Analyse une image BGR et retourne un dict de résultat standardisé.
 
         Returns:
             dict: {
-                "source_file_url": str,
-                "overlay_url": str,
-                "Stop_detected": bool,
-                "best": dict with bbox and confidence,
+                "Object_detected": bool,
                 "detection_box": tuple or None,
-                "confidence": float,
-                "logs": list
+                "confidence": float or None,
+                "area": int or None,
+                "logs": list,
+                "source_file_url": str,
+                "annotated_url": str or None
             }
         """
         # Réinitialiser
@@ -140,38 +140,34 @@ class StopDetectorMatt(BaseDetector):
             # Sauvegarder l'overlay
             self._save_step(overlay, 'final_detections', mode='bgr')
 
-            # Formater la réponse
+            # Formater la réponse avec format standardisé
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
 
             if best_detection:
                 x, y, w, h, conf = best_detection
+                area = w * h  # Approximation de l'aire
                 self.logs.append('Résultat: STOP DÉTECTÉ')
                 self.logs.append('  Position: x={}, y={}'.format(x, y))
                 self.logs.append('  Taille: w={}, h={}'.format(w, h))
                 self.logs.append('  Confiance: {:.1%}'.format(conf))
                 payload = {
                     'source_file_url': source_url,
-                    'overlay_url': self.steps[-1]['url'] if self.steps else None,
-                    'steps': self.steps,
-                    'Stop_detected': True,
-                    # 'best': {
-                    #     'bbox': (x, y, w, h),
-                    #     'confidence': float(conf)
-                    # },
-                    # 'detection_box': (x, y, w, h),
-                    # 'confidence': float(conf),
+                    'annotated_url': self.steps[-1]['url'] if self.steps else None,
+                    'Object_detected': True,
+                    'detection_box': (x, y, w, h),
+                    'confidence': float(conf),
+                    'area': area,
                     'logs': self.logs
                 }
             else:
                 self.logs.append('Résultat: Aucun panneau stop détecté')
                 payload = {
                     'source_file_url': source_url,
-                    'overlay_url': self.steps[-1]['url'] if self.steps else None,
-                    'steps': self.steps,
-                    'Stop_detected': False,
-                    # 'best': {'bbox': None, 'confidence': 0.0},
-                    # 'detection_box': None,
-                    # 'confidence': 0.0,
+                    'annotated_url': self.steps[-1]['url'] if self.steps else None,
+                    'Object_detected': False,
+                    'detection_box': None,
+                    'confidence': 0.0,
+                    'area': 0,
                     'logs': self.logs
                 }
 
@@ -184,6 +180,9 @@ class StopDetectorMatt(BaseDetector):
     def diagnostique_detecteur(self, filename):
         """
         Réalise un diagnostic détaillé avec toutes les étapes intermédiaires.
+
+        Returns:
+            dict: Format standardisé avec clés 'Object_detected', 'detection_box', 'confidence', 'area', 'logs', 'steps', 'annotated_url'
         """
         # Réinitialiser
         self.steps = []
@@ -248,30 +247,31 @@ class StopDetectorMatt(BaseDetector):
 
             self._save_step(overlay, 'final_detections', mode='bgr')
 
-            # Formater la réponse
+            # Formater la réponse avec format standardisé
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
 
             if best_detection:
                 x, y, w, h, conf = best_detection
+                area = w * h
                 payload = {
                     'source_file_url': source_url,
-                    'overlay_url': self.steps[-1]['url'] if self.steps else None,
+                    'annotated_url': self.steps[-1]['url'] if self.steps else None,
                     'steps': self.steps,
-                    'Stop_detected': True,
-                    'best': {'bbox': (x, y, w, h), 'confidence': float(conf)},
+                    'Object_detected': True,
                     'detection_box': (x, y, w, h),
                     'confidence': float(conf),
+                    'area': area,
                     'logs': self.logs
                 }
             else:
                 payload = {
                     'source_file_url': source_url,
-                    'overlay_url': self.steps[-1]['url'] if self.steps else None,
+                    'annotated_url': self.steps[-1]['url'] if self.steps else None,
                     'steps': self.steps,
-                    'Stop_detected': False,
-                    'best': {'bbox': None, 'confidence': 0.0},
+                    'Object_detected': False,
                     'detection_box': None,
                     'confidence': 0.0,
+                    'area': 0,
                     'logs': self.logs
                 }
 
@@ -559,24 +559,30 @@ class StopDetectorMatt(BaseDetector):
     def _save_step(self, img, name, mode):
         """
         Sauvegarde une image intermédiaire pour le diagnostic.
-        mode: 'bgr', 'gray', 'hsv', 'RGB'
+        cv2.imwrite() attend du BGR, donc on convertit tout vers BGR avant sauvegarde.
+
+        mode:
+        'bgr'   -> image BGR OpenCV (deja en BGR, pas de conversion)
+        'gray'  -> image 1 canal (converti vers BGR 3 canaux)
+        'hsv'   -> image HSV (convertie vers BGR)
+        'RGB'   -> image RGB (convertie vers BGR)
         """
         base = 'Diag_Stop_Detector_Matt_{}_{}'.format(name, uuid.uuid4().hex[:6])
         out_name = base + '.jpg'
         out_path = os.path.join(self.DIAGNOSTIC_DIR, out_name)
 
         if mode == 'bgr':
-            to_save = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            to_save = img  # Deja en BGR, pas de conversion
         elif mode == 'gray':
-            to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+            to_save = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)  # 1 canal -> 3 canaux BGR
         elif mode == 'hsv':
-            to_save = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
+            to_save = cv2.cvtColor(img, cv2.COLOR_HSV2BGR)  # HSV -> BGR
         elif mode == 'RGB':
-            to_save = img
+            to_save = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # RGB -> BGR
         else:
             raise ValueError("Unknown save mode: {}".format(mode))
 
-        cv2.imwrite(out_path, to_save)
+        cv2.imwrite(out_path, to_save)  # imwrite attend BGR
         url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
         self.steps.append({"name": name, "url": url})
 

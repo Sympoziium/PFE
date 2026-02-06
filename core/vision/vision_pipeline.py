@@ -60,37 +60,36 @@ class VisionPipeline:
         self.detectors.append(detectors)
 
     def step(self):
-        ## fonction désuette ?
         """ effectuer un cycle du pipeline de vision """
         if not self.running:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
-        
+
         start_time = time.time()
-        
+
         try:
             frame = self.camera.capture()
         except Exception as e:
             print("Erreur lors de la capture d'une image: {}".format(e))
             raise e
-        
+
         results = []
 
         # Appliquer chaque détecteur sur l'image capturée
         for detectors in self.detectors:
             try:
                 result = detectors.process(frame)
-                results.append(result) 
+                results.append(result)
 
             except Exception as e:
                 print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detectors, e))
                 raise e
-        
+
         # On fait un délais pour respecter le fps souhaité
         elapsed_time = time.time() - start_time
         sleep_time = self.periode - elapsed_time
         if sleep_time > 0:
             time.sleep(sleep_time)
-        
+
         return results
     
     def process_frame(self, frame, detetor_index=0, filename=None):
@@ -98,25 +97,29 @@ class VisionPipeline:
 
         if detetor_index < 0 or detetor_index >= len(self.detectors):
             raise IndexError("Index de détecteur invalide.")
-        
+
         start_time = time.time() # pour mesurer le temps de traitement
 
         detector = self.detectors[detetor_index]
-        
+
         try:
-            detection = detector.process(frame, filename=filename)
+            # Vérifier si le détecteur accepte le paramètre filename
+            import inspect
+            sig = inspect.signature(detector.process)
+            if 'filename' in sig.parameters:
+                # Nouveau détecteur: supporte filename
+                detection = detector.process(frame, filename=filename)
+            else:
+                # Ancien détecteur: ne supporte que frame
+                detection = detector.process(frame)
+
             elapsed_time = time.time() - start_time
             detection["Processing time"] = elapsed_time
 
-            # if camera_was_running:
-            #     self.start() # redémarrer la caméra si elle était en cours d'exécution
-
             return detection
-        
+
         except Exception as e:
             print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
-            # if camera_was_running:
-            #     self.start()
             raise e
 
     def is_running(self):
