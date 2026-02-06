@@ -704,7 +704,9 @@ class StopDetectorCV(BaseDetector):
         self.logs.append('  H in [170, 180]: {} pixels'.format(red_range_high))
 
         # Créer une visualisation des histogrammes
-        self._create_histogram_visualization(h_channel, s_channel, v_channel)
+        # TEMPORAIREMENT DÉSACTIVÉ - matplotlib bloque sur Raspberry Pi
+        # self._create_histogram_visualization(h_channel, s_channel, v_channel)
+        self.logs.append('Histogram visualization disabled (matplotlib blocking issue on Pi)')
 
         self.logs.append('=== END DIAGNOSTIC ===')
 
