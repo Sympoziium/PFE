@@ -165,7 +165,9 @@ class StopDetectorMatt(BaseDetector):
             red_mask = self._get_red_mask(frame_bgr, diagnostic_mode=True)
 
             # Étape 2: Détection des contours
-            contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            result = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Compatibilité OpenCV 3.x (3 valeurs) et 4.x (2 valeurs)
+            contours = result[0] if len(result) == 2 else result[1]
             self.logs.append('Found {} contours'.format(len(contours)))
 
             # Créer une image pour visualiser tous les contours
@@ -365,7 +367,9 @@ class StopDetectorMatt(BaseDetector):
         Retourne une liste de détections: [(x, y, w, h, confidence), ...]
         """
         red_mask = self._get_red_mask(frame, diagnostic_mode=diagnostic_mode)
-        contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        result = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Compatibilité OpenCV 3.x (3 valeurs) et 4.x (2 valeurs)
+        contours = result[0] if len(result) == 2 else result[1]
 
         detections = []
         self.logs.append('Analyzing {} contours...'.format(len(contours)))
