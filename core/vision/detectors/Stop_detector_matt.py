@@ -231,7 +231,8 @@ class StopDetectorMatt(BaseDetector):
 
             # Étape 3: Analyse approfondie et détection
             self.logs.append('--- Étape 3: Analyse des candidats ---')
-            detections = self._detect_stop_signs(frame_bgr, diagnostic_mode=True)
+            # Passer red_mask et contours déjà calculés pour éviter recalcul
+            detections = self._detect_stop_signs(frame_bgr, red_mask, contours, diagnostic_mode=True)
 
             # Créer l'overlay final
             overlay = frame_bgr.copy()
@@ -319,10 +320,17 @@ class StopDetectorMatt(BaseDetector):
 
         return mask
 
-    def _analyze_red_blob(self, frame, x, y, w, h, diagnostic_mode=False):
+    def _analyze_red_blob(self, frame, x, y, w, h, hsv_frame=None, white_frame=None, diagnostic_mode=False):
         """
         Analyse un blob rouge pour détecter les caractéristiques d'un panneau stop.
         Retourne un dict de scores.
+
+        Args:
+            frame: Image BGR
+            x, y, w, h: Coordonnées du blob
+            hsv_frame: Image HSV précalculée (optionnel, pour performance)
+            white_frame: Masque blanc précalculé (optionnel, pour performance)
+            diagnostic_mode: Mode diagnostic
         """
         img_h, img_w = frame.shape[:2]
 
@@ -334,9 +342,13 @@ class StopDetectorMatt(BaseDetector):
         roi = frame[y1:y2, x1:x2]
 
         if roi.size == 0:
-            return {"ratio": 0, "center": 0, "edge": 0, "aspect": 0}
+            return {"ratio": 0, "center": 0, "edge": 0, "aspect": 0, "purity": 0}
 
-        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        # Utiliser les valeurs précalculées ou calculer si non fournies
+        hsv_full = hsv_frame if hsv_frame is not None else cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        white_full = white_frame if white_frame is not None else cv2.inRange(hsv_full, np.array([0, 0, 140]), np.array([180, 70, 255]))
+
+        hsv_roi = hsv_full[y1:y2, x1:x2]
         rh, rw = roi.shape[:2]
         total_pixels = rh * rw
 
@@ -392,15 +404,11 @@ class StopDetectorMatt(BaseDetector):
 
         # 3) Bordure blanche autour du blob rouge - Vérification multi-côtés
         # Les panneaux stop ont une bordure blanche sur tous les côtés
-        # Les emballages (jus, etc.) ont souvent du blanc seulement en haut
         pad = max(5, int(min(w, h) * 0.20))
         ex1 = max(0, x - pad)
         ey1 = max(0, y - pad)
         ex2 = min(img_w, x + w + pad)
         ey2 = min(img_h, y + h + pad)
-
-        hsv_full = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        white_full = cv2.inRange(hsv_full, np.array([0, 0, 140]), np.array([180, 70, 255]))
 
         sides_with_white = 0
         side_threshold = 0.06
@@ -432,12 +440,10 @@ class StopDetectorMatt(BaseDetector):
         aspect_score = max(0, 1.0 - abs(aspect - 1.0) * 2.0)
 
         # 5) Pureté des couleurs: les panneaux stop sont SEULEMENT rouge + blanc + un peu de noir
-        # Les emballages (jus, boîtes) ont des jaunes, verts, oranges mélangés
         dark_mask = cv2.inRange(hsv_roi, np.array([0, 0, 0]), np.array([180, 255, 50]))
         red_white_dark = red_count + white_count + cv2.countNonZero(dark_mask)
         other_color_ratio = 1.0 - (red_white_dark / total_pixels) if total_pixels > 0 else 0
         # Panneau stop: other_color_ratio devrait être très bas (<15%)
-        # Emballage: contient oranges, jaunes, verts = other_color_ratio plus élevé
         purity_score = max(0, 1.0 - other_color_ratio * 5.0)
 
         self.logs.append('  Blob analysis: red_ratio={:.2f}, white_ratio={:.2f}, '
@@ -452,15 +458,31 @@ class StopDetectorMatt(BaseDetector):
             "purity": purity_score,
         }
 
-    def _detect_stop_signs(self, frame, diagnostic_mode=False):
+    def _detect_stop_signs(self, frame, red_mask=None, contours=None, diagnostic_mode=False):
         """
         Détecte les panneaux stop dans une image.
+
+        Args:
+            frame: Image BGR
+            red_mask: Masque rouge précalculé (optionnel, pour éviter recalcul)
+            contours: Contours précalculés (optionnel, pour éviter recalcul)
+            diagnostic_mode: Mode diagnostic
+
         Retourne une liste de détections: [(x, y, w, h, confidence), ...]
         """
-        red_mask = self._get_red_mask(frame, diagnostic_mode=diagnostic_mode)
-        result = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Compatibilité OpenCV 3.x (3 valeurs) et 4.x (2 valeurs)
-        contours = result[0] if len(result) == 2 else result[1]
+        # Utiliser le masque précalculé ou le calculer
+        if red_mask is None:
+            red_mask = self._get_red_mask(frame, diagnostic_mode=diagnostic_mode)
+
+        # Utiliser les contours précalculés ou les extraire
+        if contours is None:
+            result = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Compatibilité OpenCV 3.x (3 valeurs) et 4.x (2 valeurs)
+            contours = result[0] if len(result) == 2 else result[1]
+
+        # Précalculer une seule fois pour toute l'image (optimisation)
+        hsv_full = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        white_full = cv2.inRange(hsv_full, np.array([0, 0, 140]), np.array([180, 70, 255]))
 
         detections = []
         self.logs.append('Analyzing {} contours...'.format(len(contours)))
@@ -500,7 +522,7 @@ class StopDetectorMatt(BaseDetector):
                 continue
 
             # Analyse approfondie
-            scores = self._analyze_red_blob(frame, x, y, w, h, diagnostic_mode=diagnostic_mode)
+            scores = self._analyze_red_blob(frame, x, y, w, h, hsv_full, white_full, diagnostic_mode)
 
             # Porte stricte: rejeter si trop de couleurs non-rouge/blanc (emballages, étiquettes)
             if scores["purity"] < 0.65:
