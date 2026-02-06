@@ -522,23 +522,37 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	function runDetection() {
+		var terminal = document.getElementById('stopDetectTerminal');
+		var indicator = document.getElementById('stopDetectIndicator');
+		clearTerminal();
 		fetch('/run_detection', { method: 'POST' })
 			.then(function(r) { if (!r.ok) throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText); return r.json(); })
 			.then(function(res) {
-				var terminal = document.getElementById('stopDetectTerminal');
-				terminal.style.display = 'block';
-				terminal.textContent = JSON.stringify(res, null, 2);
-				if (res && res.annotated_file_url) {
-					imageCapturedCallback(res.annotated_file_url);
+				if (res.logs && Array.isArray(res.logs)) {
+					appendTerminalLines(res.logs);
+				} else {
+					appendTerminalLines(JSON.stringify(res, null, 2));
+				}
+
+				if (res && res.overlay_url) {
+					imageCapturedCallback(res.overlay_url);
 				} else if (res && res.source_file_url) {
 					imageCapturedCallback(res.source_file_url);
+				}
+
+				if (res.Stop_detected) {
+					indicator.classList.add('on');
+					indicator.textContent = 'STOP detecte';
+				} else {
+					indicator.classList.add('off');
+					indicator.textContent = 'Aucune detection';
 				}
 			})
 			.catch(function(err) {
 				logError('runDetection: /run_detection', err);
 				var terminal = document.getElementById('stopDetectTerminal');
 				terminal.style.display = 'block';
-				terminal.textContent = 'Erreur: ' + err;
+				appendTerminalLines('Erreur: ' + err);
 			});
 	}
 
@@ -548,36 +562,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		// Afficher pour tout détecteur de stop (Zumi ou CV)
 		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetector') !== -1) ? 'block' : 'none';
 	}
-
-	/*
-	function clearOverlayBox() {
-		var box = document.getElementById('bboxOverlay');
-		if (!box) return;
-		box.style.display = 'none';
-		box.style.left = '0px'; box.style.top = '0px'; box.style.width = '0px'; box.style.height = '0px';
-	}
-
-	
-	function updateOverlayBox(bbox) {
-		var img = document.getElementById('lastCapturedImage');
-		var box = document.getElementById('bboxOverlay');
-		if (!img || !box || !bbox) { clearOverlayBox(); return; }
-		var rect = img.getBoundingClientRect();
-		var naturalW = img.naturalWidth || rect.width;
-		var naturalH = img.naturalHeight || rect.height;
-		var scaleX = rect.width / naturalW;
-		var scaleY = rect.height / naturalH;
-		var x = bbox[0] * scaleX;
-		var y = bbox[1] * scaleY;
-		var w = bbox[2] * scaleX;
-		var h = bbox[3] * scaleY;
-		box.style.left = Math.round(x) + 'px';
-		box.style.top = Math.round(y) + 'px';
-		box.style.width = Math.round(w) + 'px';
-		box.style.height = Math.round(h) + 'px';
-		box.style.display = 'block';
-	}
-	*/
 
 	function runStopDiagnostics() {
 		var indicator = document.getElementById('stopDetectIndicator');

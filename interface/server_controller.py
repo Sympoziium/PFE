@@ -202,9 +202,6 @@ class controller:
             # Pas de flux actif ou pas encore d'image en buffer: on capture directement
             return jsonify({'error': 'Activer la camera car le flux est pas encore disponible'}), 400
 
-        # IMPORTANT: frame doit toujours être en BGR pour cv2.imwrite
-        # Si ConvertToRGB est True, cela sert uniquement pour l'affichage web,
-        # mais on sauvegarde toujours en BGR pour compatibilité avec les détecteurs
         frame_to_save = frame.copy()  # Toujours en BGR
 
         # 2. Génération d'un nom de fichier unique

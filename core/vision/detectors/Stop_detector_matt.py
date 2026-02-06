@@ -154,12 +154,12 @@ class StopDetectorMatt(BaseDetector):
                     'overlay_url': self.steps[-1]['url'] if self.steps else None,
                     'steps': self.steps,
                     'Stop_detected': True,
-                    'best': {
-                        'bbox': (x, y, w, h),
-                        'confidence': float(conf)
-                    },
-                    'detection_box': (x, y, w, h),
-                    'confidence': float(conf),
+                    # 'best': {
+                    #     'bbox': (x, y, w, h),
+                    #     'confidence': float(conf)
+                    # },
+                    # 'detection_box': (x, y, w, h),
+                    # 'confidence': float(conf),
                     'logs': self.logs
                 }
             else:
@@ -169,9 +169,9 @@ class StopDetectorMatt(BaseDetector):
                     'overlay_url': self.steps[-1]['url'] if self.steps else None,
                     'steps': self.steps,
                     'Stop_detected': False,
-                    'best': {'bbox': None, 'confidence': 0.0},
-                    'detection_box': None,
-                    'confidence': 0.0,
+                    # 'best': {'bbox': None, 'confidence': 0.0},
+                    # 'detection_box': None,
+                    # 'confidence': 0.0,
                     'logs': self.logs
                 }
 

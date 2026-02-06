@@ -119,104 +119,18 @@ class StopDetectorCV(BaseDetector):
             self.logs.append('=== FIN DETECTION ===')
 
             payload = {
-                'source_file_url': source_url,
-                'overlay_url': self.steps[-1]['url'] if self.steps else None,
-                'steps': self.steps,
                 'Stop_detected': bool(results.get('detected')),
-                'best': {'bbox': results.get('detection_box'), 'area': int(results.get('area', 0))},
-                'detection_box': results.get('detection_box'),
-                'area': int(results.get('area', 0)),
-                'logs': self.logs
+                'logs': self.logs,
+                'source_file_url': source_url,
+                'steps': self.steps,
+                'overlay_url': self.steps[-1]['url'] if self.steps else None,
             }
 
             return payload
         
         except Exception as e:
             return {'error': 'diagnose_stop_cv failed', 'details': str(e)}
-        # try:
-        #     print("Processing frame in StopDetectorCV...")
-        #     bbox = self._detect_stop_bgr(frame)
-        # except Exception:
-        #     bbox = None
 
-        # if bbox is not None:
-        #     x, y, w, h = bbox
-        #     return {
-        #         "Detector": self.name,
-        #         "Object detected": True,
-        #         "Object coordinates": (int(x), int(y)),
-        #         "Object size": (int(w), int(h)),
-        #     }
-        # else:
-        #     return {
-        #         "Detector": self.name,
-        #         "Object detected": False,
-        #         "Object coordinates": None,
-        #         "Object size": None,
-        #     }
-
-
-
-    # Fonction de détection interne buggé
-    def _detect_stop_bgr(self, bgr):
-        if bgr is None:
-            return None
-        # Convertir en HSV
-        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-
-        # Masques pour le rouge (autour de 0° et 180°)
-        lower1 = np.array([0, 70, 50], dtype=np.uint8)
-        upper1 = np.array([10, 255, 255], dtype=np.uint8)
-        lower2 = np.array([170, 70, 50], dtype=np.uint8)
-        upper2 = np.array([180, 255, 255], dtype=np.uint8)
-        mask1 = cv2.inRange(hsv, lower1, upper1)
-        mask2 = cv2.inRange(hsv, lower2, upper2)
-        mask = cv2.bitwise_or(mask1, mask2)
-
-        # Morphologie pour nettoyer
-        kernel3 = np.ones((3, 3), np.uint8)
-        kernel5 = np.ones((5, 5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel3, iterations=1)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel5, iterations=2)
-
-        # Trouver contours
-        cnts = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-        if not cnts:
-            return None
-
-        best = None
-        best_area = 0
-
-        for c in cnts:
-            area = cv2.contourArea(c)
-            if area < self.min_area:
-                continue
-            peri = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-            vtx = len(approx)
-            if vtx < self.poly_min or vtx > self.poly_max:
-                continue
-            if not cv2.isContourConvex(approx):
-                continue
-            x, y, w, h = cv2.boundingRect(approx)
-            # Ratio largeur/hauteur proche de 1
-            if w == 0 or h == 0:
-                continue
-            ratio = float(w) / float(h)
-            if abs(ratio - 1.0) > self.aspect_tol:
-                continue
-            # Rapports d'aire
-            rect_area = float(w * h)
-            fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0
-            if fill_ratio < 0.30:
-                continue
-            # Choisir le plus grand
-            if area > best_area:
-                best_area = area
-                best = (x, y, w, h)
-
-        return best
     
     # Diagnostic CV du stop: export des étapes intermédiaires (HSV, masques, morpho, contours)
     def diagnostique_detecteur(self, filename):
