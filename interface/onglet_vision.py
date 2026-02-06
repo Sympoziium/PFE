@@ -608,26 +608,26 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			});
 	}
 
-	function runStopDiagnosticsCV() {
+	function runGenericDiagnostics() {
 		var indicator = document.getElementById('stopDetectIndicator');
 		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
-		indicator.textContent = 'Diagnostic CV en cours...';
-		appendTerminalLines('Execution du diagnostic CV...');
-		fetch('/diagnose_stop_cv', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_stop_cv failed: ' + r.status + ' ' + r.statusText); return r.json(); })
+		indicator.textContent = 'Diagnostic en cours...';
+		appendTerminalLines('Exécution du diagnostic...');
+		fetch('/diagnose_detector', { method: 'POST' })
+			.then(function(r) { if (!r.ok) throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText); return r.json(); })
 			.then(function(payload) {
 				// logs
 				if (payload.logs && Array.isArray(payload.logs)) {
 					appendTerminalLines(payload.logs);
 				} else { appendTerminalLines(JSON.stringify(payload, null, 2)); }
-				// Stop detecte
+				// Stop detecté
 				if (payload.Stop_detected) {
 					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte (CV)';
+					indicator.textContent = 'STOP detecte';
 				} else {
 					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection (CV)';
+					indicator.textContent = 'Aucune detection';
 				}
 
 				// best bbox overlay
@@ -635,19 +635,19 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				var imgUrl = (payload.steps && payload.steps.length) ? payload.steps[payload.steps.length - 1].url : payload.source_file_url;
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
 				// enleve le draw de la bbox on le fait directement dans le backend sur une copie de l'image qu'on affiche ensuite
-				if (best.bbox) { 
+				if (best.bbox) {
 					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte (CV)';
+					indicator.textContent = 'STOP detecte';
 				} else {
 					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection (CV)';
+					indicator.textContent = 'Aucune detection';
 				}
 				// open gallery in new tab
 				if (payload.steps && payload.steps.length) {
 					var w = window.open('', '_blank');
 					if (w) {
-						var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>CV Filters Gallery</title></head><body style="font-family:Arial; padding:12px;">';
-						html += '<h3>Etapes du diagnostic CV</h3>';
+						var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Diagnostic Gallery</title></head><body style="font-family:Arial; padding:12px;">';
+						html += '<h3>Etapes du diagnostic</h3>';
 						for (var i = 0; i < payload.steps.length; i++) {
 							var s = payload.steps[i];
 							html += '<div style="margin-bottom:12px;"><div><b>' + s.name + '</b></div><img style="max-width:100%;border:1px solid #ccc" src="' + s.url + '"></div>';
@@ -659,7 +659,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 			})
 			.catch(function(err) {
-				logError('runStopDiagnosticsCV: /diagnose_stop_cv', err);
+				logError('runGenericDiagnostics: /diagnose_detector', err);
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
 				indicator.textContent = 'Erreur';
@@ -670,9 +670,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
 
 		if (detectorName === 'StopDetector') {
+			// Détecteur Zumi spécifique avec balayage de paramètres
 			runStopDiagnostics();
-		} else if (detectorName === 'StopDetectorCV') {
-			runStopDiagnosticsCV();
+		} else if (detectorName.indexOf('StopDetector') !== -1) {
+			// Tous les autres détecteurs de stop (CV, Matt, etc.) utilisent la route générique
+			runGenericDiagnostics();
 		} else {
 			alert('Aucun diagnostique disponible pour le détecteur sélectionné : ' + detectorName);
 		}

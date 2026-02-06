@@ -19,6 +19,7 @@ from core.vision.vision_pipeline import VisionPipeline
 from core.vision.detectors.Luminosity import LuminosityDetector
 from core.vision.detectors.Stop_detector_zumi import StopDetector
 from core.vision.detectors.Stop_detector_cv import StopDetectorCV
+from core.vision.detectors.Stop_detector_matt import StopDetectorMatt
 
 # Import pour le serveur web (Flask)
 from interface import server_controller as controller_module
@@ -39,12 +40,14 @@ zumi = RobotZumi()
 Lum_detector = LuminosityDetector()
 stop_detector = StopDetector()
 stop_detector_cv = StopDetectorCV(min_area=400, aspect_tol=0.4, poly_min=6, poly_max=10)
+stop_detector_matt = StopDetectorMatt(min_area=400, min_score=0.35)
 vision_pipeline = VisionPipeline(camera=zumi.camera)
 
 # On ajoute le détecteur au pipeline de vision
 vision_pipeline.add_detectors(Lum_detector)
 vision_pipeline.add_detectors(stop_detector)
 vision_pipeline.add_detectors(stop_detector_cv)
+vision_pipeline.add_detectors(stop_detector_matt)
 # Initialisation du contrôleur (serveur Flask)
 ctrl = controller_module.controller(zumi)
 routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du contrôleur (build du serveur)

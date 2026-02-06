@@ -229,9 +229,6 @@ class controller:
 
             results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index, filename=filename)
 
-            # !!!!  Retravail le formatage des résultats. la fonction retourne déja un dict 
-            # 
-
             # Si détection, créer et sauvegarder une version annotée
             annotated_url = None
             annotated_filename = None
@@ -386,8 +383,10 @@ class controller:
         except Exception as e:
             return jsonify({'error': 'diagnostics failed', 'details': str(e)}), 500
 
-    # Diagnostic CV du stop: export des étapes intermédiaires (HSV, masques, morpho, contours)
-    def diagnose_stop_cv(self):
+    # Diagnostic générique: appelle la méthode diagnostique_detecteur() du détecteur sélectionné
+    def diagnose_detector(self):
+        """Route générique pour diagnostiquer n'importe quel détecteur.
+        Délègue l'opération au détecteur actuellement sélectionné via son index."""
 
         vp = self.vision_pipeline
         if vp is None:
@@ -397,13 +396,12 @@ class controller:
         if not filename:
             return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
 
-        
         try:
             diagnostic = vp.get_current_detector_diagnostic(filename=filename, detector_index=self.selected_detector_index)
             # Le détecteur retourne un dict; on jsonify ici pour standardiser les endpoints.
             return jsonify(diagnostic)
         except Exception as e:
-            return jsonify({'error': 'diagnose_stop_cv failed', 'details': str(e)}), 500
+            return jsonify({'error': 'diagnose_detector failed', 'details': str(e)}), 500
 
 
     #     img_path = os.path.join(self.CAPTURE_DIR, filename)
