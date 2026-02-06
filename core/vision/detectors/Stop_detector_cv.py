@@ -47,25 +47,6 @@ class StopDetectorCV(BaseDetector):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
-    def _load_image_bgr(self, img_path):
-        """Charge une image RGB depuis le disque et la convertit en BGR pour OpenCV.
-
-        Les images sont sauvegardées en RGB pour l'affichage web, mais OpenCV
-        nécessite BGR pour le traitement. Cette fonction fait la conversion.
-
-        Args:
-            img_path (str): Chemin vers l'image à charger
-
-        Returns:
-            np.ndarray: Image en format BGR, ou None si échec
-        """
-        frame_rgb = cv2.imread(img_path, cv2.IMREAD_COLOR)
-        if frame_rgb is None:
-            return None
-        # Conversion RGB→BGR pour traitement OpenCV
-        frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        return frame_bgr
-
     def process(self, frame, filename=None):
         """Analyse une image BGR et retourne un dict de résultat.
 
@@ -94,8 +75,8 @@ class StopDetectorCV(BaseDetector):
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
-            # Charger l'image capturée (RGB sur disque → BGR pour OpenCV)
-            frame_bgr = self._load_image_bgr(img_path)
+            # Charger l'image capturée en BGR
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
 
@@ -172,8 +153,8 @@ class StopDetectorCV(BaseDetector):
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
-            # Charger l'image capturée (RGB sur disque → BGR pour OpenCV)
-            frame_bgr = self._load_image_bgr(img_path)
+            # Charger l'image capturée en BGR
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
 

@@ -209,9 +209,8 @@ class controller:
         filename = '{}_{}.jpg'.format(ts, uuid.uuid4().hex[:6])
         save_path = os.path.join(self.CAPTURE_DIR, filename)
 
-        # 3. Conversion BGR→RGB pour affichage web avant sauvegarde
-        frame_rgb = cv2.cvtColor(frame_to_save, cv2.COLOR_BGR2RGB)
-        ok = cv2.imwrite(save_path, frame_rgb)
+        # 3. Sauvegarde directe en BGR (format natif OpenCV)
+        ok = cv2.imwrite(save_path, frame_to_save)
         if not ok:
             return jsonify({'error': 'write failed'}), 500
 
@@ -505,9 +504,8 @@ class controller:
                 except Exception:
                     time.sleep(0.1)
                     break
-                # Conversion BGR→RGB pour affichage web correct
-                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-                ret, jpeg = cv2.imencode('.jpg', frame_rgb)
+                # Encodage direct en JPEG depuis BGR
+                ret, jpeg = cv2.imencode('.jpg', frame_bgr)
                 if not ret:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
