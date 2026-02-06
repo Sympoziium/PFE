@@ -231,8 +231,10 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 	.log-terminal {
 		background: #000; color: #fff; font-family: Consolas, monospace; font-size: 13px;
-		border-radius: 10px; padding: 10px; min-height: 200px; min-width: 100px; overflow: auto;
-		white-space: pre-wrap;
+		border-radius: 10px; padding: 10px;
+		min-height: 200px; max-height: 50vh; min-width: 100px;
+		overflow-y: auto; overflow-x: auto;
+		white-space: pre-wrap; word-wrap: break-word;
 	}
 
 	</style>
@@ -256,12 +258,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				</div>
 				<!-- AJOUT DES FONCTIONS DE CAPTURE -->
 				<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
-				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button> 
+				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
 				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
 				<div id='zone-resultats'></div>
-				<!-- Conteneur du flux vidéo en direct -->
-				<div class='live-feed' id='liveFeed' style = 'display:none;'>
-					<img id='videoStream' alt='Flux vidéo en direct'>
+				<!-- Conteneur unifié pour livefeed et image capturée -->
+				<div class='live-feed' id='mainImageDisplay' style='display:none;'>
+					<img id='mainImage' alt='Image principale'>
 				</div>
 			</div>
 
@@ -363,8 +365,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	// Navigation helper: close camera feed if active before redirecting
 	function navigateTo(path) {
 		try {
-			var liveFeed = document.getElementById('liveFeed');
-			var isActive = liveFeed && liveFeed.style.display === 'block';
+			var mainDisplay = document.getElementById('mainImageDisplay');
+			var isActive = mainDisplay && mainDisplay.style.display === 'block';
 			if (isActive) {
 				fetch('/close_camera', { method: 'POST' })
 					.then(function() { location.href = path; })
@@ -378,34 +380,42 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		}
 	}
 
-	function toggleCamera() { 
+	// État global: mode d'affichage (livefeed ou captured)
+	var DISPLAY_MODE = 'livefeed'; // 'livefeed' | 'captured'
+
+	function toggleCamera() {
 		console.log('toggleCamera() appelee');
-		var liveFeed = document.getElementById('liveFeed'); 
-		var btn = document.getElementById('cameraToggleBtn'); 
-		var img = liveFeed.querySelector('img'); 
-		var isActive = liveFeed.style.display === 'block';
+		var mainDisplay = document.getElementById('mainImageDisplay');
+		var mainImage = document.getElementById('mainImage');
+		var btn = document.getElementById('cameraToggleBtn');
+		var captureBtn = document.getElementById('captureImageBtn');
+		var isActive = mainDisplay.style.display === 'block' && DISPLAY_MODE === 'livefeed';
+
 		if (!isActive) {
+			// Démarrer la caméra
 			btn.textContent = '⛔ Stop Camera';
 			fetch('/start_camera', { method: 'POST' })
 				.then(function(response) {
 					if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
-					liveFeed.style.display = 'block';
-					img.src = '/video?' + new Date().getTime();
+					mainDisplay.style.display = 'block';
+					mainImage.src = '/video?' + new Date().getTime();
+					DISPLAY_MODE = 'livefeed';
+					captureBtn.textContent = '📸 Capture Image';
+					captureBtn.onclick = captureImage;
 				})
 				.catch(function(err) {
 					logError('toggleCamera: /start_camera', err);
 					btn.textContent = '▶️ Start Camera';
 				});
 		} else {
-            // 1. Cache le conteneur et change le bouton 
-            liveFeed.style.display = 'none'; 
-            btn.textContent = '▶️ Start Camera'; 
-            
-            // 2. Vide la source de l'image (arrete le flux gele) 
-            img.src = "";  
-            
-            // 3. Envoie la commande d'arret au serveur 
-			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); }); 
+			// Arrêter la caméra
+			mainDisplay.style.display = 'none';
+			btn.textContent = '▶️ Start Camera';
+			mainImage.src = "";
+			DISPLAY_MODE = 'livefeed';
+			captureBtn.textContent = '📸 Capture Image';
+			captureBtn.onclick = captureImage;
+			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
 		}
 	}
 
@@ -421,11 +431,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	function captureImage() {
-		console.log('captureImage() appelee'); // pour debug
+		console.log('captureImage() appelee');
 		var downloadEnabled = document.getElementById('toggleDownloadCapturedBtn').getAttribute('aria-pressed') === 'true';
 
 		fetch('/capture_image', { method: 'POST' })
-			.then(function(response) { 
+			.then(function(response) {
 				if (!response.ok) throw new Error('capture_image failed: ' + response.status + ' ' + response.statusText);
 				return response.json();
 			})
@@ -451,20 +461,51 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					link.remove();
 				}
 
-				imageCapturedCallback(file_url); // mise a jour de la dernière image capturée
+				// Basculer vers l'image capturée dans l'affichage principal
+				var mainImage = document.getElementById('mainImage');
+				var mainDisplay = document.getElementById('mainImageDisplay');
+				var captureBtn = document.getElementById('captureImageBtn');
+
+				mainImage.src = file_url;
+				mainDisplay.style.display = 'block';
+				DISPLAY_MODE = 'captured';
+				captureBtn.textContent = '↩️ Return to Livefeed';
+				captureBtn.onclick = returnToLivefeed;
+
+				// Mise à jour de la dernière image capturée (pour diagnostic)
+				imageCapturedCallback(file_url);
 			})
 			.catch(function(err) {
 				logError('captureImage: /capture_image', err);
 				alert('Erreur lors de la communication avec le serveur : ' + err);
 			});
 	}
-	
+
+	function returnToLivefeed() {
+		console.log('returnToLivefeed() appelee');
+		var mainImage = document.getElementById('mainImage');
+		var captureBtn = document.getElementById('captureImageBtn');
+
+		// Retour au livefeed
+		mainImage.src = '/video?' + new Date().getTime();
+		DISPLAY_MODE = 'livefeed';
+		captureBtn.textContent = '📸 Capture Image';
+		captureBtn.onclick = captureImage;
+	}
+
 	function imageCapturedCallback(imageUrl) {
-		console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl); // pour debug
-		const panel = document.getElementById('stopDetectPanel');
-		const img = document.getElementById('lastCapturedImage');
+		console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl);
+		// Mise à jour de l'image dans le panel diagnostic (pour overlays)
+		var panel = document.getElementById('stopDetectPanel');
+		var img = document.getElementById('lastCapturedImage');
 		panel.style.display = panel.style.display === 'none' ? 'none' : 'block';
 		img.src = imageUrl;
+
+		// Si on est en mode captured, mettre à jour l'affichage principal aussi
+		if (DISPLAY_MODE === 'captured') {
+			var mainImage = document.getElementById('mainImage');
+			mainImage.src = imageUrl;
+		}
 	}
 	
 	// --- Détecteurs: chargement, sélection et exécution ---
@@ -709,6 +750,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	window.toggleCamera = toggleCamera;
 	window.toggleDownloadCaptured = toggleDownloadCaptured;
 	window.captureImage = captureImage;
+	window.returnToLivefeed = returnToLivefeed;
 	window.runDetection = runDetection;
 	window.runDiagnostics = runDiagnostics;
 	window.onDetectorChange = onDetectorChange;

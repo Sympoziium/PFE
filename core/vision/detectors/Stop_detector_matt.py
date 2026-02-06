@@ -525,8 +525,9 @@ class StopDetectorMatt(BaseDetector):
             scores = self._analyze_red_blob(frame, x, y, w, h, hsv_full, white_full, diagnostic_mode)
 
             # Porte stricte: rejeter si trop de couleurs non-rouge/blanc (emballages, étiquettes)
-            if scores["purity"] < 0.65:
-                self.logs.append('  Contour {}: rejeté - pureté trop faible ({:.2f} < 0.65)'.format(idx, scores["purity"]))
+            # Seuil réduit à 0.50 pour éviter de rejeter de vrais panneaux stop
+            if scores["purity"] < 0.50:
+                self.logs.append('  Contour {}: rejeté - pureté trop faible ({:.2f} < 0.50)'.format(idx, scores["purity"]))
                 continue
 
             # Calcul de la confiance avec poids ajustés
