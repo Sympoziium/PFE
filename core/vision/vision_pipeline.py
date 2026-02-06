@@ -65,7 +65,6 @@ class VisionPipeline:
         if not self.running:
             raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
         
-        # with self.lock: # assurer la synchronisation des accès à la caméra
         start_time = time.time()
         
         try:
@@ -80,9 +79,7 @@ class VisionPipeline:
         for detectors in self.detectors:
             try:
                 result = detectors.process(frame)
-                results.append(result) # ici on retourne le résultat sous forme brute
-                                        # il faudra surement modifier pour log les données
-                                        # et seulement retourner la décision finale
+                results.append(result) 
 
             except Exception as e:
                 print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detectors, e))
@@ -99,12 +96,6 @@ class VisionPipeline:
     def process_frame(self, frame, detetor_index=0, filename=None):
         """ traiter un frame spécifique avec un détecteur spécifique """
 
-        # camera_was_running = False
-        # if self.running:
-        #     # arret temporaire de la caméra pour éviter les conflits
-        #     camera_was_running = True
-        #     self.stop()
-        
         if detetor_index < 0 or detetor_index >= len(self.detectors):
             raise IndexError("Index de détecteur invalide.")
         

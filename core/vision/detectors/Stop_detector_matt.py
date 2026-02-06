@@ -68,6 +68,25 @@ class StopDetectorMatt(BaseDetector):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
+    def _load_image_bgr(self, img_path):
+        """Charge une image RGB depuis le disque et la convertit en BGR pour OpenCV.
+
+        Les images sont sauvegardées en RGB pour l'affichage web, mais OpenCV
+        nécessite BGR pour le traitement. Cette fonction fait la conversion.
+
+        Args:
+            img_path (str): Chemin vers l'image à charger
+
+        Returns:
+            np.ndarray: Image en format BGR, ou None si échec
+        """
+        frame_rgb = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        if frame_rgb is None:
+            return None
+        # Conversion RGB→BGR pour traitement OpenCV
+        frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+        return frame_bgr
+
     def _log_config(self):
         """Log la configuration actuelle des paramètres HSV."""
         print('[{}] Configuration HSV:'.format(self.name))
@@ -108,8 +127,8 @@ class StopDetectorMatt(BaseDetector):
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
-            # Charger l'image
-            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            # Charger l'image (RGB sur disque → BGR pour OpenCV)
+            frame_bgr = self._load_image_bgr(img_path)
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
 

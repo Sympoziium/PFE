@@ -505,8 +505,9 @@ class controller:
                 except Exception:
                     time.sleep(0.1)
                     break
-                # Encoder directement en JPEG (BGR sera affiché comme RGB par le navigateur)
-                ret, jpeg = cv2.imencode('.jpg', frame_bgr)
+                # Conversion BGR→RGB pour affichage web correct
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                ret, jpeg = cv2.imencode('.jpg', frame_rgb)
                 if not ret:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
