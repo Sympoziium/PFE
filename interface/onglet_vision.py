@@ -383,7 +383,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var mainImage = document.getElementById('mainImage');
 		var btn = document.getElementById('cameraToggleBtn');
 		var captureBtn = document.getElementById('captureImageBtn');
-		var isActive = CAMERA_ACTIVE && mainDisplay.style.display === 'block' && DISPLAY_MODE === 'livefeed';
+		// Stop camera should hide display regardless of whether showing livefeed or captured image
+		var isActive = CAMERA_ACTIVE && mainDisplay.style.display === 'block';
 
 		if (!isActive) {
 			// Démarrer la caméra
@@ -567,6 +568,18 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var idx = parseInt(sel.value, 10);
 		console.log('[DEBUG onDetectorChange] Selected index:', idx);
 		if (isNaN(idx) || idx < 0) return;
+
+		// Reset diagnostic panel when changing detectors
+		var indicator = document.getElementById('stopDetectIndicator');
+		var terminal = document.getElementById('stopDetectTerminal');
+		if (indicator) {
+			indicator.classList.remove('on', 'off');
+			indicator.textContent = 'Aucune détection';
+		}
+		if (terminal) {
+			terminal.textContent = 'Terminal vide';
+		}
+
 		fetch('/detector', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
