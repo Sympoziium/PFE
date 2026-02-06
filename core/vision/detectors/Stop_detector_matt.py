@@ -283,11 +283,6 @@ class StopDetectorMatt(BaseDetector):
             self._save_step(h, 'h_channel', mode='gray')
             self._save_step(s, 's_channel', mode='gray')
             self._save_step(v, 'v_channel', mode='gray')
-            self.logs.append('Using HSV thresholds:')
-            self.logs.append('  Red Low:  H=[{}, {}], S=[{}, {}], V=[{}, {}]'.format(
-                self.h_low_min, self.h_low_max, self.s_min, self.s_max, self.v_min, self.v_max))
-            self.logs.append('  Red High: H=[{}, {}], S=[{}, {}], V=[{}, {}]'.format(
-                self.h_high_min, self.h_high_max, self.s_min, self.s_max, self.v_min, self.v_max))
 
         # Masques pour le rouge (utilise les paramètres configurables)
         mask_lo = cv2.inRange(hsv,
@@ -437,6 +432,7 @@ class StopDetectorMatt(BaseDetector):
         for idx, cnt in enumerate(contours):
             area = cv2.contourArea(cnt)
             if area < self.min_area:
+                self.logs.append('  Contour {}: rejeté - aire trop petite ({} < {})'.format(idx, int(area), self.min_area))
                 continue
 
             # Solidité: rejeter les blobs très irréguliers
@@ -444,7 +440,7 @@ class StopDetectorMatt(BaseDetector):
             hull_area = cv2.contourArea(hull)
             solidity = area / hull_area if hull_area > 0 else 0
             if solidity < 0.45:
-                self.logs.append('  Contour {}: rejected (low solidity={:.2f})'.format(idx, solidity))
+                self.logs.append('  Contour {}: rejeté - solidité trop faible ({:.2f} < 0.45)'.format(idx, solidity))
                 continue
 
             x, y, w, h = cv2.boundingRect(cnt)
@@ -452,19 +448,19 @@ class StopDetectorMatt(BaseDetector):
             # Aspect ratio rapide
             aspect = w / float(h) if h > 0 else 0
             if aspect < 0.5 or aspect > 2.0:
-                self.logs.append('  Contour {}: rejected (bad aspect={:.2f})'.format(idx, aspect))
+                self.logs.append('  Contour {}: rejeté - aspect ratio hors limites ({:.2f} pas dans [0.5, 2.0])'.format(idx, aspect))
                 continue
 
             # Rejeter les blobs trop grands
             if w > frame.shape[1] * 0.4 or h > frame.shape[0] * 0.4:
-                self.logs.append('  Contour {}: rejected (too large)'.format(idx))
+                self.logs.append('  Contour {}: rejeté - dimensions trop grandes (w={} h={}, max=40% image)'.format(idx, w, h))
                 continue
 
             # Densité rouge
             bbox_area = w * h
             red_density = area / bbox_area if bbox_area > 0 else 0
             if red_density < 0.3:
-                self.logs.append('  Contour {}: rejected (low red density={:.2f})'.format(idx, red_density))
+                self.logs.append('  Contour {}: rejeté - densité rouge trop faible ({:.2f} < 0.3)'.format(idx, red_density))
                 continue
 
             # Analyse approfondie
@@ -480,14 +476,14 @@ class StopDetectorMatt(BaseDetector):
             )
             confidence = round(min(1.0, confidence), 2)
 
-            self.logs.append('  Contour {}: confidence={:.2f} '
-                           '(area={}, solidity={:.2f})'.format(idx, confidence, int(area), solidity))
+            self.logs.append('  Contour {}: confiance={:.2f} (aire={}, solidité={:.2f})'.format(
+                idx, confidence, int(area), solidity))
 
             if confidence < self.min_score:
-                self.logs.append('  Contour {}: rejected (confidence={:.2f} < {})'.format(
-                    idx, confidence, self.min_score))
+                self.logs.append('  → Rejeté: confiance insuffisante ({:.2f} < {})'.format(confidence, self.min_score))
                 continue
 
+            self.logs.append('  ✓ Accepté comme détection valide')
             detections.append((x, y, w, h, confidence))
 
         # Trier par confiance (meilleure en premier)

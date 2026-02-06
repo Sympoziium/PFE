@@ -430,7 +430,7 @@ class StopDetectorCV(BaseDetector):
             if area < 1:
                 continue
 
-            peri = cv2.arcLength(c, True)                                       # Périmètre du contour                        
+            peri = cv2.arcLength(c, True)                                       # Périmètre du contour
             approx = cv2.approxPolyDP(c, 0.02 * peri, True)                     # Approximation polygonale
             vtx = len(approx)                                                   # Nombre de sommets du polygone approximé
             x, y, w, h = cv2.boundingRect(approx)                               # Boîte englobante
@@ -442,29 +442,44 @@ class StopDetectorCV(BaseDetector):
             self.logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
 
             # Dessin du contour détecté
-            cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2) 
+            cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2)
 
+            # Vérifications avec messages de rejet explicites
             # Si l'aire est inférieure au minimum, on ignore
-            if area <  self.min_area:
+            if area < self.min_area:
+                self.logs.append('  → Rejeté: aire trop petite ({} < {})'.format(int(area), self.min_area))
                 continue
+
             # Si le nombre de sommets n'est pas dans l'intervalle, on ignore
             if vtx < self.poly_min or vtx > self.poly_max:
+                self.logs.append('  → Rejeté: nb sommets hors intervalle ({} pas dans [{}, {}])'.format(vtx, self.poly_min, self.poly_max))
                 continue
-            # Si le contour n'est pas convexe, on ignore (panneau stop est convexe)
+
+            # Si le contour n'est pas suffisamment convexe, on ignore
             hull = cv2.convexHull(c)
             hull_area = cv2.contourArea(hull)
-            if area / hull_area < 0.85:
+            solidity = area / hull_area if hull_area > 0 else 0
+            if solidity < 0.85:
+                self.logs.append('  → Rejeté: solidité trop faible ({:.2f} < 0.85)'.format(solidity))
                 continue
-            # Si la boite englobante est trop petite, ces soit une abérration ou le panneau est trop loin 
+
+            # Si la boite englobante est trop petite
             if h < self.h_min or w < self.w_min:
+                self.logs.append('  → Rejeté: dimensions trop petites (w={} h={}, min={})'.format(w, h, min(self.w_min, self.h_min)))
                 continue
-            # Si le ratio largeur/hauteur est proche de 1 la boite est presque carrée, plus ces probable que ce soit un panneau stop
+
+            # Si le ratio largeur/hauteur n'est pas proche de 1 (pas assez carré)
             if abs(ratio - 1.0) > float(self.aspect_tol):
+                self.logs.append('  → Rejeté: ratio W/H trop éloigné de 1.0 ({:.2f}, tolérance={})'.format(ratio, self.aspect_tol))
                 continue
-            # Si le ratio de remplissage est trop faible, cela veut dire que le contour est trop irrégulier pour être un octogone
+
+            # Si le ratio de remplissage est trop faible
             if fill_ratio < self.fill_ratio_min:
+                self.logs.append('  → Rejeté: ratio de remplissage trop faible ({:.2f} < {})'.format(fill_ratio, self.fill_ratio_min))
                 continue
-            # Si c'est le plus grand jusqu'à présent, on le garde comme détection 
+
+            # Si c'est le plus grand jusqu'à présent, on le garde comme détection
+            self.logs.append('  ✓ Accepté comme candidat (aire={})'.format(int(area)))
             if area > best_area:
                 best_area = area
                 best_gess_idx = idx
