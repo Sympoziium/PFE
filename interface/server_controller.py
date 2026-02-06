@@ -118,7 +118,7 @@ class controller:
         return send_from_directory(self.CAPTURE_DIR, filename, as_attachment=True)
 
     # Capture d'image
-    def capture_image(self, ConvertToRGB=False):
+    def capture_image(self):
         vp = self.vision_pipeline
         if vp is None or not vp.is_running():
             return jsonify({'error': 'camera not running'}), 400
@@ -130,16 +130,18 @@ class controller:
             # Pas de flux actif ou pas encore d'image en buffer: on capture directement
             return jsonify({'error': 'Activer la camera car le flux est pas encore disponible'}), 400
 
-        if ConvertToRGB:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # IMPORTANT: frame doit toujours être en BGR pour cv2.imwrite
+        # Si ConvertToRGB est True, cela sert uniquement pour l'affichage web,
+        # mais on sauvegarde toujours en BGR pour compatibilité avec les détecteurs
+        frame_to_save = frame.copy()  # Toujours en BGR
 
         # 2. Génération d'un nom de fichier unique
         ts = time.strftime("%Y%m%d-%H%M%S")
         filename = '{}_{}.jpg'.format(ts, uuid.uuid4().hex[:6])
         save_path = os.path.join(self.CAPTURE_DIR, filename)
 
-        # 3. Sauvegarde de l'image localement
-        ok = cv2.imwrite(save_path, frame)
+        # 3. Sauvegarde de l'image localement (TOUJOURS EN BGR)
+        ok = cv2.imwrite(save_path, frame_to_save)
         if not ok:
             return jsonify({'error': 'write failed'}), 500
 

@@ -225,10 +225,20 @@ class StopDetectorCV(BaseDetector):
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
 
-            # Étape 1: Sauvegarde de l'image originale
+            # Étape 0: Image originale
             self._save_step(frame_bgr.copy(), 'original_rgb', mode='bgr')
 
-            # Étape 2: Conversion en HSV et séparation des canaux
+            # Étape diagnostic: Test du format BGR/RGB
+            self.logs.append('')  # Ligne vide pour lisibilité
+            format_ok = self.diagnostic_bgr_rgb_format(frame_bgr)
+            self.logs.append('')  # Ligne vide pour lisibilité
+
+            # Étape diagnostic: Analyse HSV approfondie
+            self.logs.append('')  # Ligne vide pour lisibilité
+            self.diagnostic_hsv_analysis(frame_bgr)
+            self.logs.append('')  # Ligne vide pour lisibilité
+
+            # Étape 1: Conversion en HSV et séparation des canaux
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             mask = self._make_HSV_mask(hsv, diagnostic_mode=True)
             mask = self._fill_holes(mask) # remplir les trous laisser par le texte du panneau
@@ -236,11 +246,13 @@ class StopDetectorCV(BaseDetector):
 
 
 
-            # test rapide du filtre HSV pour debug
-            self.test_hsv_filter(frame_bgr) 
+            # Test rapide du filtre HSV pour debug - ANCIEN (incorrect)
+            self.logs.append('=== Test filtre HSV ancien (valeurs incorrectes H=[170,180]) ===')
+            self.test_hsv_filter(frame_bgr)
 
-            
-             
+            # Test du filtre HSV CORRIGÉ (comme Matt)
+            self.logs.append('=== Test filtre HSV corrigé (valeurs correctes H=[160,180]) ===')
+            self.test_corrected_hsv_filter(frame_bgr)
 
             # Étape 3: Opérations morphologiques pour nettoyage et reconstruction de l'image
             mask_morpho = self._make_morphological_mask(mask, diagnostic_mode=True)
@@ -499,15 +511,232 @@ class StopDetectorCV(BaseDetector):
         return summary
             
 
-### fonction de test rapide pour debug 
+### fonction de test rapide pour debug
 
     def test_hsv_filter(self, frame_bgr):
         """Test rapide du filtre HSV pour le rouge sur une image BGR.
         Retourne le masque binaire résultant.
+        ATTENTION: Cette fonction utilise des valeurs incorrectes (170-180) pour démonstration.
         """
         hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
         mask_red_low = cv2.inRange(hsv, (0, 70, 50), (10, 255, 255))
         mask_red_high = cv2.inRange(hsv, (170, 70, 50), (180, 255, 255))
         mask = cv2.bitwise_or(mask_red_low, mask_red_high)
-        self._save_step(mask, 'test_hsv_red_mask', mode='gray')
+        self._save_step(mask, 'test_hsv_red_mask_OLD', mode='gray')
         return mask
+
+    def test_corrected_hsv_filter(self, frame_bgr):
+        """Test du filtre HSV avec les valeurs CORRIGÉES pour le rouge (comme Matt).
+
+        Valeurs correctes pour le rouge en HSV OpenCV (0-180):
+        - Bas: H=[0, 10], S=[70, 255], V=[50, 255]
+        - Haut: H=[160, 180], S=[70, 255], V=[50, 255]
+
+        Note: Identique au filtre utilisé par Matt dans hsv_mattv2.py
+        """
+        hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+
+        # Masque bas (autour de 0°)
+        mask_red_low = cv2.inRange(hsv, np.array([0, 70, 50]), np.array([10, 255, 255]))
+        # Masque haut (autour de 180°) - CORRIGÉ de 170 à 160
+        mask_red_high = cv2.inRange(hsv, np.array([160, 70, 50]), np.array([180, 255, 255]))
+
+        # Combinaison des deux masques
+        mask = cv2.bitwise_or(mask_red_low, mask_red_high)
+
+        # Morphologie pour nettoyer (comme dans hsv_mattv2.py)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        # Sauvegarder les étapes
+        self._save_step(mask_red_low, 'corrected_red_mask_low', mode='gray')
+        self._save_step(mask_red_high, 'corrected_red_mask_high', mode='gray')
+        self._save_step(mask, 'corrected_red_mask_combined_morpho', mode='gray')
+
+        self.logs.append('Corrected HSV filter: low H=[0,10], high H=[160,180], S=[70,255], V=[50,255]')
+
+        return mask
+
+    def diagnostic_bgr_rgb_format(self, frame):
+        """Détecte si l'image est en format BGR ou RGB (ou inversée).
+
+        Cette fonction analyse les canaux de couleur pour détecter une éventuelle
+        inversion BGR↔RGB qui causerait des problèmes de détection.
+        """
+        self.logs.append('=== BGR/RGB FORMAT DIAGNOSTIC ===')
+
+        b, g, r = cv2.split(frame)
+
+        # Statistiques par canal
+        b_mean, b_std = float(b.mean()), float(b.std())
+        g_mean, g_std = float(g.mean()), float(g.std())
+        r_mean, r_std = float(r.mean()), float(r.std())
+
+        self.logs.append('Channel Statistics (as loaded):')
+        self.logs.append('  Channel 0 (B if BGR): Mean={:.2f}, Std={:.2f}'.format(b_mean, b_std))
+        self.logs.append('  Channel 1 (G):        Mean={:.2f}, Std={:.2f}'.format(g_mean, g_std))
+        self.logs.append('  Channel 2 (R if BGR): Mean={:.2f}, Std={:.2f}'.format(r_mean, r_std))
+
+        # Test 1: Pour un panneau stop ROUGE, le canal R devrait être dominant
+        # Si l'image est correctement en BGR, le canal 2 (R) devrait être élevé
+        # Si elle est inversée (RGB lu comme BGR), le canal 0 (B) sera élevé
+
+        # Compter les pixels avec forte composante rouge vs bleu
+        red_dominant = np.sum((r > 150) & (r > b + 30) & (r > g + 30))
+        blue_dominant = np.sum((b > 150) & (b > r + 30) & (b > g + 30))
+
+        self.logs.append('')
+        self.logs.append('Dominant Color Analysis (for red object detection):')
+        self.logs.append('  Pixels with dominant RED (channel 2):  {} pixels'.format(red_dominant))
+        self.logs.append('  Pixels with dominant BLUE (channel 0): {} pixels'.format(blue_dominant))
+
+        # Diagnostic
+        if red_dominant > blue_dominant * 2:
+            self.logs.append('  → VERDICT: Image appears to be in correct BGR format ✓')
+            format_ok = True
+        elif blue_dominant > red_dominant * 2:
+            self.logs.append('  → VERDICT: Image appears to be in RGB format (INVERTED!) ✗')
+            self.logs.append('  → PROBLEM: Red objects will appear BLUE, causing HSV detection to fail!')
+            format_ok = False
+        else:
+            self.logs.append('  → VERDICT: Inconclusive (no strong red/blue dominance)')
+            format_ok = None
+
+        # Créer des visualisations des canaux
+        self._save_step(r, 'channel_2_red_if_bgr', mode='gray')
+        self._save_step(g, 'channel_1_green', mode='gray')
+        self._save_step(b, 'channel_0_blue_if_bgr', mode='gray')
+
+        # Test avec conversion forcée
+        if not format_ok:
+            self.logs.append('')
+            self.logs.append('Testing with forced BGR→RGB conversion...')
+            frame_corrected = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            self._save_step(frame_corrected, 'corrected_rgb_to_bgr', mode='RGB')
+            self.logs.append('  Corrected image saved as corrected_rgb_to_bgr')
+            self.logs.append('  Try reprocessing with this corrected image!')
+
+        self.logs.append('=== END BGR/RGB DIAGNOSTIC ===')
+        return format_ok
+
+    def diagnostic_hsv_analysis(self, frame_bgr):
+        """Analyse approfondie des caractéristiques HSV de l'image.
+
+        Cette fonction génère des statistiques détaillées pour comparer
+        les images entre différents environnements (Zumi vs PiCamera2).
+        """
+        self.logs.append('=== DIAGNOSTIC HSV ANALYSIS ===')
+
+        # Info de base sur l'image
+        h, w, c = frame_bgr.shape
+        total_pixels = h * w
+        self.logs.append('Image dimensions: {}x{} ({} channels)'.format(w, h, c))
+        self.logs.append('Total pixels: {}'.format(total_pixels))
+
+        # Conversion en HSV
+        hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+        h_channel, s_channel, v_channel = cv2.split(hsv)
+
+        # Statistiques par canal HSV
+        self.logs.append('--- H Channel (Hue) ---')
+        self.logs.append('  Min: {}, Max: {}, Mean: {:.2f}, Std: {:.2f}'.format(
+            int(h_channel.min()), int(h_channel.max()),
+            float(h_channel.mean()), float(h_channel.std())))
+
+        self.logs.append('--- S Channel (Saturation) ---')
+        self.logs.append('  Min: {}, Max: {}, Mean: {:.2f}, Std: {:.2f}'.format(
+            int(s_channel.min()), int(s_channel.max()),
+            float(s_channel.mean()), float(s_channel.std())))
+
+        self.logs.append('--- V Channel (Value) ---')
+        self.logs.append('  Min: {}, Max: {}, Mean: {:.2f}, Std: {:.2f}'.format(
+            int(v_channel.min()), int(v_channel.max()),
+            float(v_channel.mean()), float(v_channel.std())))
+
+        # Détection de pixels rouges avec différentes méthodes
+        self.logs.append('--- Red Pixel Detection Comparison ---')
+
+        # Méthode 1: Anciennes valeurs (incorrectes)
+        mask_old_low = cv2.inRange(hsv, (0, 70, 50), (10, 255, 255))
+        mask_old_high = cv2.inRange(hsv, (170, 70, 50), (180, 255, 255))
+        mask_old = cv2.bitwise_or(mask_old_low, mask_old_high)
+        red_pixels_old = cv2.countNonZero(mask_old)
+        percent_old = (red_pixels_old / float(total_pixels)) * 100.0
+        self.logs.append('  Method OLD (H=[0-10] + [170-180]): {} pixels ({:.2f}%)'.format(
+            red_pixels_old, percent_old))
+
+        # Méthode 2: Valeurs corrigées (comme Matt)
+        mask_corr_low = cv2.inRange(hsv, np.array([0, 70, 50]), np.array([10, 255, 255]))
+        mask_corr_high = cv2.inRange(hsv, np.array([160, 70, 50]), np.array([180, 255, 255]))
+        mask_corr = cv2.bitwise_or(mask_corr_low, mask_corr_high)
+        red_pixels_corr = cv2.countNonZero(mask_corr)
+        percent_corr = (red_pixels_corr / float(total_pixels)) * 100.0
+        self.logs.append('  Method CORRECTED (H=[0-10] + [160-180]): {} pixels ({:.2f}%)'.format(
+            red_pixels_corr, percent_corr))
+
+        # Différence
+        diff_pixels = red_pixels_corr - red_pixels_old
+        self.logs.append('  Difference: {} pixels ({:.2f}% more with corrected)'.format(
+            diff_pixels, ((diff_pixels / float(total_pixels)) * 100.0)))
+
+        # Distribution des teintes dans la plage rouge
+        red_range_low = np.sum((h_channel >= 0) & (h_channel <= 10))
+        red_range_mid = np.sum((h_channel >= 160) & (h_channel <= 170))
+        red_range_high = np.sum((h_channel >= 170) & (h_channel <= 180))
+
+        self.logs.append('--- Hue Distribution in Red Range ---')
+        self.logs.append('  H in [0, 10]: {} pixels'.format(red_range_low))
+        self.logs.append('  H in [160, 170]: {} pixels'.format(red_range_mid))
+        self.logs.append('  H in [170, 180]: {} pixels'.format(red_range_high))
+
+        # Créer une visualisation des histogrammes
+        self._create_histogram_visualization(h_channel, s_channel, v_channel)
+
+        self.logs.append('=== END DIAGNOSTIC ===')
+
+    def _create_histogram_visualization(self, h_channel, s_channel, v_channel):
+        """Crée une visualisation des histogrammes HSV."""
+        import matplotlib
+        matplotlib.use('Agg')  # Backend sans affichage
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+        # Histogramme H
+        axes[0].hist(h_channel.ravel(), bins=180, range=(0, 180), color='red', alpha=0.7)
+        axes[0].set_title('Hue (H) Distribution')
+        axes[0].set_xlabel('Hue Value (0-180)')
+        axes[0].set_ylabel('Pixel Count')
+        axes[0].axvspan(0, 10, alpha=0.2, color='green', label='Red Low')
+        axes[0].axvspan(160, 180, alpha=0.2, color='blue', label='Red High')
+        axes[0].legend()
+
+        # Histogramme S
+        axes[1].hist(s_channel.ravel(), bins=256, range=(0, 256), color='orange', alpha=0.7)
+        axes[1].set_title('Saturation (S) Distribution')
+        axes[1].set_xlabel('Saturation Value (0-255)')
+        axes[1].set_ylabel('Pixel Count')
+        axes[1].axvline(70, color='red', linestyle='--', label='Threshold S=70')
+        axes[1].legend()
+
+        # Histogramme V
+        axes[2].hist(v_channel.ravel(), bins=256, range=(0, 256), color='purple', alpha=0.7)
+        axes[2].set_title('Value (V) Distribution')
+        axes[2].set_xlabel('Value (0-255)')
+        axes[2].set_ylabel('Pixel Count')
+        axes[2].axvline(50, color='red', linestyle='--', label='Threshold V=50')
+        axes[2].legend()
+
+        plt.tight_layout()
+
+        # Sauvegarder le graphique
+        hist_path = os.path.join(self.DIAGNOSTIC_DIR, 'hsv_histograms_{}.png'.format(uuid.uuid4().hex[:6]))
+        plt.savefig(hist_path, dpi=100, bbox_inches='tight')
+        plt.close()
+
+        # Ajouter à la liste des étapes
+        hist_url = url_for('static', filename='captured_images/diagnostics/{}'.format(os.path.basename(hist_path)))
+        self.steps.append({"name": "hsv_histograms", "url": hist_url})
+
+        self.logs.append('Histograms saved as: {}'.format(os.path.basename(hist_path)))
