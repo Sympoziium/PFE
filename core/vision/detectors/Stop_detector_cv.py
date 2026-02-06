@@ -697,46 +697,51 @@ class StopDetectorCV(BaseDetector):
 
     def _create_histogram_visualization(self, h_channel, s_channel, v_channel):
         """Crée une visualisation des histogrammes HSV."""
-        import matplotlib
-        matplotlib.use('Agg')  # Backend sans affichage
-        import matplotlib.pyplot as plt
+        try:
+            import matplotlib
+            matplotlib.use('Agg')  # Backend sans affichage
+            import matplotlib.pyplot as plt
 
-        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+            fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
-        # Histogramme H
-        axes[0].hist(h_channel.ravel(), bins=180, range=(0, 180), color='red', alpha=0.7)
-        axes[0].set_title('Hue (H) Distribution')
-        axes[0].set_xlabel('Hue Value (0-180)')
-        axes[0].set_ylabel('Pixel Count')
-        axes[0].axvspan(0, 10, alpha=0.2, color='green', label='Red Low')
-        axes[0].axvspan(160, 180, alpha=0.2, color='blue', label='Red High')
-        axes[0].legend()
+            # Histogramme H
+            axes[0].hist(h_channel.ravel(), bins=180, range=(0, 180), color='red', alpha=0.7)
+            axes[0].set_title('Hue (H) Distribution')
+            axes[0].set_xlabel('Hue Value (0-180)')
+            axes[0].set_ylabel('Pixel Count')
+            axes[0].axvspan(0, 10, alpha=0.2, color='green', label='Red Low')
+            axes[0].axvspan(160, 180, alpha=0.2, color='blue', label='Red High')
+            axes[0].legend()
 
-        # Histogramme S
-        axes[1].hist(s_channel.ravel(), bins=256, range=(0, 256), color='orange', alpha=0.7)
-        axes[1].set_title('Saturation (S) Distribution')
-        axes[1].set_xlabel('Saturation Value (0-255)')
-        axes[1].set_ylabel('Pixel Count')
-        axes[1].axvline(70, color='red', linestyle='--', label='Threshold S=70')
-        axes[1].legend()
+            # Histogramme S
+            axes[1].hist(s_channel.ravel(), bins=256, range=(0, 256), color='orange', alpha=0.7)
+            axes[1].set_title('Saturation (S) Distribution')
+            axes[1].set_xlabel('Saturation Value (0-255)')
+            axes[1].set_ylabel('Pixel Count')
+            axes[1].axvline(70, color='red', linestyle='--', label='Threshold S=70')
+            axes[1].legend()
 
-        # Histogramme V
-        axes[2].hist(v_channel.ravel(), bins=256, range=(0, 256), color='purple', alpha=0.7)
-        axes[2].set_title('Value (V) Distribution')
-        axes[2].set_xlabel('Value (0-255)')
-        axes[2].set_ylabel('Pixel Count')
-        axes[2].axvline(50, color='red', linestyle='--', label='Threshold V=50')
-        axes[2].legend()
+            # Histogramme V
+            axes[2].hist(v_channel.ravel(), bins=256, range=(0, 256), color='purple', alpha=0.7)
+            axes[2].set_title('Value (V) Distribution')
+            axes[2].set_xlabel('Value (0-255)')
+            axes[2].set_ylabel('Pixel Count')
+            axes[2].axvline(50, color='red', linestyle='--', label='Threshold V=50')
+            axes[2].legend()
 
-        plt.tight_layout()
+            plt.tight_layout()
 
-        # Sauvegarder le graphique
-        hist_path = os.path.join(self.DIAGNOSTIC_DIR, 'hsv_histograms_{}.png'.format(uuid.uuid4().hex[:6]))
-        plt.savefig(hist_path, dpi=100, bbox_inches='tight')
-        plt.close()
+            # Sauvegarder le graphique
+            hist_path = os.path.join(self.DIAGNOSTIC_DIR, 'hsv_histograms_{}.png'.format(uuid.uuid4().hex[:6]))
+            plt.savefig(hist_path, dpi=100, bbox_inches='tight')
+            plt.close()
 
-        # Ajouter à la liste des étapes
-        hist_url = url_for('static', filename='captured_images/diagnostics/{}'.format(os.path.basename(hist_path)))
-        self.steps.append({"name": "hsv_histograms", "url": hist_url})
+            # Ajouter à la liste des étapes
+            hist_url = url_for('static', filename='captured_images/diagnostics/{}'.format(os.path.basename(hist_path)))
+            self.steps.append({"name": "hsv_histograms", "url": hist_url})
 
-        self.logs.append('Histograms saved as: {}'.format(os.path.basename(hist_path)))
+            self.logs.append('Histograms saved as: {}'.format(os.path.basename(hist_path)))
+        except ImportError:
+            self.logs.append('Warning: matplotlib not available, skipping histogram visualization')
+        except Exception as e:
+            self.logs.append('Error creating histogram: {}'.format(str(e)))
