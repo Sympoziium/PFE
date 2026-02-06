@@ -494,10 +494,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					opt2.textContent = d.name + ' (#' + d.index + ')';
 					sel.appendChild(opt2);
 					DETECTORS_MAP[d.index] = d.name;
+					console.log('[DEBUG loadDetectors] Loaded detector:', d.index, d.name);
 				}
 				if (selected != null && selected >= 0) {
 					sel.value = String(selected);
 					SELECTED_DETECTOR_NAME = DETECTORS_MAP[selected] || null;
+					console.log('[DEBUG loadDetectors] Selected detector:', selected, SELECTED_DETECTOR_NAME);
 					updateStopUIPanelVisibility();
 				}
 			})
@@ -507,6 +509,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	function onDetectorChange() {
 		var sel = document.getElementById('detectorSelect');
 		var idx = parseInt(sel.value, 10);
+		console.log('[DEBUG onDetectorChange] Selected index:', idx);
 		if (isNaN(idx) || idx < 0) return;
 		fetch('/detector', {
 			method: 'POST',
@@ -514,6 +517,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			body: JSON.stringify({ index: idx })
 		}).catch(function(err) { logError('onDetectorChange: /detector', err, { index: idx }); });
 		SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
+		console.log('[DEBUG onDetectorChange] SELECTED_DETECTOR_NAME set to:', SELECTED_DETECTOR_NAME);
 		updateStopUIPanelVisibility();
 	}
 
@@ -609,6 +613,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	function runGenericDiagnostics() {
+		console.log('[DEBUG runGenericDiagnostics] Function called, fetching /diagnose_detector');
 		var indicator = document.getElementById('stopDetectIndicator');
 		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
@@ -668,14 +673,18 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 	function runDiagnostics() {
 		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
+		console.log('[DEBUG runDiagnostics] SELECTED_DETECTOR_NAME:', detectorName);
 
 		if (detectorName === 'StopDetector') {
 			// Détecteur Zumi spécifique avec balayage de paramètres
+			console.log('[DEBUG runDiagnostics] Matched exact "StopDetector", calling runStopDiagnostics');
 			runStopDiagnostics();
 		} else if (detectorName.indexOf('StopDetector') !== -1) {
 			// Tous les autres détecteurs de stop (CV, Matt, etc.) utilisent la route générique
+			console.log('[DEBUG runDiagnostics] Matched detector containing "StopDetector", calling runGenericDiagnostics');
 			runGenericDiagnostics();
 		} else {
+			console.log('[DEBUG runDiagnostics] No match, showing alert');
 			alert('Aucun diagnostique disponible pour le détecteur sélectionné : ' + detectorName);
 		}
 	}
