@@ -284,16 +284,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					<!-- Stop detection diagnostic panel -->
 					<div class='stop-detect-panel' id='stopDetectPanel'>
 						<div class='tab-subtitle'>Diagnostic Stop</div>
-						<div class='stop-detect-layout'>
-							<div class='captured-box'>
-								<div style='position:relative; display:inline-block;'>
-									<img id='lastCapturedImage' alt='Dernière image capturée'>
-								</div>
-							</div>
-							<div class='indicator-and-terminal'>
-								<div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
-								<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
-							</div>
+						<div class='indicator-and-terminal'>
+							<div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
+							<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
 						</div>
 					</div>
 					<!-- ajouter la dernière image capturée -->
@@ -380,8 +373,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		}
 	}
 
-	// État global: mode d'affichage (livefeed ou captured)
+	// État global: mode d'affichage (livefeed ou captured) et état caméra
 	var DISPLAY_MODE = 'livefeed'; // 'livefeed' | 'captured'
+	var CAMERA_ACTIVE = false; // Track si la caméra est démarrée
 
 	function toggleCamera() {
 		console.log('toggleCamera() appelee');
@@ -389,7 +383,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var mainImage = document.getElementById('mainImage');
 		var btn = document.getElementById('cameraToggleBtn');
 		var captureBtn = document.getElementById('captureImageBtn');
-		var isActive = mainDisplay.style.display === 'block' && DISPLAY_MODE === 'livefeed';
+		var isActive = CAMERA_ACTIVE && mainDisplay.style.display === 'block' && DISPLAY_MODE === 'livefeed';
 
 		if (!isActive) {
 			// Démarrer la caméra
@@ -400,12 +394,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					mainDisplay.style.display = 'block';
 					mainImage.src = '/video?' + new Date().getTime();
 					DISPLAY_MODE = 'livefeed';
+					CAMERA_ACTIVE = true;
 					captureBtn.textContent = '📸 Capture Image';
 					captureBtn.onclick = captureImage;
 				})
 				.catch(function(err) {
 					logError('toggleCamera: /start_camera', err);
 					btn.textContent = '▶️ Start Camera';
+					CAMERA_ACTIVE = false;
 				});
 		} else {
 			// Arrêter la caméra
@@ -413,6 +409,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			btn.textContent = '▶️ Start Camera';
 			mainImage.src = "";
 			DISPLAY_MODE = 'livefeed';
+			CAMERA_ACTIVE = false;
 			captureBtn.textContent = '📸 Capture Image';
 			captureBtn.onclick = captureImage;
 			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
@@ -484,24 +481,42 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	function returnToLivefeed() {
 		console.log('returnToLivefeed() appelee');
 		var mainImage = document.getElementById('mainImage');
+		var mainDisplay = document.getElementById('mainImageDisplay');
 		var captureBtn = document.getElementById('captureImageBtn');
 
-		// Retour au livefeed
-		mainImage.src = '/video?' + new Date().getTime();
-		DISPLAY_MODE = 'livefeed';
-		captureBtn.textContent = '📸 Capture Image';
-		captureBtn.onclick = captureImage;
+		if (CAMERA_ACTIVE) {
+			// Caméra déjà active, juste basculer vers le livestream
+			mainImage.src = '/video?' + new Date().getTime();
+			DISPLAY_MODE = 'livefeed';
+			captureBtn.textContent = '📸 Capture Image';
+			captureBtn.onclick = captureImage;
+		} else {
+			// Caméra pas active, la redémarrer
+			var btn = document.getElementById('cameraToggleBtn');
+			btn.textContent = '⛔ Stop Camera';
+			fetch('/start_camera', { method: 'POST' })
+				.then(function(response) {
+					if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
+					mainDisplay.style.display = 'block';
+					mainImage.src = '/video?' + new Date().getTime();
+					DISPLAY_MODE = 'livefeed';
+					CAMERA_ACTIVE = true;
+					captureBtn.textContent = '📸 Capture Image';
+					captureBtn.onclick = captureImage;
+				})
+				.catch(function(err) {
+					logError('returnToLivefeed: /start_camera', err);
+					btn.textContent = '▶️ Start Camera';
+					CAMERA_ACTIVE = false;
+					alert('Erreur: impossible de redémarrer la caméra. Utilisez le bouton Start Camera.');
+				});
+		}
 	}
 
 	function imageCapturedCallback(imageUrl) {
 		console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl);
-		// Mise à jour de l'image dans le panel diagnostic (pour overlays)
-		var panel = document.getElementById('stopDetectPanel');
-		var img = document.getElementById('lastCapturedImage');
-		panel.style.display = panel.style.display === 'none' ? 'none' : 'block';
-		img.src = imageUrl;
 
-		// Si on est en mode captured, mettre à jour l'affichage principal aussi
+		// Mettre à jour l'affichage principal si on est en mode captured
 		if (DISPLAY_MODE === 'captured') {
 			var mainImage = document.getElementById('mainImage');
 			mainImage.src = imageUrl;
