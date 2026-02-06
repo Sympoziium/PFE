@@ -113,8 +113,15 @@ class StopDetectorMatt(BaseDetector):
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
 
+            self.logs.append('=== DETECTION STOP DETECTOR MATT ===')
+            self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
+            self.logs.append('Config: min_area={}, min_score={}'.format(self.min_area, self.min_score))
+            self.logs.append('HSV: H=[{}-{}]+[{}-{}], S=[{}-{}], V=[{}-{}]'.format(
+                self.h_low_min, self.h_low_max, self.h_high_min, self.h_high_max,
+                self.s_min, self.s_max, self.v_min, self.v_max))
+
             # Détection
-            detections = self._detect_stop_signs(frame_bgr)
+            detections = self._detect_stop_signs(frame_bgr, diagnostic_mode=False)
 
             # Créer l'overlay avec les détections
             overlay = frame_bgr.copy()
@@ -129,7 +136,6 @@ class StopDetectorMatt(BaseDetector):
                 # Garder la meilleure détection
                 if best_detection is None:
                     best_detection = (x, y, w, h, conf)
-                    self.logs.append('Best detection: x={}, y={}, w={}, h={}, confidence={:.2%}'.format(x, y, w, h, conf))
 
             # Sauvegarder l'overlay
             self._save_step(overlay, 'final_detections', mode='bgr')
@@ -139,6 +145,10 @@ class StopDetectorMatt(BaseDetector):
 
             if best_detection:
                 x, y, w, h, conf = best_detection
+                self.logs.append('Résultat: STOP DÉTECTÉ')
+                self.logs.append('  Position: x={}, y={}'.format(x, y))
+                self.logs.append('  Taille: w={}, h={}'.format(w, h))
+                self.logs.append('  Confiance: {:.1%}'.format(conf))
                 payload = {
                     'source_file_url': source_url,
                     'overlay_url': self.steps[-1]['url'] if self.steps else None,
@@ -153,7 +163,7 @@ class StopDetectorMatt(BaseDetector):
                     'logs': self.logs
                 }
             else:
-                self.logs.append('No stop sign detected.')
+                self.logs.append('Résultat: Aucun panneau stop détecté')
                 payload = {
                     'source_file_url': source_url,
                     'overlay_url': self.steps[-1]['url'] if self.steps else None,
@@ -165,6 +175,7 @@ class StopDetectorMatt(BaseDetector):
                     'logs': self.logs
                 }
 
+            self.logs.append('=== FIN DETECTION ===')
             return payload
 
         except Exception as e:
@@ -379,41 +390,66 @@ class StopDetectorMatt(BaseDetector):
             if center_ratio > outer_ratio:
                 center_score = min(1.0, center_score + 0.15)
 
-        # 3) Bordure blanche autour du blob rouge
-        pad = max(3, int(min(w, h) * 0.15))
+        # 3) Bordure blanche autour du blob rouge - Vérification multi-côtés
+        # Les panneaux stop ont une bordure blanche sur tous les côtés
+        # Les emballages (jus, etc.) ont souvent du blanc seulement en haut
+        pad = max(5, int(min(w, h) * 0.20))
         ex1 = max(0, x - pad)
         ey1 = max(0, y - pad)
         ex2 = min(img_w, x + w + pad)
         ey2 = min(img_h, y + h + pad)
 
-        # Créer un masque de bordure
-        border_mask = np.zeros((img_h, img_w), dtype=np.uint8)
-        cv2.rectangle(border_mask, (ex1, ey1), (ex2, ey2), 255, -1)
-        cv2.rectangle(border_mask, (x1 + 2, y1 + 2), (x2 - 2, y2 - 2), 0, -1)
-
         hsv_full = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         white_full = cv2.inRange(hsv_full, np.array([0, 0, 140]), np.array([180, 70, 255]))
-        border_pixels = cv2.countNonZero(border_mask)
-        border_white = cv2.countNonZero(cv2.bitwise_and(white_full, border_mask))
-        edge_ratio = border_white / border_pixels if border_pixels > 0 else 0
 
-        edge_score = 0.0
-        if edge_ratio > 0.06:
-            edge_score = min(1.0, edge_ratio * 4.0)
+        sides_with_white = 0
+        side_threshold = 0.06
+
+        # Haut
+        top_strip = white_full[ey1:y1, ex1:ex2]
+        if top_strip.size > 0 and cv2.countNonZero(top_strip) / max(1, top_strip.size) > side_threshold:
+            sides_with_white += 1
+
+        # Bas
+        bot_strip = white_full[y2:ey2, ex1:ex2]
+        if bot_strip.size > 0 and cv2.countNonZero(bot_strip) / max(1, bot_strip.size) > side_threshold:
+            sides_with_white += 1
+
+        # Gauche
+        left_strip = white_full[ey1:ey2, ex1:x1]
+        if left_strip.size > 0 and cv2.countNonZero(left_strip) / max(1, left_strip.size) > side_threshold:
+            sides_with_white += 1
+
+        # Droite
+        right_strip = white_full[ey1:ey2, x2:ex2]
+        if right_strip.size > 0 and cv2.countNonZero(right_strip) / max(1, right_strip.size) > side_threshold:
+            sides_with_white += 1
+
+        edge_score = sides_with_white / 4.0  # 0.0 à 1.0 selon le nombre de côtés avec du blanc
 
         # 4) Aspect ratio (panneaux stop sont carrés)
         aspect = w / float(h) if h > 0 else 0
         aspect_score = max(0, 1.0 - abs(aspect - 1.0) * 2.0)
 
+        # 5) Pureté des couleurs: les panneaux stop sont SEULEMENT rouge + blanc + un peu de noir
+        # Les emballages (jus, boîtes) ont des jaunes, verts, oranges mélangés
+        dark_mask = cv2.inRange(hsv_roi, np.array([0, 0, 0]), np.array([180, 255, 50]))
+        red_white_dark = red_count + white_count + cv2.countNonZero(dark_mask)
+        other_color_ratio = 1.0 - (red_white_dark / total_pixels) if total_pixels > 0 else 0
+        # Panneau stop: other_color_ratio devrait être très bas (<15%)
+        # Emballage: contient oranges, jaunes, verts = other_color_ratio plus élevé
+        purity_score = max(0, 1.0 - other_color_ratio * 5.0)
+
         self.logs.append('  Blob analysis: red_ratio={:.2f}, white_ratio={:.2f}, '
-                        'center_score={:.2f}, edge_score={:.2f}, aspect_score={:.2f}'.format(
-                            red_ratio, white_ratio, center_score, edge_score, aspect_score))
+                        'center_score={:.2f}, edge_score={:.2f}, aspect_score={:.2f}, purity_score={:.2f}'.format(
+                            red_ratio, white_ratio, center_score, edge_score, aspect_score, purity_score))
 
         return {
             "ratio": ratio_score,
             "center": center_score,
             "edge": edge_score,
             "aspect": aspect_score,
+            "purity": purity_score,
         }
 
     def _detect_stop_signs(self, frame, diagnostic_mode=False):
@@ -447,8 +483,8 @@ class StopDetectorMatt(BaseDetector):
 
             # Aspect ratio rapide
             aspect = w / float(h) if h > 0 else 0
-            if aspect < 0.5 or aspect > 2.0:
-                self.logs.append('  Contour {}: rejeté - aspect ratio hors limites ({:.2f} pas dans [0.5, 2.0])'.format(idx, aspect))
+            if aspect < 0.65 or aspect > 1.5:
+                self.logs.append('  Contour {}: rejeté - aspect ratio hors limites ({:.2f} pas dans [0.65, 1.5])'.format(idx, aspect))
                 continue
 
             # Rejeter les blobs trop grands
@@ -466,13 +502,19 @@ class StopDetectorMatt(BaseDetector):
             # Analyse approfondie
             scores = self._analyze_red_blob(frame, x, y, w, h, diagnostic_mode=diagnostic_mode)
 
-            # Calcul de la confiance
+            # Porte stricte: rejeter si trop de couleurs non-rouge/blanc (emballages, étiquettes)
+            if scores["purity"] < 0.65:
+                self.logs.append('  Contour {}: rejeté - pureté trop faible ({:.2f} < 0.65)'.format(idx, scores["purity"]))
+                continue
+
+            # Calcul de la confiance avec poids ajustés
             confidence = (
-                scores["ratio"] * 0.30
-                + scores["center"] * 0.30
-                + scores["edge"] * 0.20
-                + scores["aspect"] * 0.10
-                + min(0.10, area / 15000)  # bonus de taille
+                scores["ratio"] * 0.15      # Réduit de 0.30
+                + scores["center"] * 0.15   # Réduit de 0.30
+                + scores["edge"] * 0.25     # Augmenté de 0.20
+                + scores["aspect"] * 0.15   # Augmenté de 0.10
+                + scores["purity"] * 0.20   # NOUVEAU
+                + min(0.10, area / 15000)   # bonus de taille
             )
             confidence = round(min(1.0, confidence), 2)
 

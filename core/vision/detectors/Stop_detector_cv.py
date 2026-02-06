@@ -14,7 +14,7 @@ from .detector_base import BaseDetector
 
 class StopDetectorCV(BaseDetector):
 
-    def __init__(self, min_area=500, aspect_tol=0.35, poly_min=5, poly_max=10, h_min=30, w_min=30, fill_ratio_min=0.5):
+    def __init__(self, min_area=500, aspect_tol=0.35, poly_min=5, poly_max=10, h_min=15, w_min=15, fill_ratio_min=0.5):
         """Détecteur de panneau STOP en utilisant une approche simple:
         - Segmentation des zones rouges en HSV
         - Extraction des contours
@@ -80,6 +80,12 @@ class StopDetectorCV(BaseDetector):
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
 
+            self.logs.append('=== DETECTION STOP DETECTOR CV ===')
+            self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
+            self.logs.append('Config: min_area={}, aspect_tol={}, poly=[{}-{}]'.format(
+                self.min_area, self.aspect_tol, self.poly_min, self.poly_max))
+            self.logs.append('HSV: H=[0-10]+[160-180], S=[70-255], V=[50-255]')
+
             # Étape 2: Conversion en HSV et séparation des canaux
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             mask = self._make_HSV_mask(hsv)
@@ -87,7 +93,7 @@ class StopDetectorCV(BaseDetector):
 
             # Étape 3: Opérations morphologiques pour nettoyage et reconstruction de l'image
             mask_morpho = self._make_morphological_mask(mask)
-            
+
             # Étape 4: Détection des contours sur le masque final
             Image_traitée = mask_morpho.copy()
             contours = self._detect_contours(Image_traitée)
@@ -97,6 +103,20 @@ class StopDetectorCV(BaseDetector):
 
             # Étape 6: Formatage de la réponse JSON
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
+
+            # Ajouter le résultat aux logs
+            if results.get('detected'):
+                bbox = results.get('detection_box')
+                if bbox:
+                    x, y, w, h = bbox
+                    self.logs.append('Résultat: STOP DÉTECTÉ')
+                    self.logs.append('  Position: x={}, y={}'.format(x, y))
+                    self.logs.append('  Taille: w={}, h={}'.format(w, h))
+                    self.logs.append('  Aire: {}'.format(results.get('area', 0)))
+            else:
+                self.logs.append('Résultat: Aucun panneau stop détecté')
+
+            self.logs.append('=== FIN DETECTION ===')
 
             payload = {
                 'source_file_url': source_url,
