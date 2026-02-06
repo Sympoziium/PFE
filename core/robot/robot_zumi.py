@@ -10,12 +10,14 @@
 import numpy
 from core.robot.robot_base import RobotBase
 
+# Import de notre wrapper de caméra Zumi (convertit RGB→BGR)
+from core.camera.zumi_camera import ZumiCamera
+
 # Import du package Zumi
 import sys
 sys.path.append("/usr/local/lib/python3.5/dist-packages")  # chemin du package zumi
 from zumi.zumi import Zumi
-from zumi.util.camera import Camera
-from zumi.util.screen import Screen  
+from zumi.util.screen import Screen
 from zumi.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
@@ -25,7 +27,7 @@ TURN_SPEED = 15
 class RobotZumi(RobotBase):
     def __init__(self):
         self.zumi = Zumi()
-        self.camera = Camera()
+        self.camera = ZumiCamera()  # Utilise notre wrapper qui convertit RGB→BGR
         self.screen = Screen()
         self.personality = Personality(self.zumi, self.screen)
 
@@ -39,9 +41,9 @@ class RobotZumi(RobotBase):
         """
         ## les leds semble causer probleme
         try: 
-            self.zumi.back_lights_off()
+            self.zumi.brake_lights_off()
         except Exception as e:
-            print("Erreur self.zumi.back_lights_off(): {}".format(e))
+            print("Erreur self.zumi.brake_lights_off(): {}".format(e))
         
         try: 
             self.zumi.headlights_on()
@@ -100,9 +102,9 @@ class RobotZumi(RobotBase):
         """
         self.zumi.stop()
         try:
-            self.zumi.back_lights_on()
+            self.zumi.brake_lights_on()
         except Exception as e:
-            print("Erreur self.zumi.back_lights_on(): {}".format(e))
+            print("Erreur self.zumi.brake_lights_on(): {}".format(e))
 
 # ---------------------------------------------------------------------------------
 #                             Contrôle de l'écran

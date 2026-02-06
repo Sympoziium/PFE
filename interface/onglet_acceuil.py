@@ -259,9 +259,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 				<h2 class='tab-title'>{title}</h2>
 				<div class='tab-nav'>
 				<!-- Boutons de navigation entre onglets -->
-				<button class='primary-btn' data-path="/" onclick="location.href='/'">Accueil</button>
-				<button class='primary-btn' data-path="/vision" onclick="location.href='/vision'">Vision</button>
-				<button class='primary-btn' data-path="/onglet_template" onclick="location.href='/onglet_template'">Template</button>
+				<button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
+				<button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
+				<button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
                 <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
 				</div>
 			</div>
@@ -366,8 +366,25 @@ def render_accueil_tab(title: str = "Accueil") -> str:
             fetch('/close_camera', { method: 'POST' }); 
         }
     }
+	
+	// Navigation helper: close camera feed if active before redirecting
+	function navigateTo(path) {
+		try {
+			var liveFeed = document.getElementById('liveFeed');
+			var isActive = liveFeed && liveFeed.style.display === 'block';
+			if (isActive) {
+				fetch('/close_camera', { method: 'POST' })
+					.then(function() { location.href = path; })
+					.catch(function() { location.href = path; });
+			} else {
+				location.href = path;
+			}
+		} catch (e) {
+			location.href = path;
+		}
+	}
 
-	// --- NOUVEAU : Modifications pour le Watchdog ---
+    // ---  FONCTIONS DE MOUVEMENT ---
     let isMoving = false;
     let moveInterval = null; // Variable pour stocker notre 'setInterval'
 

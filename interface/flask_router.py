@@ -26,6 +26,13 @@ def register_routes(ctrl):
     app.add_url_rule('/close_camera', 'close_camera', lambda: ctrl.close_camera(), methods=['POST'])
     app.add_url_rule('/start_camera', 'start_camera', lambda: ctrl.start_camera(), methods=['POST'])
 
+    # Détecteurs: liste/selection et exécution
+    app.add_url_rule('/detectors', 'detectors', lambda: ctrl.detectors())  # GET
+    app.add_url_rule('/detector', 'set_detector', lambda: ctrl.set_detector(), methods=['POST'])
+    app.add_url_rule('/run_detection', 'run_detection', lambda: ctrl.run_detection(), methods=['POST'])
+    app.add_url_rule('/diagnose_stop', 'diagnose_stop', lambda: ctrl.diagnose_stop(), methods=['POST'])  # Spécifique à StopDetector (Zumi)
+    app.add_url_rule('/diagnose_detector', 'diagnose_detector', lambda: ctrl.diagnose_detector(), methods=['POST'])  # Route générique
+
     # Moteur
     app.add_url_rule('/zumi/forward', 'forward', lambda: ctrl.forward())
     app.add_url_rule('/zumi/reverse', 'reverse', lambda: ctrl.reverse())
