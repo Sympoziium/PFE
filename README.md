@@ -107,20 +107,29 @@ PFE/
 │   ├── camera/
 │   │   ├── __init__.py
 │   │   ├── camera_base.py
-│   │   └── picam2.py
+│   │   ├── picam2.py
+│   │   └── zumi_camera.py          # Wrapper pour caméra Zumi (RGB→BGR)
 │   │
 │   ├── robot/
 │   │   ├── Archive/
+│   │   │   ├── Programme_UI.py
+│   │   │   └── Zumi_mock/
+│   │   │       └── SimZumi.py
 │   │   ├── __init__.py
 │   │   ├── robot_base.py
 │   │   └── robot_zumi.py
 │   │
 │   └── vision/
 │       ├── detectors/
-│       │   ├── detector_base.py
+│       │   ├── detector_base.py    # Classe de base pour tous les détecteurs
 │       │   ├── Line_detector.py
 │       │   ├── Luminosity.py
-│       │   └── Stop_detector_zumi.py
+│       │   ├── Stop_detector_zumi.py
+│       │   ├── Stop_detector_cv.py    # Détecteur HSV conventionnel
+│       │   ├── Stop_detector_matt.py  # Détecteur HSV avancé (pureté/bordures)
+│       │   ├── Haar_classifier.py
+│       │   ├── hsv_matt.py            # Prototypes de Matt
+│       │   └── hsv_mattv2.py
 │       ├── Objectif.md
 │       └── vision_pipeline.py
 │
@@ -128,8 +137,11 @@ PFE/
 │   ├── flask_router.py
 │   ├── onglet_acceuil.py
 │   ├── onglet_template.py
-│   ├── onglet_vision.py
-│   └── server_controller.py
+│   ├── onglet_vision.py            # UI avec système de diagnostic
+│   ├── server_controller.py        # Routes backend pour détection
+│   └── static/
+│       └── captured_images/
+│           └── diagnostics/         # Overlays de diagnostic
 │
 ├── Doc/
 │   ├── AIDE_MEMOIRE_GIT.md
@@ -233,3 +245,195 @@ servira de base pour comparer avec nos propres détecteurs.
   - bug fix, on ferme le livefeed vidéo quand on change d'onglet
   - added un seul bouton pour lancer le diagnostique du detecteur actif.
   - removed le boutton toggle d'affichage des resultats sous la boite de capture.
+
+---
+
+## 🔄 CHANGELOG - Branche Detecteur_Stop_Zumi (2026-02-06)
+
+### 🎯 Nouveaux Détecteurs de Panneau Stop
+
+#### **StopDetectorCV** - Détecteur HSV Conventionnel
+**Fichier**: `core/vision/detectors/Stop_detector_cv.py`
+
+Implémentation classique basée sur:
+- **Segmentation HSV**: Double plage pour capturer le rouge (H=[0-10] + [160-180])
+- **Prétraitement morphologique**:
+  - `MORPH_OPEN` (kernel 3×3, 3 iterations) pour nettoyer le bruit
+  - `MORPH_CLOSE` (kernel 7×7, 4 iterations) pour reconstruire la forme
+- **Détection de contours**: `findContours` avec approximation polygonale
+- **Filtrage multi-critères**:
+  - Aire minimale configurable (défaut: 500 pixels)
+  - Ratio largeur/hauteur proche de 1.0 (tolérance: 0.35)
+  - Nombre de sommets polygonaux: 5-10 (octogone)
+  - Solidité convexe: > 0.85
+  - Ratio de remplissage boîte englobante: > 0.5
+
+**Caractéristiques**:
+- ✅ Support Python 3.5.3 (format strings `.format()`)
+- ✅ Compatible OpenCV 3.x et 4.x (`findContours` auto-détection)
+- ✅ Logs détaillés avec raisons de rejet explicites
+- ✅ Méthode `diagnostique_detecteur()` générique
+
+#### **StopDetectorMatt** - Détecteur HSV Avancé
+**Fichier**: `core/vision/detectors/Stop_detector_matt.py`
+
+Approche avancée avec analyse multi-scores:
+- **Paramètres HSV configurables**: Plages H/S/V personnalisables à l'initialisation
+- **Score composite** pondéré:
+  - **Ratio rouge/blanc** (15%): Analyse du rapport rouge/blanc dans le patch détecté
+  - **Centrage texte** (15%): Détection de zone blanche centrale (texte "STOP")
+  - **Détection bordures** (25%): Vérification bordure blanche sur les 4 côtés
+  - **Ratio aspect** (15%): Proximité forme carrée
+  - **Score pureté** (20%): Soft gate seulement (évite faux négatifs)
+  - **Bonus taille** (10%): Favorise détections larges
+- **Seuil adaptatif**: `min_score` configurable (défaut: 0.35, plus permissif que hard gates)
+
+**Améliorations vs version originale**:
+- ❌ **Suppression hard gate pureté**: Était trop strict (rejetait à < 0.65)
+- ✅ **Soft gate pureté**: Contribue au score mais ne rejette pas directement
+- ✅ **Détection 4 bordures**: Au lieu de 2 seulement
+- ✅ **Logs enrichis**: Affiche tous les scores intermédiaires
+
+**Caractéristiques communes**:
+- Format de résultat standardisé: `{'Stop_detected': bool, 'detection_box': (x,y,w,h), 'confidence': float, 'logs': [...], 'steps': [...]}`
+- Support format BGR (OpenCV natif) tout au long du pipeline
+- Sauvegarde overlays en RGB pour affichage web
+
+---
+
+### 🔧 Système de Diagnostic
+
+#### **Architecture Diagnostic Générique**
+**Fichier**: `core/vision/vision_pipeline.py`
+
+Nouvelle méthode `get_current_detector_diagnostic()`:
+- Délègue au détecteur actif via sa méthode `diagnostique_detecteur()`
+- Permet à chaque détecteur d'implémenter son propre diagnostic spécialisé
+- Retourne JSON avec:
+  - `steps`: Liste d'étapes intermédiaires avec URLs d'images
+  - `logs`: Array de messages de debug
+  - `best`: Meilleure détection avec bbox et aire
+  - `source_file_url`: URL image source
+
+#### **Overlays de Diagnostic**
+Les détecteurs génèrent des overlays automatiquement:
+- **Contours détectés**: Tracés en bleu
+- **Candidats rejetés**: Visibles avec logs explicites
+- **Meilleure détection**: Rectangle vert + label "STOP"
+- **Sauvegarde**: Dossier `static/captured_images/diagnostics/`
+
+#### **Routes Backend**
+**Fichier**: `interface/server_controller.py`
+
+Nouvelles routes:
+- `POST /diagnose_detector`: Appelle diagnostic générique du détecteur actif
+- `POST /run_detection`: Exécution simple avec overlay si détection
+- Helper `format_detection_result()`: Formatage console unifié
+
+---
+
+#### **Panel Diagnostic Interactif**
+**Fichier**: `interface/onglet_vision.py` (lignes 283-289)
+
+Structure:
+```html
+<div class='stop-detect-panel' id='stopDetectPanel'>
+    <div class='tab-subtitle'>Diagnostic Stop</div>
+    <div class='indicator-and-terminal'>
+        <div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
+        <div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
+    </div>
+</div>
+```
+
+**Indicateur dynamique**:
+- Classe `.on` (vert): Stop détecté
+- Classe `.off` (rouge): Aucune détection
+- Classe par défaut (gris): État neutre
+
+**Reset automatique** lors changement détecteur:
+```javascript
+function onDetectorChange() {
+    // ... code ...
+    indicator.classList.remove('on', 'off');
+    indicator.textContent = 'Aucune détection';
+    terminal.textContent = 'Terminal vide';
+}
+```
+
+#### **Galerie d'Images Diagnostic**
+**Fichier**: `interface/onglet_vision.py` (fonction `runGenericDiagnostics`, lignes 691-704)
+
+Ouvre nouvel onglet avec galerie HTML:
+- Affiche toutes les étapes de traitement (`payload.steps`)
+- Format: Nom étape + image overlay
+- Utile pour debug visuel du pipeline de détection
+
+---
+
+### 📝 Autres Améliorations
+
+#### **Format de Logs Unifié**
+**Fichier**: `interface/server_controller.py` (fonction `format_detection_result()`)
+
+Formatage console structuré:
+```
+============================================================
+RÉSULTATS DE DÉTECTION - StopDetectorCV
+============================================================
+Objet détecté: OUI
+Position: x=120, y=85
+Taille: largeur=80, hauteur=78
+Confiance: 85.0%
+Aire du contour: 6240 pixels
+Temps de traitement: 0.045s
+--- Détails du traitement ---
+[logs du détecteur...]
+============================================================
+```
+
+#### **Gestion d'Erreurs Robuste**
+- Try-catch sur toutes les opérations I/O
+- Messages d'erreur explicites dans JSON responses
+- Logs d'erreur avec stack trace pour debug
+
+---
+### 📦 Fichiers Modifiés
+
+**Nouveaux fichiers**:
+- `core/camera/zumi_camera.py`
+- `core/vision/detectors/Stop_detector_cv.py`
+- `core/vision/detectors/Stop_detector_matt.py`
+- `core/vision/detectors/hsv_matt.py` (prototype)
+- `core/vision/detectors/hsv_mattv2.py` (prototype)
+
+**Fichiers modifiés**:
+- `interface/server_controller.py`: Routes diagnostic + format helper
+- `interface/onglet_vision.py`: Restructuration UI complète
+- `interface/flask_router.py`: Nouvelles routes `/diagnose_detector`
+- `core/vision/vision_pipeline.py`: Méthode `get_current_detector_diagnostic()`
+- `core/robot/robot_zumi.py`: Import `ZumiCamera` au lieu de `Camera` direct
+
+**Compatibilité**:
+- ✅ Aucune breaking change sur API existante
+- ✅ Backward compatible avec détecteurs existants (Line, Luminosity, etc.)
+- ✅ Format BGR maintenu partout (convention OpenCV)
+
+---
+
+### 🚀 Prochaines Étapes
+
+**Court terme**:
+- Tests additionnels en conditions réelles variées
+- Tuning paramètres HSV selon environnement déploiement
+- Documentation utilisateur pour UI diagnostic
+
+**Moyen terme**:
+- Dataset d'images annotées pour validation quantitative
+- Métriques précision/rappel comparatif entre détecteurs
+- Optimisation performances (profilage CPU)
+
+**Long terme**:
+- Intégration détecteur Harr (Haar-cascade Detection in OpenCV)
+- Support détection multi-objets simultanés
+- Recording vidéo avec timestamps détection
