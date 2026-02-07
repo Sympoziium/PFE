@@ -60,14 +60,14 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     .tab-header {
 		display: flex; align-items: center;
 		margin-bottom: 12px;
-	}}
+	}
 
     /* Boite de boutons de navigation entre onglets */
     .tab-nav {
 		display: flex; align-items: center;
 		gap: 4px;
 		margin-left: auto; /* pousse la nav à droite */
-	}}
+	}
 
     /* Boite de contenu, contour pointillé */
     .tab-content {
@@ -76,29 +76,29 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 		padding: 16px;
 		min-height: 200px;
 		background: #f7fbff;
-	}}
+	}
 
     /* Ligne horizontale pour agencer des éléments */
     .tab-row {
 		display: flex; align-items: flex-start; gap: 12px;
-	}}
+	}
 
 	/* --- Styles pour les différents types de texte --- */
 	
     /* Boite de texte format titre */
     .tab-title {
 		font-size: 22px; font-weight: bold; margin: 0;
-	}}
+	}
 
     /* Boite de texte format sous-titre */
     .tab-subtitle {
 		font-size: 18px; font-weight: bold; margin: 0;
-	}}
+	}
 
     /* Boite de texte format texte normal */
     .tab-text {
 		font-size: 16px; font-weight: normal; margin: 0;
-	}}
+	}
 
 	/* --- Déclarations des différents styles de widgets --- */
 
@@ -107,7 +107,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 		background: #007acc; color: white; border: none;
 		padding: 10px 18px; border-radius: 10px;
 		cursor: pointer; font-size: 15px;
-	}}
+	}
 
     .primary-btn:hover { background: #005fa3; }
 
@@ -115,7 +115,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     .primary-btn.active {
 		background: #00528a;
 		box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
-	}}
+	}
 
 	/* style bouton toggle */
     .toggle-btn {
@@ -127,7 +127,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         cursor: pointer; 
         margin-top: 15px; 
         font-size: 15px;
-    }}
+    }
 
     .toggle-btn:hover { background: #005fa3; } 
 
@@ -232,7 +232,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         border-radius: 20px; 
         box-shadow: 0 0 10px rgba(0,0,0,0.15); 
         text-align: center; 
-    }}
+    }
 
     .live-feed img {
         width: 50%; 
@@ -241,7 +241,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         border-radius: 8px; 
         border: 4px solid #00BFFF; 
         margin-top: 10px; 
-    }}
+    }
 
 	
 	/* --- Arrangements des éléments de l'interface --- */
@@ -255,9 +255,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 				<h2 class='tab-title'>{title}</h2>
 				<div class='tab-nav'>
 				<!-- Boutons de navigation entre onglets -->
-				<button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
-				<button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
-				<button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
+				<button class='primary-btn' data-path="/">Accueil</button>
+				<button class='primary-btn' data-path="/vision">Vision</button>
+				<button class='primary-btn' data-path="/onglet_template">Template</button>
                 <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
 				</div>
 			</div>
@@ -265,7 +265,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 			<div class='tab-content'>
 				<!-- AJOUTER VOS BOUTONS ICI -->
 				<div class='left-panel'>
-					<button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>▶️ Start Camera</button>
+					<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
 					<div id='zone-resultats'>
 						<!-- Conteneur du flux vidéo en direct -->
 						<div class='live-feed' id='liveFeed' style = 'display:none;'>
@@ -277,7 +277,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
                     <span style="font-weight:bold;">Mode Auto:</span>
                     <label class="switch">
-                      <input type="checkbox" id="autoCheck" onchange="toggleAuto(this.checked)" checked>
+                      <input type="checkbox" id="autoCheck" checked>
                       <span class="slider round"></span>
                     </label>
                 </div>
@@ -299,33 +299,21 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 						<h3>Contrôle du Zumi</h3>
 						<div class="dpad-container">
 							<!-- HAUT -->
-							<button 
-								class="dpad-button dpad-up" 
-								onmousedown="startMove('forward')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('forward')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-up" data-direction="forward">
 								<svg viewBox="0 0 100 100"><path d="M50 20 L50 80 M20 50 L50 20 L80 50"></path></svg>
 							</button>
 							<!-- GAUCHE -->
-							<button 
-								class="dpad-button dpad-left"
-								onmousedown="startMove('left')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('left')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-left" data-direction="left">
 								<svg viewBox="0 0 100 100"><path d="M80 50 L20 50 M50 20 L20 50 L50 80"></path></svg>
 							</button>
 							<!-- CENTRE (Stop) -->
-							<button class="dpad-button dpad-center" onclick="stopMove()"></button>
+							<button class="dpad-button dpad-center" id="dpadCenterBtn"></button>
 							<!-- DROITE -->
-							<button 
-								class="dpad-button dpad-right"
-								onmousedown="startMove('right')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('right')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-right" data-direction="right">
 								<svg viewBox="0 0 100 100"><path d="M20 50 L80 50 M50 20 L80 50 L50 80"></path></svg>
 							</button>
 							<!-- BAS -->
-							<button 
-								class="dpad-button dpad-down"
-								onmousedown="startMove('reverse')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('reverse')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-down" data-direction="reverse">
 								<svg viewBox="0 0 100 100"><path d="M50 80 L50 20 M20 50 L50 80 L80 50"></path></svg>
 							</button>
         				</div>
@@ -339,112 +327,174 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
 	<script>
-	// Active l'état du bouton d'onglet selon l'URL courante
-    (function() {
-		const norm = p => (p || '').replace(/\/+$/,'') || '/';
-		const here = norm(location.pathname);
-        document.querySelectorAll('.tab-nav .primary-btn').forEach(btn => {
-			const p = norm(btn.dataset?.path || btn.getAttribute('data-path'));
+	// Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
+	(function() {
+		var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
+		var here = norm(location.pathname);
+		var btns = document.querySelectorAll('.tab-nav .primary-btn');
+		Array.prototype.forEach.call(btns, function(btn) {
+			var p = norm(btn.getAttribute('data-path'));
 			if (p === here) btn.classList.add('active');
-        });
-    })();
+		});
+	})();
 
-    function toggleCamera() { 
-        const img = document.getElementById('videoStream'); 
-        const btn = document.getElementById('camBtn');
-        if (img.style.display === 'block') {
-            img.style.display = 'none'; btn.textContent = '▶️ Start Camera'; img.src = "";
-            fetch('/close_camera', { method: 'POST' });
-        } else {
-            btn.textContent = '⛔ Stop Camera';
-            fetch('/start_camera', { method: 'POST' }).then(() => {
-                img.style.display = 'block'; img.src = '/video?' + Date.now();
-            });
-        }
-    }
+	// --- Unified error logging (console) ---
+	function nowTS() { return new Date().toISOString(); }
+	function logError(context, error, extra) {
+		var msg = (error && error.message) ? error.message : String(error);
+		console.error('[UI][' + nowTS() + '] ' + context + ': ' + msg, extra || '');
+	}
 
-    // --- MODE AUTO ET GESTION UI ---
-    function toggleAuto(isAuto) {
-        // 1. Envoie la commande au serveur
-        const val = isAuto ? '1' : '0';
-        fetch('/bridge/mode_auto/' + val, { method: 'POST' })
-            .then(res => console.log("Mode auto changé: " + val))
-            .catch(err => console.error("Erreur:", err));
+	// Global error hooks for visibility
+	window.addEventListener('error', function(e) {
+		logError('window.onerror', e.error || e.message);
+	});
+	window.addEventListener('unhandledrejection', function(e) {
+		logError('window.unhandledrejection', e.reason);
+	});
 
-        // 2. Gestion de l'interface (Griser les boutons)
-        const btnOpen = document.getElementById('btnOpen');
-        const btnClose = document.getElementById('btnClose');
+	// État global : état caméra
+	var CAMERA_ACTIVE = false;
 
-        if (isAuto) {
-            btnOpen.classList.add('disabled');
-            btnClose.classList.add('disabled');
-        } else {
-            btnOpen.classList.remove('disabled');
-            btnClose.classList.remove('disabled');
-	    }
-    }
-  
 	// Navigation helper: close camera feed if active before redirecting
 	function navigateTo(path) {
 		try {
 			var liveFeed = document.getElementById('liveFeed');
-			var isActive = liveFeed && liveFeed.style.display === 'block';
+			var isActive = CAMERA_ACTIVE && liveFeed && liveFeed.style.display === 'block';
 			if (isActive) {
 				fetch('/close_camera', { method: 'POST' })
 					.then(function() { location.href = path; })
-					.catch(function() { location.href = path; });
+					.catch(function(err) { logError('navigateTo: /close_camera', err, { path: path }); location.href = path; });
 			} else {
 				location.href = path;
 			}
 		} catch (e) {
+			logError('navigateTo', e, { path: path });
 			location.href = path;
 		}
 	}
 
-    // ---  FONCTIONS DE MOUVEMENT ---
-    let isMoving = false;
-    let moveInterval = null; // Variable pour stocker notre 'setInterval'
+	function toggleCamera() {
+		var liveFeed = document.getElementById('liveFeed');
+		var img = document.getElementById('videoStream');
+		var btn = document.getElementById('cameraToggleBtn');
+		var isActive = CAMERA_ACTIVE && liveFeed.style.display === 'block';
 
-    function startMove(direction) {
-        if (isMoving) return; // Évite les commandes multiples
-        isMoving = true;
-        
-        // Fonction interne pour envoyer la commande
-        const sendMoveCommand = () => {
-            fetch('/zumi/' + direction)
-                .then(response => {
-                    if (!response.ok) console.error('Error starting move: ' + direction);
-                })
-                .catch(error => console.error('Fetch error:', error));
-        };
+		if (!isActive) {
+			// Démarrer la caméra
+			btn.textContent = '⛔ Stop Camera';
+			fetch('/start_camera', { method: 'POST' })
+				.then(function(response) {
+					if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
+					liveFeed.style.display = 'block';
+					img.src = '/video?' + new Date().getTime();
+					CAMERA_ACTIVE = true;
+				})
+				.catch(function(err) {
+					logError('toggleCamera: /start_camera', err);
+					btn.textContent = '▶️ Start Camera';
+					CAMERA_ACTIVE = false;
+				});
+		} else {
+			// Arrêter la caméra
+			liveFeed.style.display = 'none';
+			btn.textContent = '▶️ Start Camera';
+			img.src = '';
+			CAMERA_ACTIVE = false;
+			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
+		}
+	}
 
-        // 1. Envoyer la commande 1x immédiatement pour la réactivité
-        sendMoveCommand(); 
-        
-        // 2. Démarrer un intervalle qui 'nourrit' le watchdog 4x par seconde (250ms)
-        moveInterval = setInterval(sendMoveCommand, 250);
-    }
+	// --- MODE AUTO ET GESTION UI ---
+	function toggleAuto(isAuto) {
+		var val = isAuto ? '1' : '0';
+		fetch('/bridge/mode_auto/' + val, { method: 'POST' })
+			.then(function() { console.log('Mode auto changé: ' + val); })
+			.catch(function(err) { logError('toggleAuto', err, { val: val }); });
 
-    function stopMove() {
-        if (!isMoving) return; // Évite les 'stop' inutiles
-        isMoving = false;
-        
-        // 1. Arrêter l'envoi de commandes en continu
-        if (moveInterval) {
-            clearInterval(moveInterval);
-            moveInterval = null;
-        }
-    }
-    // ----------------------------------
+		var btnOpen = document.getElementById('btnOpen');
+		var btnClose = document.getElementById('btnClose');
+		if (isAuto) {
+			btnOpen.classList.add('disabled');
+			btnClose.classList.add('disabled');
+		} else {
+			btnOpen.classList.remove('disabled');
+			btnClose.classList.remove('disabled');
+		}
+	}
 
-    // Exposition des fonction au scope global
-    window.navigateTo = navigateTo;
+	// --- FONCTIONS DE MOUVEMENT ---
+	var isMoving = false;
+	var moveInterval = null;
+
+	function startMove(direction) {
+		if (isMoving) return;
+		isMoving = true;
+
+		var sendMoveCommand = function() {
+			fetch('/zumi/' + direction)
+				.then(function(response) {
+					if (!response.ok) logError('startMove', new Error('move failed'), { direction: direction });
+				})
+				.catch(function(error) { logError('startMove: fetch', error, { direction: direction }); });
+		};
+
+		sendMoveCommand();
+		moveInterval = setInterval(sendMoveCommand, 250);
+	}
+
+	function stopMove() {
+		if (!isMoving) return;
+		isMoving = false;
+		if (moveInterval) {
+			clearInterval(moveInterval);
+			moveInterval = null;
+		}
+	}
+
+	// --- Charger les événements au DOMContentLoaded ---
+	window.addEventListener('DOMContentLoaded', function() {
+		// Navigation buttons (utilise data-path pour déterminer la destination)
+		var navBtns = document.querySelectorAll('.tab-nav .primary-btn');
+		Array.prototype.forEach.call(navBtns, function(btn) {
+			var path = btn.getAttribute('data-path');
+			if (path) {
+				btn.addEventListener('click', function() { navigateTo(path); });
+			}
+		});
+
+		// Camera toggle
+		var camBtn = document.getElementById('cameraToggleBtn');
+		if (camBtn) camBtn.addEventListener('click', toggleCamera);
+
+		// Auto check (pont levis)
+		var autoCheck = document.getElementById('autoCheck');
+		if (autoCheck) autoCheck.addEventListener('change', function() { toggleAuto(this.checked); });
+
+		// D-pad: register mouse + passive touch events
+		var dpadButtons = document.querySelectorAll('.dpad-button[data-direction]');
+		Array.prototype.forEach.call(dpadButtons, function(btn) {
+			var dir = btn.getAttribute('data-direction');
+			btn.addEventListener('mousedown', function() { startMove(dir); });
+			btn.addEventListener('mouseup', stopMove);
+			btn.addEventListener('mouseleave', stopMove);
+			btn.addEventListener('touchstart', function() { startMove(dir); }, { passive: true });
+			btn.addEventListener('touchend', stopMove, { passive: true });
+		});
+
+		// D-pad center button (stop)
+		var centerBtn = document.getElementById('dpadCenterBtn');
+		if (centerBtn) centerBtn.addEventListener('click', stopMove);
+	});
+
+	// Exposer les fonctions au scope global (pour les onclick inline restants)
+	window.navigateTo = navigateTo;
 	window.toggleCamera = toggleCamera;
-    window.toggleAuto = toggleAuto;
-    window.startMove = startMove;
-    window.stopMove = stopMove;
+	window.toggleAuto = toggleAuto;
+	window.startMove = startMove;
+	window.stopMove = stopMove;
 
-    </script>
+	</script>
     </body></html>
     """
     return html.replace("{title}", title)
