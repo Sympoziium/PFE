@@ -382,6 +382,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
             btnOpen.classList.remove('disabled');
             btnClose.classList.remove('disabled');
 	    }
+    }
   
 	// Navigation helper: close camera feed if active before redirecting
 	function navigateTo(path) {
@@ -436,18 +437,13 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     }
     // ----------------------------------
 
-    // Mouvements Zumi
-    let moveInterval = null;
-    function start(dir) {
-        if (moveInterval) return;
-        const send = () => fetch('/zumi/' + dir).catch(e => console.log(e));
-        send();
-        moveInterval = setInterval(send, 300);
-    }
-    function stop() {
-        if (moveInterval) { clearInterval(moveInterval); moveInterval = null; }
-        fetch('/zumi/stop');
-    }
+    // Exposition des fonction au scope global
+    window.navigateTo = navigateTo;
+	window.toggleCamera = toggleCamera;
+    window.toggleAuto = toggleAuto;
+    window.startMove = startMove;
+    window.stopMove = stopMove;
+
     </script>
     </body></html>
     """
