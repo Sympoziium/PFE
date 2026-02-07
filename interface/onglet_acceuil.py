@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # onglet_acceuil.py
+# ------------------
+# ce module défini un onglet de l'interface web dédié à l'accueil
+# on y trouve notamment des boutons pour naviguer vers les autres onglets,
+# un livefeed de la caméra, les boutons de contrôle du Zumi, les boutons de
+# choix de scénarios et les boutons de contrôle du pont levis.
 
 def render_accueil_tab(title: str = "Accueil") -> str:
     html = """<!DOCTYPE html><html lang='fr'>

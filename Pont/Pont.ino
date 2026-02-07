@@ -48,6 +48,12 @@ const int tempsLedVert = 10000;
 // Fonction: PageWeb()
 // Description: Construction de la page Web (Code original de Dany Lauzon)
 //**********************************************************************************************************************************************
+
+/***************************************
+ * NOTE IMPORTANTE SUR LA PAGE WEB :
+ * - Voir si il est vraiment ncessaire de faire un serveur web pour le pont.
+ *   Comme le zumi est celui qui host le serveur principal celui-ci ne sert a rien.
+*/
 String PageWeb()
 {
   String html = "<!DOCTYPE html><html lang=\\\"en\\\">";

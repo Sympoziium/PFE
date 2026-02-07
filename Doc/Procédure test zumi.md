@@ -18,7 +18,9 @@ Le mot de passe par défaut est `pi`
 
 1. Téléverse ou clone ton projet sur le Zumi si ce n’est pas déjà fait :
 ```bash
-
+    cd ~
+    git clone https://github.com/Sympoziium/PFE.git
+    cd PFE
 ```
 **TU DOIS MODIFIER LE SCRIPT DE PRÉPARATION AVANT DE CONTINUER**
 tu dois simplement mettre le SSID et le mot de passe de ton Wifi dans le script

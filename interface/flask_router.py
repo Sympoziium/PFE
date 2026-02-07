@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # flask_router.py
+# ------------------
+"""Définit les routes Flask et les lie aux méthodes du contrôleur backend.
+    On déclare ici une route pour chaque bouton ou action du serveur vers
+    une méthode du contrôleur.
+"""
 
 def register_routes(ctrl):
     app = ctrl.app
