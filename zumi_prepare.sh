@@ -163,13 +163,13 @@ sudo wpa_supplicant -B -i wlan0 -c /tmp/wpa_supplicant.conf
 
 
 echo "🔄 Attente de connexion..."
-sleep 4
+sleep 2
 
 # Renouveler proprement l'IP pour éviter les erreurs RTNETLINK
 sudo dhclient -r wlan0 2>/dev/null || true
 sudo dhclient wlan0
 
-sleep 3
+sleep 2
 
 
 
@@ -196,6 +196,11 @@ fi
 
 echo "🧨 Nettoyage agressif des serveurs Flask / Python..."
 
+# Tenter de libérer via fuser si disponible
+if command -v fuser >/dev/null 2>&1; then
+    sudo fuser -k 5000/tcp 2>/dev/null || true
+fi
+
 # Tuer Flask / Werkzeug
 sudo pkill -f flask || true
 sudo pkill -f werkzeug || true
@@ -208,7 +213,6 @@ done
 
 # Dernier recours
 sudo pkill -9 -f main.py || true
-
 
 
 echo "🚀 Zumi prêt pour ton utilisation (dev mode)"
