@@ -270,29 +270,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 						<!-- Conteneur du flux vidéo en direct -->
 						<div class='live-feed' id='liveFeed' style = 'display:none;'>
 							<img id='videoStream' alt='Flux vidéo en direct'>
-              <hr style="width:100%; margin: 20px 0; border: 1px solid #ccc;">
-
-                <h3>🌉 Pont Levis</h3>
-
-                <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
-                    <span style="font-weight:bold;">Mode Auto:</span>
-                    <label class="switch">
-                      <input type="checkbox" id="autoCheck" checked>
-                      <span class="slider round"></span>
-                    </label>
+                        </div>
+                    </div>
                 </div>
-
-                <div style="margin-bottom:10px;">
-                    <button class='command-button btn-green' onclick="fetch('/bridge/green', {method:'POST'})">Feu Vert</button>
-                    <button class='command-button btn-red' onclick="fetch('/bridge/red', {method:'POST'})">Feu Rouge</button>
-                </div>
-                <div>
-                    <button id="btnOpen" class='command-button btn-blue disabled' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
-                    <button id="btnClose" class='command-button btn-blue disabled' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
-                </div>
-						</div>
-					</div>
-				</div>
 
 				<div class='right-panel'>
 					<div class='driving-mode'>
@@ -318,6 +298,26 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 							</button>
         				</div>
 					</div>
+                    <hr style="width:100%; margin: 20px 0; border: 1px solid #ccc;">
+
+                    <h3>🌉 Pont Levis</h3>
+
+                    <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
+                        <span style="font-weight:bold;">Mode Auto:</span>
+                        <label class="switch">
+                        <input type="checkbox" id="autoCheck" checked>
+                        <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom:10px;">
+                        <button class='command-button btn-green' onclick="fetch('/bridge/green', {method:'POST'})">Feu Vert</button>
+                        <button class='command-button btn-red' onclick="fetch('/bridge/red', {method:'POST'})">Feu Rouge</button>
+                    </div>
+                    <div>
+                        <button id="btnOpen" class='command-button btn-blue disabled' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
+                        <button id="btnClose" class='command-button btn-blue disabled' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
+                    </div>
 				</div>	
 			</div>
 		</div>
