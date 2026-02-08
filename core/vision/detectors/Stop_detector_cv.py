@@ -62,10 +62,9 @@ class StopDetectorCV(BaseDetector):
             }
         """
 
-
-        # Réinitialiser et valider l'entrée
         self.steps = []
         self.logs = []
+
         if not filename:
             return {'error': 'no captured image available. Please capture an image first.'}
 
@@ -78,7 +77,7 @@ class StopDetectorCV(BaseDetector):
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
-            # Charger l'image capturée en BGR
+            # Étape 1: Charger l'image capturée en BGR
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
