@@ -122,6 +122,6 @@ class StopDetector(BaseDetector):
         # Choisir le plus grand rectangle (aire w*h)
         return max(valids, key=lambda b: float(b[2]) * float(b[3]))
     
-    def atach_capture_dir(self, capture_dir):
+    def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir

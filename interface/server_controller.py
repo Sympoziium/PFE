@@ -112,7 +112,7 @@ class controller:
 
     # Attache le pipeline de vision
     def attach_pipeline_vision(self, pipeline):
-        pipeline.atach_capture_dir(self.CAPTURE_DIR)
+        pipeline.attach_capture_dir(self.CAPTURE_DIR)
         self.vision_pipeline = pipeline
 
 # ----------------------------------------------------------------------------

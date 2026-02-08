@@ -29,12 +29,12 @@ class VisionPipeline:
         self._lock = threading.Lock()
         self._last_frame = None
 
-    def atach_capture_dir(self, capture_dir):
+    def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
         # mise à jour pour chaque détecteur
         for detector in self.detectors:
-            detector.atach_capture_dir(capture_dir)
+            detector.attach_capture_dir(capture_dir)
 
     def start(self):
         """ appeler pour démarrer le pipeline de vision """
@@ -56,7 +56,7 @@ class VisionPipeline:
         
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
-        detectors.atach_capture_dir(self.CAPTURE_DIR) # transmettre le dossier de capture au détecteur
+        detectors.attach_capture_dir(self.CAPTURE_DIR) # transmettre le dossier de capture au détecteur
         self.detectors.append(detectors)
 
     def step(self):
