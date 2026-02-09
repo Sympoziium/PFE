@@ -76,17 +76,15 @@ class StopDetectorZumi(BaseDetector):
         try:
             # La lib Zumi attend du RGB
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-            detection = self.zumi_vision.find_stop_sign(
+            bbox = self.zumi_vision.find_stop_sign(
                 frame_rgb,
                 scale_factor=self.scaleFactor,
                 min_neighbors=self.minNeighbors,
                 min_size=self.minSize,
             )
 
-            self.logs.append('Retour brut find_stop_sign: {}'.format(repr(detection)))
+            self.logs.append('Retour brut find_stop_sign: {}'.format(repr(bbox)))
 
-            # Normaliser la sortie
-            bbox = self._normalize_detection(detection)
             stop_detected = bbox is not None
 
             if stop_detected:
@@ -194,18 +192,18 @@ class StopDetectorZumi(BaseDetector):
                                     min_neighbors=mn,
                                     min_size=(ms, ms),
                                 )
-                                bbox = self._normalize_detection(det_raw)
+                                
 
-                                if bbox:
+                                if det_raw is not None:
                                     total_detected += 1
-                                    x, y, w, h = bbox
+                                    x, y, w, h = det_raw
                                     area = w * h
                                     self.logs.append('{} sf={} mn={} ms={} -> DETECTE ({}x{}, aire={})'.format(
                                         space_tag, sf, mn, ms, w, h, area))
 
                                     if area > best['area']:
                                         best.update({
-                                            'bbox': bbox, 'area': area,
+                                            'bbox': det_raw, 'area': area,
                                             'sf': sf, 'mn': mn, 'ms': ms, 'space': space_tag
                                         })
 
@@ -258,47 +256,6 @@ class StopDetectorZumi(BaseDetector):
             import traceback
             traceback.print_exc()
             return {'error': 'diagnostic failed', 'details': str(e), 'logs': self.logs}
-
-    def _normalize_detection(self, detection):
-        """Convertit la sortie de `find_stop_sign` en (x, y, w, h) ou None.
-
-        Gère plusieurs formats possibles:
-        - None ou liste/tuple vide -> None
-        - Tuple/list de 4 nombres [x, y, w, h] -> (x, y, w, h)
-        - Liste de rectangles -> sélectionne le plus grand
-        - Dictionnaire avec clés usuelles
-        """
-        if detection is None:
-            return None
-
-        # Format dictionnaire
-        if isinstance(detection, dict):
-            for keys in (("x", "y", "w", "h"), ("left", "top", "width", "height")):
-                if all(k in detection for k in keys):
-                    return (int(detection[keys[0]]), int(detection[keys[1]]),
-                            int(detection[keys[2]]), int(detection[keys[3]]))
-            rects = detection.get("rects")
-            if isinstance(rects, (list, tuple)) and len(rects) > 0:
-                bbox = self._select_bbox(rects)
-                if bbox is not None:
-                    return bbox
-            return None
-
-        # Format liste/tuple
-        if isinstance(detection, (list, tuple)):
-            if len(detection) == 0:
-                return None
-
-            # Liste de bboxes
-            if isinstance(detection[0], (list, tuple)):
-                return self._select_bbox(detection)
-
-            # Un seul bbox [x, y, w, h]
-            if len(detection) >= 4 and all(isinstance(v, (int, float)) for v in detection[:4]):
-                return (int(detection[0]), int(detection[1]),
-                        int(detection[2]), int(detection[3]))
-
-        return None
 
     def _select_bbox(self, bboxes):
         """Sélectionne le plus grand bbox depuis une liste. Retourne (x,y,w,h) ou None."""
