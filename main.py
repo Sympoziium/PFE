@@ -20,7 +20,7 @@ from core.vision.detectors.Luminosity import LuminosityDetector
 from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
 from core.vision.detectors.Stop_detector_cv import StopDetectorCV
 from core.vision.detectors.Stop_detector_matt import StopDetectorMatt
-from core.vision.detectors.Haar_classifier import HaarClassifier
+from core.vision.detectors.Haar_classifier import HaarDetector
 
 # Import pour le serveur web (Flask)
 from interface import server_controller as controller_module
@@ -43,7 +43,7 @@ Lum_detector = LuminosityDetector()
 stop_detector = StopDetectorZumi()
 stop_detector_cv = StopDetectorCV(min_area=400, aspect_tol=0.4, poly_min=6, poly_max=10)
 stop_detector_matt = StopDetectorMatt(min_area=400, min_score=0.35)
-haar_classifier = HaarClassifier()
+haar_classifier = HaarDetector()
 vision_pipeline = VisionPipeline(camera=zumi.camera)
 
 # Dossier contenant les modèles .xml pour les classificateurs de Haar       
