@@ -124,12 +124,12 @@ PFE/
 │       │   ├── detector_base.py    # Classe de base pour tous les détecteurs
 │       │   ├── Line_detector.py
 │       │   ├── Luminosity.py
-│       │   ├── Stop_detector_zumi.py
+│       │   ├── Stop_detector_zumi.py  # Détecteur Zumi (lib Vision)
 │       │   ├── Stop_detector_cv.py    # Détecteur HSV conventionnel
 │       │   ├── Stop_detector_matt.py  # Détecteur HSV avancé (pureté/bordures)
-│       │   ├── Haar_classifier.py
-│       │   ├── hsv_matt.py            # Prototypes de Matt
-│       │   └── hsv_mattv2.py
+│       │   ├── Haar_classifier.py     # Classificateur Haar générique multi-modèles
+│       │   └── models/                # Modèles .xml pour Haar cascades
+│       │       └── stop_sign_classifier_2.xml
 │       ├── Objectif.md
 │       └── vision_pipeline.py
 │
@@ -295,7 +295,7 @@ Approche avancée avec analyse multi-scores:
 - ✅ **Logs enrichis**: Affiche tous les scores intermédiaires
 
 **Caractéristiques communes**:
-- Format de résultat standardisé: `{'Stop_detected': bool, 'detection_box': (x,y,w,h), 'confidence': float, 'logs': [...], 'steps': [...]}`
+- Format de résultat standardisé: `{'Object_detected': bool, 'detection_box': (x,y,w,h), 'confidence': float, 'area': int, 'logs': [...], 'steps': [...], 'source_file_url': str, 'annotated_url': str}`
 - Support format BGR (OpenCV natif) tout au long du pipeline
 - Sauvegarde overlays en RGB pour affichage web
 
@@ -398,7 +398,91 @@ Temps de traitement: 0.045s
 - Logs d'erreur avec stack trace pour debug
 
 ---
+
+## 🔄 CHANGELOG - Branche Haar_Classifier (2026-02-09)
+
+### 🎯 Nouveau Détecteur : HaarClassifier (générique)
+
+#### **HaarClassifier** - Classificateur Haar Cascade Multi-Modèles
+**Fichier**: `core/vision/detectors/Haar_classifier.py`
+
+Détecteur générique basé sur les cascades Haar d'OpenCV, capable de charger **plusieurs modèles .xml** simultanément:
+- **Chargement dynamique**: `add_classifier(name, xml_path)` / `remove_classifier(name)`
+- **Détection multi-classifieurs**: Itère sur tous les classifieurs chargés, fusionne les résultats
+- **Paramètres configurables** par classifieur: `scaleFactor`, `minNeighbors`, `minSize`
+- **Logs détaillés**: Nombre de détections par classifieur, raisons de rejet, timing
+- **Méthode `diagnostique_detecteur()`**: Balayage de paramètres automatique avec sauvegarde d'overlays
+
+**Organisation des modèles**:
+- Nouveau dossier `core/vision/detectors/models/` pour centraliser les fichiers `.xml`
+- Chargement via chemin absolu résolu depuis `main.py` avec `os.path.dirname(__file__)`
+
+**Utilisation dans `main.py`**:
+```python
+MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detectors', 'models')
+haar_classifier = HaarClassifier()
+haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_classifier_2.xml'))
+```
+
+---
+
+### 🔧 Modernisation de StopDetectorZumi
+**Fichier**: `core/vision/detectors/Stop_detector_zumi.py`
+
+- **Classe renommée**: `StopDetector` → `StopDetectorZumi` (clarté)
+- **Format de sortie standardisé**: Adoption du payload unifié `{Object_detected, detection_box, confidence, area, logs, source_file_url, annotated_url}`
+  - Remplace l'ancien format `{Object detected, Object coordinates, Object size}`
+- **Paramètre `filename`** ajouté à `process()`: Compatible avec l'introspection du pipeline (`inspect.signature`)
+- **Ajout de `diagnostique_detecteur(filename)`**: Balayage de paramètres (`scaleFactor` × `minNeighbors` × `minSize`) en BGR et RGB
+- **Sauvegarde d'images annotées**: Bounding box + label sur détection
+- **Logs enrichis**: Résultats visibles dans le terminal web de l'UI
+
+---
+
+### 🧹 Nettoyage Backend & UI
+
+#### Suppression de la route legacy `/diagnose_stop`
+- `flask_router.py`: Route `/diagnose_stop` supprimée, seule `/diagnose_detector` est conservée
+- `server_controller.py`: Méthode `diagnose_stop()` supprimée (~120 lignes de code de balayage paramétrique)
+- Import `itertools` retiré (plus utilisé)
+
+#### Consolidation des fonctions JS de diagnostic
+**Fichier**: `interface/onglet_vision.py`
+- Trois fonctions JS (`runStopDiagnostics()`, `runGenericDiagnostics()`, `runDiagnostics()`) fusionnées en une seule `runDiagnostics()` générique
+- `updateStopUIPanelVisibility()` renommée en `updateDiagnosticPanelVisibility()`: Le panel diagnostic s'affiche maintenant pour **tous** les détecteurs (plus seulement StopDetector)
+
+#### Corrections UI onglet Accueil
+**Fichier**: `interface/onglet_acceuil.py`
+- 12 erreurs CSS `}}` corrigées
+- Bug `getElementById('camBtn')` → `getElementById('cameraToggleBtn')`
+- Remplacement des `ontouchstart` inline par `addEventListener(..., {passive: true})`
+- Ajout de hooks d'erreur globaux, état `CAMERA_ACTIVE`, binding `DOMContentLoaded`
+- Compatibilité ES5
+
+---
+
 ### 📦 Fichiers Modifiés
+
+**Nouveaux fichiers / dossiers**:
+- `core/vision/detectors/models/` — Dossier centralisé pour les modèles .xml Haar
+
+**Fichiers modifiés**:
+- `core/vision/detectors/Haar_classifier.py`: Réécriture complète (HaarStopDetector → HaarClassifier générique)
+- `core/vision/detectors/Stop_detector_zumi.py`: Modernisation format + `diagnostique_detecteur()`
+- `interface/onglet_vision.py`: Consolidation JS diagnostic
+- `interface/flask_router.py`: Suppression route `/diagnose_stop`
+- `interface/server_controller.py`: Suppression méthode `diagnose_stop()` + import `itertools`
+- `interface/onglet_acceuil.py`: Corrections CSS/JS multiples
+- `main.py`: Import `StopDetectorZumi`, `MODELS_DIR`, chemin absolu pour modèles
+
+**Compatibilité**:
+- ✅ Python 3.5.3 (`.format()` partout, pas de f-strings)
+- ✅ Format de sortie unifié sur tous les détecteurs
+- ✅ Route `/diagnose_detector` gère tous les détecteurs de manière générique
+
+---
+
+### 📦 Fichiers Modifiés (Branche précédente)
 
 **Nouveaux fichiers**:
 - `core/camera/zumi_camera.py`
@@ -434,6 +518,8 @@ Temps de traitement: 0.045s
 - Optimisation performances (profilage CPU)
 
 **Long terme**:
-- Intégration détecteur Harr (Haar-cascade Detection in OpenCV)
 - Support détection multi-objets simultanés
 - Recording vidéo avec timestamps détection
+- Intégration modèle CNN
+
+

@@ -64,7 +64,7 @@ class StopDetectorMatt(BaseDetector):
         # Log des paramètres utilisés
         self._log_config()
 
-    def atach_capture_dir(self, capture_dir):
+    def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
