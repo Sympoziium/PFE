@@ -11,7 +11,7 @@
 # - implémenter un modèle préentraîné avant d'entrainer le notre
 # - ne pas tenter de faire du real time a plus de 2-3 fps
 
-import os, uuid
+import os, uuid, time
 from .detector_base import BaseDetector
 import cv2 
 from flask import url_for
@@ -186,19 +186,21 @@ class HaarDetector(BaseDetector):
     def diagnostique_detecteur(self, filename):
         """
         Diagnostic détaillé du classificateur Haar:
-        1. Validation des modèles chargés (fichier existe, non-vide, taille)
+        0. Parse du XML pour extraire la taille de fenêtre d'entraînement
+        1. Validation des modèles chargés (fichier, taille, fenêtre training)
         2. Analyse de l'image source (résolution, contraste, luminosité)
-        3. Prétraitements multiples: brut, GaussianBlur, equalizeHist, CLAHE
-        4. Balayage de paramètres: scaleFactor × minNeighbors × minSize
-        5. Résumé: nombre de combinaisons testées vs détections, meilleur résultat
-        
-        Sauvegarde chaque étape intermédiaire pour la galerie web.
+        3. Redimensionnement si l'image dépasse 400px (perf Pi Zero)
+        4. Test rapide avec les paramètres de l'auteur du modèle
+        5. Prétraitements: brut, GaussianBlur, CLAHE (3 variantes)
+        6. Balayage de paramètres réduit (~81 combos au lieu de 1050+)
+        7. Rapport: meilleur résultat, stats, recommandations
         
         :param filename: Nom du fichier image capturé.
         :return: dict standardisé avec les étapes intermédiaires.
         """
         self.steps = []
         self.logs = []
+        t_start = time.time()
 
         if not filename:
             return {'error': 'no captured image available. Please capture an image first.'}
@@ -211,12 +213,20 @@ class HaarDetector(BaseDetector):
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
-            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
-            if frame_bgr is None:
+            frame_bgr_orig = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if frame_bgr_orig is None:
                 return {'error': 'failed to read captured image'}
 
-            h_img, w_img = frame_bgr.shape[:2]
+            h_orig, w_orig = frame_bgr_orig.shape[:2]
             classifier_names = list(self.classifiers.keys())
+
+            # =====================================================
+            # PHASE 0 : Parse des fichiers XML pour metadata
+            # =====================================================
+            training_sizes = {}  # {cname: (w, h) ou None}
+            for cname in classifier_names:
+                cpath = self.cascade_paths.get(cname, '')
+                training_sizes[cname] = self._parse_cascade_xml(cpath)
 
             # =====================================================
             # PHASE 1 : Informations générales et validation
@@ -247,24 +257,38 @@ class HaarDetector(BaseDetector):
                 fsize = os.path.getsize(cpath) if exists else 0
                 empty = clf.empty() if clf else True
                 status = 'OK' if (exists and not empty) else 'PROBLEME'
+                tsize = training_sizes.get(cname)
+
                 self.logs.append('  [{}] Classifieur: {}'.format(status, cname))
                 self.logs.append('       Fichier: {}'.format(os.path.basename(cpath)))
                 self.logs.append('       Existe: {}  |  Taille: {} Ko  |  Vide: {}'.format(
                     exists, round(fsize / 1024.0, 1) if exists else 0, empty))
+
+                if tsize:
+                    tw, th = tsize
+                    ratio = float(tw) / float(th) if th > 0 else 0
+                    self.logs.append('       Fenetre entrainement: {}x{} px (ratio w/h = {:.2f})'.format(tw, th, ratio))
+                    if ratio < 0.8 or ratio > 1.25:
+                        self.logs.append('       -> INFO: Fenetre NON carree. Le modele attend des objets {}.'
+                            .format('plus hauts que larges' if ratio < 1 else 'plus larges que hauts'))
+                        self.logs.append('          Le minSize du sweep sera ajuste pour respecter ce ratio.')
+                else:
+                    self.logs.append('       Fenetre entrainement: non trouvee dans le XML')
+
                 if empty:
                     self.logs.append('       -> ATTENTION: Ce classifieur ne detectera rien!')
 
             # --- 1b. Analyse de l'image source ---
             self.logs.append('')
             self.logs.append('--- ANALYSE DE L\'IMAGE SOURCE ---')
-            self.logs.append('  Resolution: {}x{} pixels'.format(w_img, h_img))
-            self.logs.append('  Canaux: {}'.format(frame_bgr.shape[2] if len(frame_bgr.shape) > 2 else 1))
+            self.logs.append('  Resolution originale: {}x{} pixels'.format(w_orig, h_orig))
+            self.logs.append('  Canaux: {}'.format(frame_bgr_orig.shape[2] if len(frame_bgr_orig.shape) > 2 else 1))
 
-            gray_raw = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            mean_val = float(np.mean(gray_raw))
-            std_val = float(np.std(gray_raw))
-            min_val = int(np.min(gray_raw))
-            max_val = int(np.max(gray_raw))
+            gray_raw_orig = cv2.cvtColor(frame_bgr_orig, cv2.COLOR_BGR2GRAY)
+            mean_val = float(np.mean(gray_raw_orig))
+            std_val = float(np.std(gray_raw_orig))
+            min_val = int(np.min(gray_raw_orig))
+            max_val = int(np.max(gray_raw_orig))
             self.logs.append('  Luminosite moyenne: {:.1f}/255'.format(mean_val))
             self.logs.append('  Ecart-type (contraste): {:.1f}'.format(std_val))
             self.logs.append('  Plage intensite: [{}, {}]'.format(min_val, max_val))
@@ -276,72 +300,142 @@ class HaarDetector(BaseDetector):
             if std_val < 30:
                 self.logs.append('  -> ATTENTION: Faible contraste, la cascade pourrait avoir du mal')
 
-            if w_img < 200 or h_img < 200:
-                self.logs.append('  -> INFO: Basse resolution, les petits objets seront manques')
-            elif w_img > 1000:
-                self.logs.append('  -> INFO: Haute resolution, les petits minSize seront lents')
-
-            # Sauvegarder l'image source
-            self._save_step(frame_bgr, '0_image_source', 'bgr')
+            # Sauvegarder l'image source originale
+            self._save_step(frame_bgr_orig, '0_image_source', 'bgr')
 
             # =====================================================
-            # PHASE 2 : Prétraitements multiples
+            # PHASE 2 : Redimensionnement pour performance
+            # =====================================================
+            MAX_DIAG_WIDTH = 400
+            if w_orig > MAX_DIAG_WIDTH:
+                scale = float(MAX_DIAG_WIDTH) / float(w_orig)
+                new_w = MAX_DIAG_WIDTH
+                new_h = int(h_orig * scale)
+                frame_bgr = cv2.resize(frame_bgr_orig, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                self.logs.append('')
+                self.logs.append('  -> Image redimensionnee pour diagnostic: {}x{} (facteur {:.2f})'.format(
+                    new_w, new_h, scale))
+                self.logs.append('     (La Haar cascade est multi-echelle, la haute resolution')
+                self.logs.append('      n\'ameliore pas la detection mais ralentit enormement)')
+            else:
+                frame_bgr = frame_bgr_orig
+                new_w, new_h = w_orig, h_orig
+
+            h_img, w_img = frame_bgr.shape[:2]
+            gray_raw = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+
+            # =====================================================
+            # PHASE 3 : Test rapide (parametres de l'auteur)
+            # =====================================================
+            self.logs.append('')
+            self.logs.append('--- TEST RAPIDE (parametres nominaux) ---')
+            self.logs.append('  But: verifier si le modele detecte QUOI QUE CE SOIT')
+            self.logs.append('  Parametres: scaleFactor=1.05, minNeighbors=3, minSize=(5,5)')
+            self.logs.append('  (Ce sont les parametres les plus permissifs de l\'auteur)')
+
+            gray_blur_quick = cv2.GaussianBlur(gray_raw, (5, 5), 0)
+            quick_found = False
+            for cname, clf in self.classifiers.items():
+                if clf.empty():
+                    continue
+                try:
+                    qresults = clf.detectMultiScale(
+                        gray_blur_quick,
+                        scaleFactor=1.05,
+                        minNeighbors=3,
+                        minSize=(5, 5)
+                    )
+                    n_q = len(qresults)
+                except Exception:
+                    n_q = 0
+
+                if n_q > 0:
+                    quick_found = True
+                    self.logs.append('  [{}] {} detection(s) -> Le modele FONCTIONNE sur cette image'.format(cname, n_q))
+                    for qi, (qx, qy, qw, qh) in enumerate(qresults):
+                        self.logs.append('    #{}: pos=({},{}) taille={}x{}'.format(qi + 1, qx, qy, qw, qh))
+                    # Sauvegarder le résultat du quick test
+                    overlay_q = frame_bgr.copy()
+                    for (qx, qy, qw, qh) in qresults:
+                        cv2.rectangle(overlay_q, (qx, qy), (qx + qw, qy + qh), (255, 0, 255), 2)
+                    self._save_step(overlay_q, '2_quick_test_{}'.format(cname), 'bgr')
+                else:
+                    self.logs.append('  [{}] 0 detection -> Ce modele ne detecte rien meme en mode permissif'.format(cname))
+
+            if not quick_found:
+                self.logs.append('')
+                self.logs.append('  CONCLUSION: Aucun modele ne detecte quoi que ce soit.')
+                self.logs.append('  Le balayage de parametres va quand meme etre lance, mais il')
+                self.logs.append('  est probable que le modele ne soit pas adapte a cette image.')
+                self.logs.append('  Verifiez:')
+                self.logs.append('    - Le panneau est-il bien visible et non occulte?')
+                self.logs.append('    - Le modele a-t-il ete entraine sur le bon type d\'objet?')
+                self.logs.append('      (ex: panneau "STOP" americain vs "ARRET" quebecois)')
+                self.logs.append('    - La qualite/resolution de l\'image est-elle suffisante?')
+
+            t_phase3 = time.time()
+            self.logs.append('  [Temps phase 1-3: {:.1f}s]'.format(t_phase3 - t_start))
+
+            # =====================================================
+            # PHASE 4 : Prétraitements (3 variantes pour Pi Zero)
             # =====================================================
             self.logs.append('')
             self.logs.append('--- PRETRAITEMENTS ---')
 
-            # Préparer les variantes de prétraitement
             preprocess_variants = []
 
-            # 2a. Gray brut (aucun filtre)
+            # 4a. Gray brut
             preprocess_variants.append(('gray_brut', gray_raw))
-            self._save_step(gray_raw, '1a_gray_brut', 'gray')
+            self._save_step(gray_raw, '3a_gray_brut', 'gray')
             self.logs.append('  1. Gray brut (aucun filtrage)')
 
-            # 2b. Gaussian blur + gray
-            blurred = cv2.GaussianBlur(frame_bgr, (5, 5), 0)
-            gray_blur = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
-            preprocess_variants.append(('gauss_blur_5x5', gray_blur))
-            self._save_step(gray_blur, '1b_gaussian_blur', 'gray')
-            self.logs.append('  2. GaussianBlur(5,5) + gray')
+            # 4b. Gaussian blur + gray (comme l'auteur du modèle)
+            preprocess_variants.append(('gauss_blur_5x5', gray_blur_quick))
+            self._save_step(gray_blur_quick, '3b_gaussian_blur', 'gray')
+            self.logs.append('  2. GaussianBlur(5,5) + gray (comme l\'auteur)')
 
-            # 2c. equalizeHist (étalement d'histogramme global)
-            gray_eq = cv2.equalizeHist(gray_raw)
-            preprocess_variants.append(('equalize_hist', gray_eq))
-            self._save_step(gray_eq, '1c_equalize_hist', 'gray')
-            self.logs.append('  3. equalizeHist (etalement histogramme global)')
-            self.logs.append('     -> Utile si image sombre ou faible contraste')
-
-            # 2d. CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            # 4c. CLAHE (meilleur que equalizeHist en général)
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             gray_clahe = clahe.apply(gray_raw)
             preprocess_variants.append(('CLAHE_2.0', gray_clahe))
-            self._save_step(gray_clahe, '1d_CLAHE', 'gray')
-            self.logs.append('  4. CLAHE (clipLimit=2.0, grid=8x8)')
-            self.logs.append('     -> Egalization locale, souvent meilleur que global')
-
-            # 2e. Bilateral filter (réduit bruit mais préserve les arêtes)
-            bilateral = cv2.bilateralFilter(frame_bgr, 9, 75, 75)
-            gray_bilateral = cv2.cvtColor(bilateral, cv2.COLOR_BGR2GRAY)
-            preprocess_variants.append(('bilateral_filter', gray_bilateral))
-            self._save_step(gray_bilateral, '1e_bilateral', 'gray')
-            self.logs.append('  5. Bilateral filter (preserve les aretes)')
+            self._save_step(gray_clahe, '3c_CLAHE', 'gray')
+            self.logs.append('  3. CLAHE (clipLimit=2.0, grid=8x8)')
 
             # =====================================================
-            # PHASE 3 : Balayage de paramètres
+            # PHASE 5 : Balayage de paramètres (optimisé Pi Zero)
             # =====================================================
             self.logs.append('')
-            self.logs.append('--- BALAYAGE DE PARAMETRES ---')
+            self.logs.append('--- BALAYAGE DE PARAMETRES (optimise Pi Zero) ---')
 
-            scale_factors = [1.03, 1.05, 1.08, 1.1, 1.15, 1.2, 1.3]
-            min_neighbors_list = [2, 3, 4, 5, 7, 10]
-            min_sizes = [20, 30, 40, 60, 80]
+            scale_factors = [1.05, 1.1, 1.2]
+            min_neighbors_list = [3, 5, 8]
 
-            total_combos = len(preprocess_variants) * len(scale_factors) * len(min_neighbors_list) * len(min_sizes) * len(classifier_names)
+            # Construire la liste de minSizes en tenant compte du ratio d'entraînement
+            # Si le modèle a été entraîné sur du 25x45, on teste des minSize non-carrés
+            base_sizes = [15, 30, 50]
+            min_size_list = []  # liste de tuples (w, h)
+            for bs in base_sizes:
+                min_size_list.append((bs, bs))  # carré toujours inclus
+
+            # Ajouter des tailles respectant le ratio d'entraînement si non-carré
+            for cname, tsize in training_sizes.items():
+                if tsize:
+                    tw, th = tsize
+                    ratio = float(tw) / float(th) if th > 0 else 1.0
+                    if ratio < 0.8 or ratio > 1.25:
+                        for bs in base_sizes:
+                            # Taille basée sur la hauteur, largeur ajustée au ratio
+                            adjusted_w = max(5, int(bs * ratio))
+                            pair = (adjusted_w, bs)
+                            if pair not in min_size_list:
+                                min_size_list.append(pair)
+                                self.logs.append('  + minSize ajuste au ratio training: ({},{})'.format(adjusted_w, bs))
+
+            total_combos = len(preprocess_variants) * len(scale_factors) * len(min_neighbors_list) * len(min_size_list) * len(classifier_names)
             self.logs.append('  Pretraitements: {}'.format(len(preprocess_variants)))
             self.logs.append('  scaleFactors: {}'.format(scale_factors))
             self.logs.append('  minNeighbors: {}'.format(min_neighbors_list))
-            self.logs.append('  minSizes: {}'.format(min_sizes))
+            self.logs.append('  minSizes: {}'.format(min_size_list))
             self.logs.append('  Classifieurs: {}'.format(len(classifier_names)))
             self.logs.append('  TOTAL combinaisons a tester: {}'.format(total_combos))
             self.logs.append('')
@@ -353,6 +447,8 @@ class HaarDetector(BaseDetector):
             detect_by_preprocess = {}
             detect_by_params = {}
 
+            t_sweep_start = time.time()
+
             for prep_name, gray_img in preprocess_variants:
                 detect_by_preprocess[prep_name] = 0
 
@@ -362,14 +458,14 @@ class HaarDetector(BaseDetector):
 
                     for sf in scale_factors:
                         for mn in min_neighbors_list:
-                            for ms in min_sizes:
+                            for ms_w, ms_h in min_size_list:
                                 total_tested += 1
                                 try:
                                     results = clf.detectMultiScale(
                                         gray_img,
                                         scaleFactor=sf,
                                         minNeighbors=mn,
-                                        minSize=(ms, ms)
+                                        minSize=(ms_w, ms_h)
                                     )
                                     n_det = len(results) if results is not None else 0
                                 except Exception:
@@ -379,7 +475,7 @@ class HaarDetector(BaseDetector):
                                     total_detected += 1
                                     detect_by_preprocess[prep_name] = detect_by_preprocess.get(prep_name, 0) + 1
 
-                                    param_key = 'sf={} mn={} ms={}'.format(sf, mn, ms)
+                                    param_key = 'sf={} mn={} ms=({},{})'.format(sf, mn, ms_w, ms_h)
                                     detect_by_params[param_key] = detect_by_params.get(param_key, 0) + 1
 
                                     for (rx, ry, rw, rh) in results:
@@ -387,15 +483,19 @@ class HaarDetector(BaseDetector):
                                         if a > best['area']:
                                             best.update({
                                                 'bbox': (rx, ry, rw, rh), 'area': a,
-                                                'sf': sf, 'mn': mn, 'ms': ms,
+                                                'sf': sf, 'mn': mn,
+                                                'ms': '({},{})'.format(ms_w, ms_h),
                                                 'preprocess': prep_name,
                                                 'classifier': cname, 'count': n_det
                                             })
 
+            t_sweep_end = time.time()
+
             # =====================================================
-            # PHASE 4 : Rapport détaillé
+            # PHASE 6 : Rapport détaillé
             # =====================================================
             self.logs.append('--- RESULTATS DU BALAYAGE ---')
+            self.logs.append('  Temps du balayage: {:.1f}s'.format(t_sweep_end - t_sweep_start))
             self.logs.append('  Combinaisons testees: {}'.format(total_tested))
             self.logs.append('  Combinaisons avec detection: {} ({:.1f}%)'.format(
                 total_detected, (100.0 * total_detected / total_tested) if total_tested > 0 else 0))
@@ -409,52 +509,86 @@ class HaarDetector(BaseDetector):
 
             self.logs.append('')
 
-            # Top 10 combinaisons de paramètres les plus productives
-            self.logs.append('  Top parametres (combinaisons les plus productives):')
-            sorted_params = sorted(detect_by_params.items(), key=lambda x: -x[1])[:10]
-            for param_key, count in sorted_params:
-                self.logs.append('    {}: {} detection(s)'.format(param_key, count))
-
-            self.logs.append('')
+            # Top combinaisons de paramètres
+            if detect_by_params:
+                self.logs.append('  Top parametres (combinaisons les plus productives):')
+                sorted_params = sorted(detect_by_params.items(), key=lambda x: -x[1])[:10]
+                for param_key, count in sorted_params:
+                    self.logs.append('    {}: {} detection(s)'.format(param_key, count))
+                self.logs.append('')
 
             # Meilleur résultat
             if best['bbox']:
                 bx, by, bw, bh = best['bbox']
+
+                # Si l'image a été redimensionnée, remettre les coordonnées à l'échelle originale
+                if w_orig > MAX_DIAG_WIDTH:
+                    inv_scale = float(w_orig) / float(MAX_DIAG_WIDTH)
+                    bx_orig = int(bx * inv_scale)
+                    by_orig = int(by * inv_scale)
+                    bw_orig = int(bw * inv_scale)
+                    bh_orig = int(bh * inv_scale)
+                else:
+                    bx_orig, by_orig, bw_orig, bh_orig = bx, by, bw, bh
+
                 self.logs.append('  *** MEILLEURE DETECTION ***')
                 self.logs.append('  Classifieur: {}'.format(best['classifier']))
                 self.logs.append('  Pretraitement: {}'.format(best['preprocess']))
-                self.logs.append('  Parametres: scaleFactor={}, minNeighbors={}, minSize=({},{})'.format(
-                    best['sf'], best['mn'], best['ms'], best['ms']))
-                self.logs.append('  BBox: x={}, y={}, w={}, h={}'.format(bx, by, bw, bh))
+                self.logs.append('  Parametres: scaleFactor={}, minNeighbors={}, minSize={}'.format(
+                    best['sf'], best['mn'], best['ms']))
+                self.logs.append('  BBox (diag): x={}, y={}, w={}, h={}'.format(bx, by, bw, bh))
+                if w_orig > MAX_DIAG_WIDTH:
+                    self.logs.append('  BBox (originale): x={}, y={}, w={}, h={}'.format(
+                        bx_orig, by_orig, bw_orig, bh_orig))
                 self.logs.append('  Aire: {} px'.format(best['area']))
                 self.logs.append('  Nb detections dans cette config: {}'.format(best['count']))
 
-                # Sauvegarder la meilleure détection annotée
-                overlay = frame_bgr.copy()
-                cv2.rectangle(overlay, (bx, by), (bx + bw, by + bh), (0, 255, 0), 2)
-                label = '{} ({}x{})'.format(best['classifier'], bw, bh)
-                cv2.putText(overlay, label, (bx, max(0, by - 10)),
+                # Sauvegarder la meilleure détection annotée sur l'image ORIGINALE
+                overlay = frame_bgr_orig.copy()
+                cv2.rectangle(overlay, (bx_orig, by_orig),
+                    (bx_orig + bw_orig, by_orig + bh_orig), (0, 255, 0), 2)
+                label = '{} ({}x{})'.format(best['classifier'], bw_orig, bh_orig)
+                cv2.putText(overlay, label, (bx_orig, max(0, by_orig - 10)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                info = 'sf={} mn={} ms={} prep={}'.format(best['sf'], best['mn'], best['ms'], best['preprocess'])
-                cv2.putText(overlay, info, (5, h_img - 10),
+                info = 'sf={} mn={} ms={} prep={}'.format(
+                    best['sf'], best['mn'], best['ms'], best['preprocess'])
+                cv2.putText(overlay, info, (5, h_orig - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
                 self._save_step(overlay, 'best_detection', 'bgr')
+
+                # Recommandations post-détection
+                self.logs.append('')
+                self.logs.append('  Recommandation: utilisez ces parametres dans process():')
+                self.logs.append('    self.scaleFactor = {}'.format(best['sf']))
+                self.logs.append('    self.minNeighbors = {}'.format(best['mn']))
             else:
                 self.logs.append('  AUCUNE DETECTION sur {} combinaisons.'.format(total_tested))
                 self.logs.append('')
                 self.logs.append('  Causes possibles:')
-                self.logs.append('    1. Modele XML non adapte a l\'objet cible (ex: entraine sur "STOP" vs "ARRET")')
-                self.logs.append('    2. Objet trop petit ou trop grand par rapport a minSize')
-                self.logs.append('    3. Angle, eclairage ou occlusion too severe')
-                self.logs.append('    4. Image de basse qualite / floue')
+                self.logs.append('    1. Modele XML non adapte a l\'objet cible')
+                self.logs.append('       - Ce modele a probablement ete entraine sur des panneaux')
+                self.logs.append('         "STOP" americains. Les panneaux "ARRET" quebecois ont un')
+                self.logs.append('         pattern de texte different (5 lettres vs 4), ce qui change')
+                self.logs.append('         les features de Haar apprises par la cascade.')
+                self.logs.append('    2. Objet absent, trop petit, ou hors champ')
+                self.logs.append('    3. Angle de vue, eclairage ou occlusion trop severe')
+                self.logs.append('    4. Image floue ou de basse qualite')
                 self.logs.append('    5. Fichier .xml corrompu ou vide')
                 self.logs.append('')
                 self.logs.append('  Recommandations:')
-                self.logs.append('    - Essayer un autre modele .xml pre-entraine')
-                self.logs.append('    - Verifier que l\'objet est bien visible dans l\'image source')
-                self.logs.append('    - Tester avec une image web contenant clairement l\'objet cible')
-                self.logs.append('    - Considerer l\'entrainement d\'un modele custom')
+                self.logs.append('    1. Tester avec une image web d\'un panneau "STOP" americain')
+                self.logs.append('       pour valider que le modele fonctionne au moins sur ce type.')
+                self.logs.append('    2. Essayer un autre modele .xml pre-entraine:')
+                self.logs.append('       - OpenCV fournit un stop_sign dans ses data (opencv/data/haarcascades)')
+                self.logs.append('       - Chercher "stop sign haar cascade xml" sur GitHub')
+                self.logs.append('    3. Entrainer votre propre modele avec opencv_traincascade:')
+                self.logs.append('       - ~500-2000 images positives (panneaux ARRET)')
+                self.logs.append('       - ~3000-5000 images negatives (n\'importe quoi d\'autre)')
+                self.logs.append('       - L\'entrainement se fait sur PC, le .xml est deploye sur le Zumi')
 
+            t_total = time.time() - t_start
+            self.logs.append('')
+            self.logs.append('  Temps total du diagnostic: {:.1f}s'.format(t_total))
             self.logs.append('')
             self.logs.append('=' * 60)
             self.logs.append('   FIN DU DIAGNOSTIC')
@@ -463,9 +597,9 @@ class HaarDetector(BaseDetector):
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
             return {
                 'Object_detected': best['bbox'] is not None,
-                'detection_box': tuple(best['bbox']) if best['bbox'] else None,
+                'detection_box': (bx_orig, by_orig, bw_orig, bh_orig) if best['bbox'] else None,
                 'confidence': 1.0 if best['bbox'] else 0.0,
-                'area': best['area'] if best['area'] > 0 else None,
+                'area': (bw_orig * bh_orig) if best['bbox'] else None,
                 'logs': self.logs,
                 'steps': self.steps,
                 'source_file_url': source_url,
@@ -477,6 +611,46 @@ class HaarDetector(BaseDetector):
             import traceback
             traceback.print_exc()
             return {'error': 'diagnostic failed', 'details': str(e), 'logs': self.logs}
+
+    def _parse_cascade_xml(self, xml_path):
+        """Parse un fichier cascade XML pour extraire la taille de la fenêtre d'entraînement.
+        
+        Le header du fichier XML contient une balise <size> avec la taille WxH
+        utilisée lors de l'entraînement (ex: '25 45' pour une fenêtre 25x45).
+        Cette info est cruciale pour choisir un minSize approprié.
+        
+        :param xml_path: Chemin vers le fichier .xml
+        :return: tuple (width, height) ou None si non trouvé
+        """
+        if not xml_path or not os.path.exists(xml_path):
+            return None
+        try:
+            # Lecture légère: on ne parse que les 50 premières lignes (le header)
+            with open(xml_path, 'r') as f:
+                lines = []
+                for i, line in enumerate(f):
+                    lines.append(line)
+                    if i > 50:
+                        break
+                content = ''.join(lines)
+
+            # Chercher <size> ou <width>/<height> dans le header
+            # Format typique OpenCV: <size>25 45</size>  ou  <width>25</width><height>45</height>
+            import re
+            # Pattern 1: <size>W H</size>
+            m = re.search(r'<size>\s*(\d+)\s+(\d+)\s*</size>', content)
+            if m:
+                return (int(m.group(1)), int(m.group(2)))
+
+            # Pattern 2: <width>W</width> et <height>H</height> (dans le premier stageParams ou header)
+            mw = re.search(r'<width>\s*(\d+)\s*</width>', content)
+            mh = re.search(r'<height>\s*(\d+)\s*</height>', content)
+            if mw and mh:
+                return (int(mw.group(1)), int(mh.group(1)))
+
+        except Exception:
+            pass
+        return None
 
     def _filter_image(self, frame, diagnostic_mode=False):
         """
