@@ -237,6 +237,25 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		white-space: pre-wrap; word-wrap: break-word;
 	}
 
+	/* --- Toast notifications --- */
+	.toast-container {
+		position: fixed; top: 20px; right: 20px; z-index: 9999;
+		display: flex; flex-direction: column; gap: 8px;
+	}
+	.toast {
+		padding: 12px 20px; border-radius: 8px;
+		color: #fff; font-size: 14px; font-family: Arial, sans-serif;
+		box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+		opacity: 0; transform: translateX(80px);
+		transition: opacity 0.3s, transform 0.3s;
+		max-width: 380px; word-wrap: break-word;
+	}
+	.toast.show { opacity: 1; transform: translateX(0); }
+	.toast.warning { background: #e67e22; }
+	.toast.error { background: #e74c3c; }
+	.toast.info { background: #3498db; }
+	.toast.success { background: #27ae60; }
+
 	</style>
 	</head>
 	<body>
@@ -295,6 +314,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		</div>
 	</div>
 
+	<!-- Toast container -->
+	<div class='toast-container' id='toastContainer'></div>
+
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
 	<script>
@@ -345,6 +367,25 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		if (error && error.stack) { lines.push('Stack: ' + error.stack); }
 		appendTerminalLines(lines);
 		console.error('[UI]', context, error, extra || '');
+	}
+
+	// --- Toast notification system ---
+	function showToast(message, type, duration) {
+		type = type || 'warning';
+		duration = duration || 4000;
+		var container = document.getElementById('toastContainer');
+		if (!container) return;
+		var toast = document.createElement('div');
+		toast.className = 'toast ' + type;
+		toast.textContent = message;
+		container.appendChild(toast);
+		// Trigger animation
+		setTimeout(function() { toast.classList.add('show'); }, 10);
+		// Auto-dismiss
+		setTimeout(function() {
+			toast.classList.remove('show');
+			setTimeout(function() { container.removeChild(toast); }, 350);
+		}, duration);
 	}
 
 	// Global error hooks for maximum visibility
@@ -595,7 +636,24 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var indicator = document.getElementById('stopDetectIndicator');
 		clearTerminal();
 		fetch('/run_detection', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText); return r.json(); })
+			.then(function(r) {
+				if (!r.ok) {
+					return r.json().then(function(body) {
+						var msg = (body && body.error) ? body.error : 'run_detection failed';
+						if (msg.indexOf('capture') !== -1 || msg.indexOf('captured') !== -1) {
+							showToast('\u26a0\ufe0f Veuillez capturer une image avant de lancer la detection.', 'warning');
+						} else {
+							showToast('Erreur: ' + msg, 'error');
+						}
+						throw new Error(msg);
+					}).catch(function(parseErr) {
+						if (parseErr.message && parseErr.message.indexOf('capture') !== -1) throw parseErr;
+						showToast('Erreur serveur (' + r.status + ')', 'error');
+						throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText);
+					});
+				}
+				return r.json();
+			})
 			.then(function(res) {
 				if (res.logs && Array.isArray(res.logs)) {
 					appendTerminalLines(res.logs);
@@ -609,10 +667,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					imageCapturedCallback(res.source_file_url);
 				}
 
-				// Utiliser Object_detected au lieu de Stop_detected
 				if (res.Object_detected) {
 					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
+					indicator.textContent = 'Objet detecte';
 				} else {
 					indicator.classList.add('off');
 					indicator.textContent = 'Aucune detection';
@@ -620,8 +677,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			})
 			.catch(function(err) {
 				logError('runDetection: /run_detection', err);
-				var terminal = document.getElementById('stopDetectTerminal');
-				terminal.style.display = 'block';
 				appendTerminalLines('Erreur: ' + err);
 			});
 	}
@@ -644,7 +699,24 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		appendTerminalLines('Execution du diagnostic pour ' + detectorName + '...');
 
 		fetch('/diagnose_detector', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText); return r.json(); })
+			.then(function(r) {
+				if (!r.ok) {
+					return r.json().then(function(body) {
+						var msg = (body && body.error) ? body.error : 'diagnose_detector failed';
+						if (msg.indexOf('capture') !== -1 || msg.indexOf('captured') !== -1) {
+							showToast('\u26a0\ufe0f Veuillez capturer une image avant de lancer le diagnostic.', 'warning');
+						} else {
+							showToast('Erreur: ' + msg, 'error');
+						}
+						throw new Error(msg);
+					}).catch(function(parseErr) {
+						if (parseErr.message && parseErr.message.indexOf('capture') !== -1) throw parseErr;
+						showToast('Erreur serveur (' + r.status + ')', 'error');
+						throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText);
+					});
+				}
+				return r.json();
+			})
 			.then(function(payload) {
 				// Afficher les logs dans le terminal
 				if (payload.logs && Array.isArray(payload.logs)) {
