@@ -33,11 +33,13 @@ def format_detection_result(results, detector_name="Détecteur"):
     lines.append('RÉSULTATS DE DÉTECTION - {}'.format(detector_name))
     lines.append('=' * 60)
 
-    # Détection générale
-    detected = results.get('Stop_detected', results.get('Object detected', False))
+    # Détection générale (clé standardisée + fallbacks legacy)
+    detected = results.get('Object_detected',
+        results.get('Stop_detected',
+        results.get('Object detected', False)))
     lines.append('Objet détecté: {}'.format('OUI' if detected else 'NON'))
 
-    # Boîte de détection
+    # Boîte de détection (clé standardisée + fallback legacy)
     bbox = results.get('detection_box') or results.get('Object coordinates')
     if bbox:
         if len(bbox) == 4:  # (x, y, w, h)
@@ -272,12 +274,9 @@ class controller:
     # Exécuter la détection sur la dernière image capturée
     def run_detection(self):
         """
-        Cette fonction exécute le détecteur sélectionné elle devrait servir à
-        - charger le détecteur sélectionné
-        - charger la dernière image capturée
-
-        
-        :param self: Description
+        Exécute le détecteur sélectionné sur la dernière image capturée.
+        Le détecteur se charge de l'annotation et retourne un payload
+        standardisé (Object_detected, detection_box, annotated_url, etc.).
         """
         vp = self.vision_pipeline
         if vp is None:
@@ -304,35 +303,14 @@ class controller:
             detector_name = vp.get_detectors()[self.selected_detector_index].name if hasattr(vp.get_detectors()[self.selected_detector_index], 'name') else 'Unknown'
             print(format_detection_result(results, detector_name))
 
-            # Si détection, créer et sauvegarder une version annotée
-            annotated_url = None
-            annotated_filename = None
-            if results and results.get('Object detected'):
-                coords = results.get('Object coordinates')
-                size = results.get('Object size')
-                if coords and size:
-                    x, y = int(coords[0]), int(coords[1])
-                    w, h = int(size[0]), int(size[1])
-                    # Dessiner sur une copie pour ne pas modifier l'originale
-                    annotated = frame_bgr.copy()
-                    cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    cv2.putText(annotated, 'STOP', (x, max(0, y - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-                    base, ext = os.path.splitext(filename)
-                    annotated_filename = '{}_det{}'.format(base, ext or '.jpg')
-                    annotated_path = os.path.join(self.CAPTURE_DIR, annotated_filename)
-                    cv2.imwrite(annotated_path, annotated)
-                    annotated_url = url_for('static', filename='captured_images/{}'.format(annotated_filename))
-
             # Inclure les URLs utiles pour l'interface
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
             payload = dict(results)
-            payload.update({
-                'source_filename': filename,
-                'source_file_url': source_url,
-                'annotated_filename': annotated_filename,
-                'annotated_file_url': annotated_url,
-            })
+            payload['source_filename'] = filename
+            # S'assurer que les clés standardisées sont présentes
+            if 'source_file_url' not in payload:
+                payload['source_file_url'] = source_url
+
             return jsonify(payload)
         except IndexError:
             return jsonify({'error': 'invalid detector index'}), 400

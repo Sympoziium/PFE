@@ -161,7 +161,7 @@ class HaarDetector(BaseDetector):
             best_area = 0
             for det in detections:
                 bx, by, bw, bh = det['detection_box']
-                a = bw * bh
+                a = int(bw) * int(bh)
                 if a > best_area:
                     best_area = a
                     best_box = det['detection_box']
@@ -402,122 +402,143 @@ class HaarDetector(BaseDetector):
             self.logs.append('  3. CLAHE (clipLimit=2.0, grid=8x8)')
 
             # =====================================================
-            # PHASE 5 : Balayage de paramètres (optimisé Pi Zero)
+            # PHASE 5 : Analyse adaptative
+            # Si le quick test a détecté : test rapide par prétraitement
+            # Si rien détecté : balayage complet (mode recherche)
             # =====================================================
-            self.logs.append('')
-            self.logs.append('--- BALAYAGE DE PARAMETRES (optimise Pi Zero) ---')
-
-            scale_factors = [1.05, 1.1, 1.2]
-            min_neighbors_list = [3, 5, 8]
-
-            # Construire la liste de minSizes en tenant compte du ratio d'entraînement
-            # Si le modèle a été entraîné sur du 25x45, on teste des minSize non-carrés
-            base_sizes = [15, 30, 50]
-            min_size_list = []  # liste de tuples (w, h)
-            for bs in base_sizes:
-                min_size_list.append((bs, bs))  # carré toujours inclus
-
-            # Ajouter des tailles respectant le ratio d'entraînement si non-carré
-            for cname, tsize in training_sizes.items():
-                if tsize:
-                    tw, th = tsize
-                    ratio = float(tw) / float(th) if th > 0 else 1.0
-                    if ratio < 0.8 or ratio > 1.25:
-                        for bs in base_sizes:
-                            # Taille basée sur la hauteur, largeur ajustée au ratio
-                            adjusted_w = max(5, int(bs * ratio))
-                            pair = (adjusted_w, bs)
-                            if pair not in min_size_list:
-                                min_size_list.append(pair)
-                                self.logs.append('  + minSize ajuste au ratio training: ({},{})'.format(adjusted_w, bs))
-
-            total_combos = len(preprocess_variants) * len(scale_factors) * len(min_neighbors_list) * len(min_size_list) * len(classifier_names)
-            self.logs.append('  Pretraitements: {}'.format(len(preprocess_variants)))
-            self.logs.append('  scaleFactors: {}'.format(scale_factors))
-            self.logs.append('  minNeighbors: {}'.format(min_neighbors_list))
-            self.logs.append('  minSizes: {}'.format(min_size_list))
-            self.logs.append('  Classifieurs: {}'.format(len(classifier_names)))
-            self.logs.append('  TOTAL combinaisons a tester: {}'.format(total_combos))
-            self.logs.append('')
-
             best = {'bbox': None, 'area': 0, 'sf': None, 'mn': None, 'ms': None,
                     'preprocess': None, 'classifier': None, 'count': 0}
-            total_tested = 0
-            total_detected = 0
-            detect_by_preprocess = {}
-            detect_by_params = {}
 
             t_sweep_start = time.time()
 
-            for prep_name, gray_img in preprocess_variants:
-                detect_by_preprocess[prep_name] = 0
+            if quick_found:
+                # ----- MODE RAPIDE : le modèle fonctionne, comparer les prétraitements -----
+                self.logs.append('')
+                self.logs.append('--- COMPARAISON DES PRETRAITEMENTS (mode rapide) ---')
+                self.logs.append('  Le quick test a detecte, pas besoin de balayage exhaustif.')
+                self.logs.append('  On teste chaque pretraitement avec les params par defaut.')
+                self.logs.append('')
 
-                for cname, clf in self.classifiers.items():
-                    if clf.empty():
-                        continue
+                test_sf = 1.05
+                test_mn = 3
 
-                    for sf in scale_factors:
-                        for mn in min_neighbors_list:
-                            for ms_w, ms_h in min_size_list:
-                                total_tested += 1
-                                try:
-                                    results = clf.detectMultiScale(
-                                        gray_img,
-                                        scaleFactor=sf,
-                                        minNeighbors=mn,
-                                        minSize=(ms_w, ms_h)
-                                    )
-                                    n_det = len(results) if results is not None else 0
-                                except Exception:
-                                    n_det = 0
+                for prep_name, gray_img in preprocess_variants:
+                    for cname, clf in self.classifiers.items():
+                        if clf.empty():
+                            continue
+                        try:
+                            results = clf.detectMultiScale(
+                                gray_img,
+                                scaleFactor=test_sf,
+                                minNeighbors=test_mn,
+                                minSize=(5, 5)
+                            )
+                            n_det = len(results) if results is not None else 0
+                        except Exception:
+                            n_det = 0
 
-                                if n_det > 0:
-                                    total_detected += 1
-                                    detect_by_preprocess[prep_name] = detect_by_preprocess.get(prep_name, 0) + 1
+                        if n_det > 0:
+                            self.logs.append('  [{}] {}: {} detection(s)'.format(cname, prep_name, n_det))
+                            for (rx, ry, rw, rh) in results:
+                                a = int(rw) * int(rh)
+                                self.logs.append('    -> pos=({},{}) taille={}x{} aire={}'.format(
+                                    int(rx), int(ry), int(rw), int(rh), a))
+                                if a > best['area']:
+                                    best.update({
+                                        'bbox': (int(rx), int(ry), int(rw), int(rh)), 'area': a,
+                                        'sf': test_sf, 'mn': test_mn,
+                                        'ms': '(5,5)',
+                                        'preprocess': prep_name,
+                                        'classifier': cname, 'count': n_det
+                                    })
+                        else:
+                            self.logs.append('  [{}] {}: 0 detection'.format(cname, prep_name))
+            else:
+                # ----- MODE RECHERCHE : rien détecté, balayage complet -----
+                self.logs.append('')
+                self.logs.append('--- BALAYAGE DE PARAMETRES (mode recherche) ---')
+                self.logs.append('  Aucune detection au quick test, recherche exhaustive...')
 
-                                    param_key = 'sf={} mn={} ms=({},{})'.format(sf, mn, ms_w, ms_h)
-                                    detect_by_params[param_key] = detect_by_params.get(param_key, 0) + 1
+                scale_factors = [1.05, 1.1, 1.2]
+                min_neighbors_list = [3, 5, 8]
 
-                                    for (rx, ry, rw, rh) in results:
-                                        a = rw * rh
-                                        if a > best['area']:
-                                            best.update({
-                                                'bbox': (rx, ry, rw, rh), 'area': a,
-                                                'sf': sf, 'mn': mn,
-                                                'ms': '({},{})'.format(ms_w, ms_h),
-                                                'preprocess': prep_name,
-                                                'classifier': cname, 'count': n_det
-                                            })
+                # Construire la liste de minSizes avec ratio d'entraînement
+                base_sizes = [15, 30, 50]
+                min_size_list = [(bs, bs) for bs in base_sizes]
+
+                # Ajuster les minSizes pour respecter le ratio d'entraînement si disponible
+                for cname, tsize in training_sizes.items():
+                    if tsize:
+                        tw, th = tsize
+                        ratio = float(tw) / float(th) if th > 0 else 1.0
+                        if ratio < 0.8 or ratio > 1.25:
+                            for bs in base_sizes:
+                                adjusted_w = max(5, int(bs * ratio))
+                                pair = (adjusted_w, bs)
+                                if pair not in min_size_list:
+                                    min_size_list.append(pair)
+                                    self.logs.append('  + minSize ajuste au ratio training: ({},{})'.format(adjusted_w, bs))
+
+                total_combos = len(preprocess_variants) * len(scale_factors) * len(min_neighbors_list) * len(min_size_list) * len(classifier_names)
+                self.logs.append('  Combinaisons a tester: {}'.format(total_combos))
+                self.logs.append('')
+
+                total_tested = 0
+                total_detected = 0
+                detect_by_preprocess = {}
+
+                for prep_name, gray_img in preprocess_variants:
+                    detect_by_preprocess[prep_name] = 0
+                    for cname, clf in self.classifiers.items():
+                        if clf.empty():
+                            continue
+                        for sf in scale_factors:
+                            for mn in min_neighbors_list:
+                                for ms_w, ms_h in min_size_list:
+                                    total_tested += 1
+                                    try:
+                                        results = clf.detectMultiScale(
+                                            gray_img,
+                                            scaleFactor=sf,
+                                            minNeighbors=mn,
+                                            minSize=(ms_w, ms_h)
+                                        )
+                                        n_det = len(results) if results is not None else 0
+                                    except Exception:
+                                        n_det = 0
+
+                                    if n_det > 0:
+                                        total_detected += 1
+                                        detect_by_preprocess[prep_name] = detect_by_preprocess.get(prep_name, 0) + 1
+                                        for (rx, ry, rw, rh) in results:
+                                            a = int(rw) * int(rh)
+                                            if a > best['area']:
+                                                best.update({
+                                                    'bbox': (int(rx), int(ry), int(rw), int(rh)), 'area': a,
+                                                    'sf': sf, 'mn': mn,
+                                                    'ms': '({},{})'.format(ms_w, ms_h),
+                                                    'preprocess': prep_name,
+                                                    'classifier': cname, 'count': n_det
+                                                })
+
+                self.logs.append('  Combinaisons testees: {}'.format(total_tested))
+                self.logs.append('  Avec detection: {} ({:.1f}%)'.format(
+                    total_detected, (100.0 * total_detected / total_tested) if total_tested > 0 else 0))
+                self.logs.append('')
+                self.logs.append('  Detections par pretraitement:')
+                for pname, count in sorted(detect_by_preprocess.items(), key=lambda x: -x[1]):
+                    bar = '#' * min(count, 40)
+                    self.logs.append('    {:<20s}: {:>4d}  {}'.format(pname, count, bar))
 
             t_sweep_end = time.time()
 
             # =====================================================
-            # PHASE 6 : Rapport détaillé
+            # PHASE 6 : Rapport final
             # =====================================================
-            self.logs.append('--- RESULTATS DU BALAYAGE ---')
-            self.logs.append('  Temps du balayage: {:.1f}s'.format(t_sweep_end - t_sweep_start))
-            self.logs.append('  Combinaisons testees: {}'.format(total_tested))
-            self.logs.append('  Combinaisons avec detection: {} ({:.1f}%)'.format(
-                total_detected, (100.0 * total_detected / total_tested) if total_tested > 0 else 0))
             self.logs.append('')
+            self.logs.append('--- RAPPORT FINAL ---')
+            self.logs.append('  Temps analyse: {:.1f}s'.format(t_sweep_end - t_sweep_start))
 
-            # Détections par prétraitement
-            self.logs.append('  Detections par pretraitement:')
-            for pname, count in sorted(detect_by_preprocess.items(), key=lambda x: -x[1]):
-                bar = '#' * min(count, 40)
-                self.logs.append('    {:<20s}: {:>4d}  {}'.format(pname, count, bar))
-
-            self.logs.append('')
-
-            # Top combinaisons de paramètres
-            if detect_by_params:
-                self.logs.append('  Top parametres (combinaisons les plus productives):')
-                sorted_params = sorted(detect_by_params.items(), key=lambda x: -x[1])[:10]
-                for param_key, count in sorted_params:
-                    self.logs.append('    {}: {} detection(s)'.format(param_key, count))
-                self.logs.append('')
-
-            # Meilleur résultat
             if best['bbox']:
                 bx, by, bw, bh = best['bbox']
 
@@ -529,19 +550,15 @@ class HaarDetector(BaseDetector):
                     bw_orig = int(bw * inv_scale)
                     bh_orig = int(bh * inv_scale)
                 else:
-                    bx_orig, by_orig, bw_orig, bh_orig = bx, by, bw, bh
+                    bx_orig, by_orig, bw_orig, bh_orig = int(bx), int(by), int(bw), int(bh)
 
+                self.logs.append('')
                 self.logs.append('  *** MEILLEURE DETECTION ***')
                 self.logs.append('  Classifieur: {}'.format(best['classifier']))
                 self.logs.append('  Pretraitement: {}'.format(best['preprocess']))
-                self.logs.append('  Parametres: scaleFactor={}, minNeighbors={}, minSize={}'.format(
-                    best['sf'], best['mn'], best['ms']))
-                self.logs.append('  BBox (diag): x={}, y={}, w={}, h={}'.format(bx, by, bw, bh))
-                if w_orig > MAX_DIAG_WIDTH:
-                    self.logs.append('  BBox (originale): x={}, y={}, w={}, h={}'.format(
-                        bx_orig, by_orig, bw_orig, bh_orig))
+                self.logs.append('  Parametres: scaleFactor={}, minNeighbors={}, minSize={}'.format(best['sf'], best['mn'], best['ms']))
+                self.logs.append('  BBox: x={}, y={}, w={}, h={}'.format(bx_orig, by_orig, bw_orig, bh_orig))
                 self.logs.append('  Aire: {} px'.format(best['area']))
-                self.logs.append('  Nb detections dans cette config: {}'.format(best['count']))
 
                 # Sauvegarder la meilleure détection annotée sur l'image ORIGINALE
                 overlay = frame_bgr_orig.copy()
@@ -550,10 +567,6 @@ class HaarDetector(BaseDetector):
                 label = '{} ({}x{})'.format(best['classifier'], bw_orig, bh_orig)
                 cv2.putText(overlay, label, (bx_orig, max(0, by_orig - 10)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                info = 'sf={} mn={} ms={} prep={}'.format(
-                    best['sf'], best['mn'], best['ms'], best['preprocess'])
-                cv2.putText(overlay, info, (5, h_orig - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
                 self._save_step(overlay, 'best_detection', 'bgr')
 
                 # Recommandations post-détection
@@ -562,29 +575,20 @@ class HaarDetector(BaseDetector):
                 self.logs.append('    self.scaleFactor = {}'.format(best['sf']))
                 self.logs.append('    self.minNeighbors = {}'.format(best['mn']))
             else:
-                self.logs.append('  AUCUNE DETECTION sur {} combinaisons.'.format(total_tested))
+                self.logs.append('')
+                self.logs.append('  AUCUNE DETECTION.')
                 self.logs.append('')
                 self.logs.append('  Causes possibles:')
                 self.logs.append('    1. Modele XML non adapte a l\'objet cible')
-                self.logs.append('       - Ce modele a probablement ete entraine sur des panneaux')
-                self.logs.append('         "STOP" americains. Les panneaux "ARRET" quebecois ont un')
-                self.logs.append('         pattern de texte different (5 lettres vs 4), ce qui change')
-                self.logs.append('         les features de Haar apprises par la cascade.')
+                self.logs.append('       (ex: entraine sur "STOP" americain vs "ARRET" quebecois)')
                 self.logs.append('    2. Objet absent, trop petit, ou hors champ')
                 self.logs.append('    3. Angle de vue, eclairage ou occlusion trop severe')
                 self.logs.append('    4. Image floue ou de basse qualite')
-                self.logs.append('    5. Fichier .xml corrompu ou vide')
                 self.logs.append('')
                 self.logs.append('  Recommandations:')
                 self.logs.append('    1. Tester avec une image web d\'un panneau "STOP" americain')
-                self.logs.append('       pour valider que le modele fonctionne au moins sur ce type.')
-                self.logs.append('    2. Essayer un autre modele .xml pre-entraine:')
-                self.logs.append('       - OpenCV fournit un stop_sign dans ses data (opencv/data/haarcascades)')
-                self.logs.append('       - Chercher "stop sign haar cascade xml" sur GitHub')
-                self.logs.append('    3. Entrainer votre propre modele avec opencv_traincascade:')
-                self.logs.append('       - ~500-2000 images positives (panneaux ARRET)')
-                self.logs.append('       - ~3000-5000 images negatives (n\'importe quoi d\'autre)')
-                self.logs.append('       - L\'entrainement se fait sur PC, le .xml est deploye sur le Zumi')
+                self.logs.append('    2. Essayer un autre modele .xml (opencv/data/haarcascades)')
+                self.logs.append('    3. Entrainer un modele custom avec opencv_traincascade')
 
             t_total = time.time() - t_start
             self.logs.append('')
@@ -704,6 +708,8 @@ class HaarDetector(BaseDetector):
             self.logs.append('  {} detection(s) trouvee(s):'.format(len(results)))
 
             for i, (x, y, w, h) in enumerate(results):
+                # Cast numpy -> Python int pour serialisation JSON
+                x, y, w, h = int(x), int(y), int(w), int(h)
                 self.logs.append('    #{}: pos=({},{}) taille={}x{} aire={}'.format(
                     i + 1, x, y, w, h, w * h))
 
