@@ -56,7 +56,6 @@ class VisionPipeline:
         
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
-        detectors.attach_capture_dir(self.CAPTURE_DIR) # transmettre le dossier de capture au détecteur
         self.detectors.append(detectors)
 
     def step(self):
