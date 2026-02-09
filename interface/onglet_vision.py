@@ -557,7 +557,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					sel.value = String(selected);
 					SELECTED_DETECTOR_NAME = DETECTORS_MAP[selected] || null;
 					console.log('[DEBUG loadDetectors] Selected detector:', selected, SELECTED_DETECTOR_NAME);
-					updateStopUIPanelVisibility();
+					updateDiagnosticPanelVisibility();
 				}
 			})
 			.catch(function(err) { logError('loadDetectors: /detectors', err); });
@@ -587,7 +587,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		}).catch(function(err) { logError('onDetectorChange: /detector', err, { index: idx }); });
 		SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
 		console.log('[DEBUG onDetectorChange] SELECTED_DETECTOR_NAME set to:', SELECTED_DETECTOR_NAME);
-		updateStopUIPanelVisibility();
+		updateDiagnosticPanelVisibility();
 	}
 
 	function runDetection() {
@@ -626,86 +626,54 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			});
 	}
 
-	function updateStopUIPanelVisibility() {
+	function updateDiagnosticPanelVisibility() {
 		var panel = document.getElementById('stopDetectPanel');
+		// Afficher le panneau diagnostic pour tout détecteur sélectionné
 		if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
-		// Afficher pour tout détecteur de stop (Zumi ou CV)
-		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetector') !== -1) ? 'block' : 'none';
+		panel.style.display = 'block';
 	}
 
-	function runStopDiagnostics() {
+	function runDiagnostics() {
+		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
+		console.log('[DEBUG runDiagnostics] Lancement diagnostic pour:', detectorName);
+
 		var indicator = document.getElementById('stopDetectIndicator');
 		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
 		indicator.textContent = 'Diagnostic en cours...';
-		appendTerminalLines('Execution du balayage des parametres...');
-		fetch('/diagnose_stop', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_stop failed: ' + r.status + ' ' + r.statusText); return r.json(); })
+		appendTerminalLines('Execution du diagnostic pour ' + detectorName + '...');
+
+		fetch('/diagnose_detector', { method: 'POST' })
+			.then(function(r) { if (!r.ok) throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText); return r.json(); })
 			.then(function(payload) {
+				// Afficher les logs dans le terminal
 				if (payload.logs && Array.isArray(payload.logs)) {
 					appendTerminalLines(payload.logs);
 				} else {
 					appendTerminalLines(JSON.stringify(payload, null, 2));
 				}
-				var best = payload.best || {};
-				var imgUrl = best.file_url || payload.source_file_url;
-				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				if (best.bbox) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
-			})
-			.catch(function(err) {
-				logError('runStopDiagnostics: /diagnose_stop', err);
-				indicator.classList.remove('on');
-				indicator.classList.add('off');
-				indicator.textContent = 'Erreur';
-			});
-	}
 
-	function runGenericDiagnostics() {
-		console.log('[DEBUG runGenericDiagnostics] Function called, fetching /diagnose_detector');
-		var indicator = document.getElementById('stopDetectIndicator');
-		var terminal = document.getElementById('stopDetectTerminal');
-		indicator.classList.remove('on', 'off');
-		indicator.textContent = 'Diagnostic en cours...';
-		appendTerminalLines('Exécution du diagnostic...');
-		fetch('/diagnose_detector', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText); return r.json(); })
-			.then(function(payload) {
-				// logs
-				if (payload.logs && Array.isArray(payload.logs)) {
-					appendTerminalLines(payload.logs);
-				} else { appendTerminalLines(JSON.stringify(payload, null, 2)); }
-				// Stop detecté - utiliser Object_detected
+				// Mettre à jour l'indicateur de détection
 				if (payload.Object_detected) {
 					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
+					indicator.textContent = 'Objet detecte';
 				} else {
 					indicator.classList.add('off');
 					indicator.textContent = 'Aucune detection';
 				}
 
-				// best bbox overlay - utiliser annotated_url
-				var imgUrl = (payload.steps && payload.steps.length) ? payload.steps[payload.steps.length - 1].url : payload.source_file_url;
+				// Afficher la dernière image annotée ou source
+				var imgUrl = payload.annotated_url
+					|| (payload.steps && payload.steps.length ? payload.steps[payload.steps.length - 1].url : null)
+					|| payload.source_file_url;
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				// enleve le draw de la bbox on le fait directement dans le backend sur une copie de l'image qu'on affiche ensuite
-				if (payload.detection_box) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
-				// open gallery in new tab
+
+				// Ouvrir la galerie des étapes dans un nouvel onglet (si disponible)
 				if (payload.steps && payload.steps.length) {
 					var w = window.open('', '_blank');
 					if (w) {
 						var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Diagnostic Gallery</title></head><body style="font-family:Arial; padding:12px;">';
-						html += '<h3>Etapes du diagnostic</h3>';
+						html += '<h3>Etapes du diagnostic - ' + detectorName + '</h3>';
 						for (var i = 0; i < payload.steps.length; i++) {
 							var s = payload.steps[i];
 							html += '<div style="margin-bottom:12px;"><div><b>' + s.name + '</b></div><img style="max-width:100%;border:1px solid #ccc" src="' + s.url + '"></div>';
@@ -717,29 +685,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 			})
 			.catch(function(err) {
-				logError('runGenericDiagnostics: /diagnose_detector', err);
+				logError('runDiagnostics: /diagnose_detector', err);
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
 				indicator.textContent = 'Erreur';
 			});
-	}
-
-	function runDiagnostics() {
-		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
-		console.log('[DEBUG runDiagnostics] SELECTED_DETECTOR_NAME:', detectorName);
-
-		if (detectorName === 'StopDetectorZumi') {
-			// Détecteur Zumi spécifique avec balayage de paramètres
-			console.log('[DEBUG runDiagnostics] Matched "StopDetectorZumi", calling runStopDiagnostics');
-			runStopDiagnostics();
-		} else if (detectorName.indexOf('StopDetector') !== -1) {
-			// Tous les autres détecteurs de stop (CV, Matt, etc.) utilisent la route générique
-			console.log('[DEBUG runDiagnostics] Matched detector containing "StopDetector", calling runGenericDiagnostics');
-			runGenericDiagnostics();
-		} else {
-			console.log('[DEBUG runDiagnostics] No match, showing alert');
-			alert('Aucun diagnostique disponible pour le détecteur sélectionné : ' + detectorName);
-		}
 	}
 
 	// Charger la liste des détecteurs au chargement de la page et lier les événements
