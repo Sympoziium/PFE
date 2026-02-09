@@ -85,10 +85,11 @@ class StopDetectorZumi(BaseDetector):
 
             self.logs.append('Retour brut find_stop_sign: {}'.format(repr(bbox)))
 
+            # Cast numpy -> Python int pour serialisation JSON
             stop_detected = bbox is not None
-
             if stop_detected:
-                x, y, w, h = bbox
+                x, y, w, h = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+                bbox = (x, y, w, h)
                 self.logs.append('Resultat: STOP DETECTE')
                 self.logs.append('  Position: x={}, y={}'.format(x, y))
                 self.logs.append('  Taille: {}x{}, aire={}'.format(w, h, w * h))
@@ -105,7 +106,6 @@ class StopDetectorZumi(BaseDetector):
             # Sauvegarder image annotée si détection
             annotated_url = None
             if stop_detected and filename and self.CAPTURE_DIR:
-                x, y, w, h = bbox
                 annotated = frame_bgr.copy()
                 cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv2.putText(annotated, 'STOP', (x, max(0, y - 10)),
@@ -118,9 +118,9 @@ class StopDetectorZumi(BaseDetector):
 
             payload = {
                 'Object_detected': stop_detected,
-                'detection_box': tuple(bbox) if bbox else None,
+                'detection_box': bbox if stop_detected else None,
                 'confidence': 1.0 if stop_detected else 0.0,
-                'area': (bbox[2] * bbox[3]) if bbox else None,
+                'area': (bbox[2] * bbox[3]) if stop_detected else None,
                 'logs': self.logs,
                 'source_file_url': source_url,
                 'annotated_url': annotated_url,
@@ -134,14 +134,15 @@ class StopDetectorZumi(BaseDetector):
             return {'error': 'process failed', 'details': str(e), 'logs': self.logs}
 
     def diagnostique_detecteur(self, filename):
-        """Diagnostic détaillé: balayage de paramètres (scaleFactor, minNeighbors, minSize)
-        en BGR et RGB pour trouver les meilleurs réglages.
+        """Diagnostic allege: test rapide puis balayage avec early bailout.
         
-        Sauvegarde les résultats annotés et retourne un payload avec les étapes
-        et le meilleur résultat trouvé.
+        Strategie:
+        1. Test rapide avec les params par defaut
+        2. Balayage reduit (3 sf x 3 mn x 2 ms x 2 espaces = 36 combos max)
+        3. Early bailout: arret apres 3 detections consecutives
         
-        :param filename: Nom du fichier image capturé.
-        :return: dict standardisé avec logs, steps, et résultats.
+        :param filename: Nom du fichier image capture.
+        :return: dict standardise avec logs, steps, et resultats.
         """
         self.logs = []
         self.steps = []
@@ -165,25 +166,57 @@ class StopDetectorZumi(BaseDetector):
 
             self.logs.append('=== DIAGNOSTIC StopDetectorZumi ===')
             self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
-            self.logs.append('Balayage de parametres en cours...')
             self.logs.append('')
 
             # Sauvegarder image source
             self._save_step(frame_bgr, '0_image_source', 'bgr')
 
-            # Paramètres à balayer
-            scale_factors = [1.03, 1.05, 1.08, 1.12, 1.15, 1.20]
-            min_neighbors_list = [3, 5, 7, 8, 10, 12]
-            min_sizes = [24, 32, 40, 56, 80]
+            # --- Test rapide avec params par defaut ---
+            self.logs.append('--- TEST RAPIDE (params par defaut) ---')
+            self.logs.append('  scaleFactor={}, minNeighbors={}, minSize={}'.format(
+                self.scaleFactor, self.minNeighbors, self.minSize))
+
+            quick_det = self.zumi_vision.find_stop_sign(
+                frame_rgb,
+                scale_factor=self.scaleFactor,
+                min_neighbors=self.minNeighbors,
+                min_size=self.minSize,
+            )
+            if quick_det is not None:
+                qx, qy, qw, qh = int(quick_det[0]), int(quick_det[1]), int(quick_det[2]), int(quick_det[3])
+                self.logs.append('  -> DETECTE: pos=({},{}) taille={}x{}'.format(qx, qy, qw, qh))
+                overlay_q = frame_bgr.copy()
+                cv2.rectangle(overlay_q, (qx, qy), (qx + qw, qy + qh), (255, 0, 255), 2)
+                self._save_step(overlay_q, '1_quick_test', 'bgr')
+            else:
+                self.logs.append('  -> Aucune detection')
+
+            # --- Balayage reduit avec early bailout ---
+            self.logs.append('')
+            self.logs.append('--- BALAYAGE ---')
+
+            scale_factors = [1.05, 1.1, 1.2]
+            min_neighbors_list = [3, 5, 8]
+            min_sizes = [30, 60]
 
             best = {'bbox': None, 'area': 0, 'sf': None, 'mn': None, 'ms': None, 'space': None}
             total_tested = 0
             total_detected = 0
+            consecutive_ok = 0
+            bailout = False
 
             for sf in scale_factors:
+                if bailout:
+                    break
                 for mn in min_neighbors_list:
+                    if bailout:
+                        break
                     for ms in min_sizes:
+                        if bailout:
+                            break
                         for space_tag, img in (('BGR', frame_bgr), ('RGB', frame_rgb)):
+                            if bailout:
+                                break
                             total_tested += 1
                             try:
                                 det_raw = self.zumi_vision.find_stop_sign(
@@ -192,47 +225,55 @@ class StopDetectorZumi(BaseDetector):
                                     min_neighbors=mn,
                                     min_size=(ms, ms),
                                 )
-                                
 
                                 if det_raw is not None:
                                     total_detected += 1
-                                    x, y, w, h = det_raw
+                                    consecutive_ok += 1
+                                    x, y, w, h = int(det_raw[0]), int(det_raw[1]), int(det_raw[2]), int(det_raw[3])
                                     area = w * h
                                     self.logs.append('{} sf={} mn={} ms={} -> DETECTE ({}x{}, aire={})'.format(
                                         space_tag, sf, mn, ms, w, h, area))
 
                                     if area > best['area']:
                                         best.update({
-                                            'bbox': det_raw, 'area': area,
+                                            'bbox': (x, y, w, h), 'area': area,
                                             'sf': sf, 'mn': mn, 'ms': ms, 'space': space_tag
                                         })
-
-                                        # Sauvegarder la meilleure détection
+                                        # Sauvegarder la meilleure detection
                                         overlay = frame_bgr.copy()
                                         cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                                        label = '{} sf={} mn={} ms={}'.format(space_tag, sf, mn, ms)
+                                        label = '{} sf={} mn={}'.format(space_tag, sf, mn)
                                         cv2.putText(overlay, label, (x, max(0, y - 10)),
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                                        step_name = 'best_{}_sf{}_mn{}_ms{}'.format(
-                                            space_tag, str(sf).replace('.', '_'), mn, ms)
-                                        self._save_step(overlay, step_name, 'bgr')
+                                        self._save_step(overlay, 'best_detection', 'bgr')
+
+                                    # Early bailout
+                                    if consecutive_ok >= 3:
+                                        self.logs.append('  -> 3 detections consecutives, arret du balayage.')
+                                        bailout = True
+                                else:
+                                    consecutive_ok = 0
 
                             except Exception as e:
+                                consecutive_ok = 0
                                 self.logs.append('{} sf={} mn={} ms={} -> ERREUR: {}'.format(
                                     space_tag, sf, mn, ms, str(e)))
 
             self.logs.append('')
-            self.logs.append('--- RESUME DU BALAYAGE ---')
+            self.logs.append('--- RESUME ---')
             self.logs.append('Combinaisons testees: {}'.format(total_tested))
             self.logs.append('Detections: {}'.format(total_detected))
+            if bailout:
+                self.logs.append('Arret anticipe: le modele detecte de maniere fiable.')
 
             if best['bbox']:
+                bx, by, bw, bh = best['bbox']
                 self.logs.append('Meilleure detection:')
                 self.logs.append('  Espace: {}'.format(best['space']))
                 self.logs.append('  scaleFactor: {}'.format(best['sf']))
                 self.logs.append('  minNeighbors: {}'.format(best['mn']))
                 self.logs.append('  minSize: ({0},{0})'.format(best['ms']))
-                self.logs.append('  BBox: x={}, y={}, w={}, h={}'.format(*best['bbox']))
+                self.logs.append('  BBox: x={}, y={}, w={}, h={}'.format(bx, by, bw, bh))
                 self.logs.append('  Aire: {}'.format(best['area']))
             else:
                 self.logs.append('Aucune detection sur aucune combinaison.')
@@ -240,11 +281,13 @@ class StopDetectorZumi(BaseDetector):
             self.logs.append('=== FIN DIAGNOSTIC ===')
 
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
+            det_box = best['bbox'] if best['bbox'] else None
+            det_area = best['area'] if best['area'] > 0 else None
             return {
-                'Object_detected': best['bbox'] is not None,
-                'detection_box': tuple(best['bbox']) if best['bbox'] else None,
-                'confidence': 1.0 if best['bbox'] else 0.0,
-                'area': best['area'] if best['area'] > 0 else None,
+                'Object_detected': det_box is not None,
+                'detection_box': det_box,
+                'confidence': 1.0 if det_box else 0.0,
+                'area': det_area,
                 'logs': self.logs,
                 'steps': self.steps,
                 'source_file_url': source_url,
