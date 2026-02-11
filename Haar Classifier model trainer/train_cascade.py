@@ -7,11 +7,14 @@ import shutil
 import os
 import platform
 
+import cv2
+
+
 def validate_environment():
     
+    print("\n")
     print("Validation de l'environnement...")
     print("-----------------------------------")
-    print("\n")
     
     # Vérification de la présence des outils CLI de OpenCV nécessaires pour l'entraînement
     if not shutil.which("opencv_traincascade") or not shutil.which("opencv_createsamples"):
@@ -102,64 +105,106 @@ def validate_environment():
     print(f"tqdm version {tqdm.__version__} détectée.")
 
     # vérification de la présence des dossiers d'images
-    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'images positives')):
-        print("Le dossier 'images positives' est manquant. Veuillez le créer et y ajouter les images positives.")
+    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'data\\positive\\')):
+        print("Le dossier 'positive' est manquant. Veuillez le créer et y ajouter les images positives.")
         exit(1)
-    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'images negatives')):
-        print("Le dossier 'images negatives' est manquant. Veuillez le créer et y ajouter les images negatives.")
-        exit(1)
-
-    # Vérification que les dossiers ne sont pas vides et validation des extensions
-    positive_dir = os.path.join(os.path.dirname(__file__), 'images positives')
-    negative_dir = os.path.join(os.path.dirname(__file__), 'images negatives')
-    
-    valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
-    
-    # Vérifier dossier images positives
-    positive_files = [f for f in os.listdir(positive_dir) if os.path.isfile(os.path.join(positive_dir, f))]
-    if not positive_files:
-        print("Le dossier 'images positives' est vide. Veuillez y ajouter des images.")
+    if not os.path.exists(os.path.join(os.path.dirname(__file__), 'data\\negative\\')):
+        print("Le dossier 'negative' est manquant. Veuillez le créer et y ajouter les images negatives.")
         exit(1)
     
-    positive_extensions = {os.path.splitext(f)[1].lower() for f in positive_files}
-    if not positive_extensions.issubset(valid_extensions):
-        print(f"Extensions non valides dans 'images positives': {positive_extensions - valid_extensions}")
-        exit(1)
-    
-    print("Dossier 'images positives' validé.")
-
-    # Vérifier dossier images négatives
-    negative_files = [f for f in os.listdir(negative_dir) if os.path.isfile(os.path.join(negative_dir, f))]
-    if not negative_files:
-        print("Le dossier 'images negatives' est vide. Veuillez y ajouter des images.")
-        exit(1)
-    
-    negative_extensions = {os.path.splitext(f)[1].lower() for f in negative_files}
-    if not negative_extensions.issubset(valid_extensions):
-        print(f"Extensions non valides dans 'images negatives': {negative_extensions - valid_extensions}")
-        exit(1)
-
-    print("Dossier 'images negatives' validé.")
-    
-    print("\n")
     print("-----------------------------------")
     print("Environnement validé avec succès.")
+    print("\n")
+
+    return 0
+
     
-def validate_positive():
-    """"Validation des images positives (exemples d'objets à détecter)"""
+def validate_images(images_dir):
+    """"Validation et collecte de stats des images du dossier spécifié"""
     
+    print(f"Validation des images dans '{images_dir}'...")
+
+    # étape 0: Vérifier si le dossier est vide 
+    image_files = [f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))]
+    if not image_files:
+        print(f"Le dossier '{images_dir}' est vide. Veuillez y ajouter des images.")
+        print("forreal")
+        exit(1)
+    else:
+        nb_images = len(image_files)  # Compte le nombre d'images
+        print(f"Nombre d'images : {nb_images}")
+
+
+    # étape 1: lister les images et vérifier les extensions
+
+    valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff'}
+    
+    image_ext = {os.path.splitext(f)[1].lower() for f in image_files}
+    if not image_ext.issubset(valid_extensions):
+        print(f"Extensions non valides dans '{images_dir}': {image_ext - valid_extensions}")
+        exit(1)
+    else:
+        print(f"Extensions des images validées")
+    
+    # étape 2: vérifier que chaque image est lisible par OpenCV
+    for img_file in image_files:
+        img_path = os.path.join(images_dir, img_file)
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"Image illisible : {img_file}. Veuillez vérifier le fichier.")
+            exit(1)
+    
+    print(f"Toutes les images dans le dossier sont lisibles par OpenCV.")
+
+    # étape 3: Calculer les dimensions min/max/moyenne
+    dimensions = []
+    for img_file in image_files:
+        img_path = os.path.join(images_dir, img_file)
+        img = cv2.imread(img_path)
+        dimensions.append((img.shape[1], img.shape[0]))  # (width, height)
+    
+
+    # calcul des stats
+    widths, heights = zip(*dimensions)
+    min_width, max_width = min(widths), max(widths)
+    min_height, max_height = min(heights), max(heights)
+    avg_width = sum(widths) / len(widths)
+    avg_height = sum(heights) / len(heights)
+
+    # étape 4: Afficher un résumé : nb total, dimensions, format
+    print(f"Dimensions des images :")
+    print(f"  Largeur : min={min_width}, max={max_width}, moyenne={avg_width:.2f}")
+    print(f"  Hauteur : min={min_height}, max={max_height}, moyenne={avg_height:.2f}")
+    print(f"Images validées.")
+    print("\n")
+
+
+
+def prepare_data(positive_images_dir, negative_images_dir):
+    """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar"""
+
+    print("Préparation des données d'entraînement...")
+    print("-----------------------------------")
+
+    # Étape 1: Validation des images positives
+    validate_images(positive_images_dir)
+  
+    validate_images(negative_images_dir) # a faire eventuellement anyway
+
+
+
 
 if __name__ == "__main__":
     # Chemins vers les fichiers et dossiers nécessaires    
-    positive_images_dir = os.path.join(os.path.dirname(__file__), 'images positives')  # Dossier contenant les images positives
-    negative_images_dir = os.path.join(os.path.dirname(__file__), 'images negatives')  # Dossier contenant les images négatives
-    output_dir = os.path.join(os.path.dirname(__file__), 'modele output')              # Dossier où le modèle entraîné sera sauvegardé
+    positive_images_dir = os.path.join(os.path.dirname(__file__), 'data\\positive\\')  # Dossier contenant les images positives
+    negative_images_dir = os.path.join(os.path.dirname(__file__), 'data\\negative\\')  # Dossier contenant les images négatives
+    output_dir = os.path.join(os.path.dirname(__file__), 'data\\cascade\\')            # Dossier où le modèle entraîné sera sauvegardé
 
     # Étape 0: Vérification de l'environnement
     validate_environment()
 
     # Étape 1: Préparation des données
-
+    prepare_data(positive_images_dir, negative_images_dir)
 
     # Commande pour entraîner le modèle de cascade de classifieurs Haar
     # command = f"opencv_traincascade -data {output_dir} -vec positives.vec -bg negatives.txt -numPos 1000 -numNeg 500 -numStages 20"
