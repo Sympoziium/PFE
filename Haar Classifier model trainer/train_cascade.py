@@ -178,40 +178,58 @@ def validate_images(images_dir):
     print(f"Images validées.")
     print("\n")
 
-def augment_data(data_dir, output_dir, num_augmented=5):
-    """Augmentation des données d'entraînement pour améliorer la robustesse du modèle"""
+def augment_data(source_dir, output_dir, num_augmented=5):
+    """
+    Augmentation des données d'entraînement pour améliorer la robustesse du modèle.
+    
+    Génère num_augmented variantes par image originale.
+    Si source_dir == output_dir, les images augmentées sont ajoutées au même dossier
+    (préfixe 'aug_' pour les distinguer).
+    
+    :param source_dir: Dossier contenant les images originales à augmenter
+    :param output_dir: Dossier de sortie pour les images augmentées
+    :param num_augmented: Nombre de variantes par image originale (default 5)
+    """
 
-    print(f"Augmentation des données dans '{data_dir}'...")
+    print(f"Augmentation des données dans '{source_dir}'...")
 
-    # Lister les images à augmenter
-    image_files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
+    # Lister les images originales (exclure les images déjà augmentées)
+    image_files = [
+        f for f in os.listdir(source_dir)
+        if os.path.isfile(os.path.join(source_dir, f)) and not f.startswith('aug_')
+    ]
+    
+    if not image_files:
+        print("Aucune image à augmenter.")
+        return
     
     # Créer le dossier de sortie s'il n'existe pas
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    
-    # Supprimer les anciennes images augmentées
-    if os.path.exists(output_dir):
-        for f in os.listdir(output_dir):
+    # Supprimer les anciennes images augmentées (celles avec le préfixe aug_)
+    old_augmented = [f for f in os.listdir(output_dir) if f.startswith('aug_')]
+    if old_augmented:
+        for f in old_augmented:
             os.remove(os.path.join(output_dir, f))
-        print(f"Anciennes images augmentées supprimées.")
+        print(f"{len(old_augmented)} anciennes images augmentées supprimées.")
 
     # Augmenter les images
+    nb_generated = 0
     for img_file in image_files:
-        img_path = os.path.join(data_dir, img_file)
+        img_path = os.path.join(source_dir, img_file)
         img = cv2.imread(img_path)
 
-        for i in range(num_augmented // len(image_files)):
-            # Appliquer des transformations aléatoires (rotation, translation, zoom, etc.)
+        for i in range(num_augmented):
             augmented_img = apply_random_transformations(img)
-
+            
             # Sauvegarder l'image augmentée
             augmented_img_path = os.path.join(output_dir, f"aug_{i}_{img_file}")
             cv2.imwrite(augmented_img_path, augmented_img)
-    
+            nb_generated += 1
 
-    print(f"Augmentation terminée. {num_augmented*len(image_files)} Images augmentées sauvegardées dans '{output_dir}'.")
+    print(f"Augmentation terminée. {nb_generated} images augmentées sauvegardées dans '{output_dir}'.")
+    print(f"Total d'images dans le dossier : {len(os.listdir(output_dir))}")
 
 def apply_random_transformations(image):
     """Applique des transformations aléatoires à une image pour l'augmentation des données"""
@@ -253,46 +271,128 @@ def apply_random_transformations(image):
 
     return transformed_img
 
+def split_data(positive_dir, negative_dir, data_dir, train_ratio=0.85):
+    """
+    Sépare les données originales en ensembles d'entraînement et de test.
+    Crée les dossiers data/train/ et data/test/ avec sous-dossiers positive/ et negative/.
+    Les fichiers sont COPIÉS (les originaux restent intacts).
+    
+    Structure créée :
+        data/train/positive/   — positives pour l'entraînement
+        data/train/negative/   — négatives pour l'entraînement
+        data/test/positive/    — positives pour l'évaluation
+        data/test/negative/    — négatives pour l'évaluation
+    
+    :param positive_dir: Dossier contenant les images positives originales
+    :param negative_dir: Dossier contenant les images négatives originales
+    :param data_dir: Dossier racine data/ (pour créer train/ et test/)
+    :param train_ratio: Ratio de données d'entraînement (default 0.85)
+    :return: (train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir)
+    """
+
+    # Créer la structure de dossiers train/test
+    train_pos_dir = os.path.join(data_dir, 'train', 'positive')
+    train_neg_dir = os.path.join(data_dir, 'train', 'negative')
+    test_pos_dir = os.path.join(data_dir, 'test', 'positive')
+    test_neg_dir = os.path.join(data_dir, 'test', 'negative')
+
+    for d in [train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir]:
+        if os.path.exists(d):
+            shutil.rmtree(d)  # Nettoyer les anciens fichiers
+        os.makedirs(d)
+
+    # 1. Split des images positives originales
+    pos_files = [f for f in os.listdir(positive_dir) if os.path.isfile(os.path.join(positive_dir, f))]
+    np.random.shuffle(pos_files)
+    split_idx = max(1, int(len(pos_files) * train_ratio))  # Au moins 1 image en train
+    
+    for f in pos_files[:split_idx]:
+        shutil.copy2(os.path.join(positive_dir, f), os.path.join(train_pos_dir, f))
+    for f in pos_files[split_idx:]:
+        shutil.copy2(os.path.join(positive_dir, f), os.path.join(test_pos_dir, f))
+
+    # 2. Split des images négatives
+    neg_files = [f for f in os.listdir(negative_dir) if os.path.isfile(os.path.join(negative_dir, f))]
+    np.random.shuffle(neg_files)
+    split_idx = max(1, int(len(neg_files) * train_ratio))  # Au moins 1 image en train
+    
+    for f in neg_files[:split_idx]:
+        shutil.copy2(os.path.join(negative_dir, f), os.path.join(train_neg_dir, f))
+    for f in neg_files[split_idx:]:
+        shutil.copy2(os.path.join(negative_dir, f), os.path.join(test_neg_dir, f))
+
+    # Résumé détaillé
+    n_train_pos = len(os.listdir(train_pos_dir))
+    n_train_neg = len(os.listdir(train_neg_dir))
+    n_test_pos = len(os.listdir(test_pos_dir))
+    n_test_neg = len(os.listdir(test_neg_dir))
+
+    print(f"Split train/test terminé (ratio {train_ratio:.0%} / {1-train_ratio:.0%}) :")
+    print(f"  Train : {n_train_pos} positives, {n_train_neg} négatives")
+    print(f"  Test  : {n_test_pos} positives, {n_test_neg} négatives")
+    print(f"  Dossiers créés : data/train/ et data/test/")
+
+    return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir
 
 
-def prepare_data(positive_images_dir, negative_images_dir, augmented_images_dir):
+
+
+def prepare_data(positive_images_dir, negative_images_dir, data_dir):
     """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar"""
 
     print("Préparation des données d'entraînement...")
     print("-----------------------------------")
 
-    # Étape 1: Validation des images positives
+    # Étape 1.1 : Validation des images positives et négatives
     validate_images(positive_images_dir)
+    validate_images(negative_images_dir)
 
-    # Étape 2: Annotation des images positives
-    # Si on fournit des images déja cadrées, on peut sauter cette étape. Sinon, il faudrait utiliser opencv_annotation pour créer un fichier annotations.txt
-    
-    # Étape 3: Augmentation des données 
-    augment_data(positive_images_dir, augmented_images_dir)
-    
+    # Étape 1.2 : Annotation des images positives
+    # Si on fournit des images déja cadrées, on peut sauter cette étape.
+    # Sinon, il faudrait utiliser opencv_annotation pour créer un fichier annotations.txt
 
-    # Étape 4: Séparation des ensembles d'entraînement et de test
+    # Étape 1.3 : Séparation train / test AVANT l'augmentation (évite le data leakage)
+    print("\nSéparation des données en train/test...")
+    train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir = split_data(
+        positive_images_dir, negative_images_dir, data_dir
+    )
 
-    
-    
-    
-    # validate_images(negative_images_dir) # a faire eventuellement anyway
+    # Étape 1.4 : Augmentation des positives du TRAIN set uniquement
+    #   Les images augmentées sont sauvegardées directement dans train/positive/
+    #   pour simplifier le pipeline en aval.
+    print("\nAugmentation des positives du train set...")
+    augment_data(train_pos_dir, train_pos_dir)
+
+    # Résumé final après augmentation
+    n_train_pos = len(os.listdir(train_pos_dir))
+    n_train_neg = len(os.listdir(train_neg_dir))
+    n_test_pos = len(os.listdir(test_pos_dir))
+    n_test_neg = len(os.listdir(test_neg_dir))
+    print(f"\nRésumé final des données :")
+    print(f"  Train : {n_train_pos} positives (originales + augmentées), {n_train_neg} négatives")
+    print(f"  Test  : {n_test_pos} positives, {n_test_neg} négatives")
+    print("-----------------------------------\n")
+
+    return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir
 
 
 
 
 if __name__ == "__main__":
     # Chemins vers les fichiers et dossiers nécessaires    
-    positive_images_dir = os.path.join(os.path.dirname(__file__), 'data\\positive\\')    # Dossier contenant les images positives
-    negative_images_dir = os.path.join(os.path.dirname(__file__), 'data\\negative\\')    # Dossier contenant les images négatives
-    augmented_images_dir = os.path.join(os.path.dirname(__file__), 'data\\augmented\\')  # Dossier pour les images augmentées
-    output_dir = os.path.join(os.path.dirname(__file__), 'data\\cascade\\')              # Dossier où le modèle entraîné sera sauvegardé
+    base_dir = os.path.dirname(__file__)
+    data_dir = os.path.join(base_dir, 'data')                                           # Dossier racine des données
+    positive_images_dir = os.path.join(data_dir, 'positive')                             # Dossier contenant les images positives
+    negative_images_dir = os.path.join(data_dir, 'negative')                             # Dossier contenant les images négatives
+    output_dir = os.path.join(data_dir, 'cascade')                                      # Dossier où le modèle entraîné sera sauvegardé
 
     # Étape 0: Vérification de l'environnement
     validate_environment()
 
     # Étape 1: Préparation des données
-    prepare_data(positive_images_dir, negative_images_dir, augmented_images_dir)
+    train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir = prepare_data(
+        positive_images_dir, negative_images_dir, data_dir
+    )
 
     # Commande pour entraîner le modèle de cascade de classifieurs Haar
     # command = f"opencv_traincascade -data {output_dir} -vec positives.vec -bg negatives.txt -numPos 1000 -numNeg 500 -numStages 20"
