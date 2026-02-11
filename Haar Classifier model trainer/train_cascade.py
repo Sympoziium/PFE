@@ -220,12 +220,32 @@ def apply_random_transformations(image):
     rows, cols = image.shape[:2]
 
     # Rotation aléatoire
-    angle = np.random.uniform(0, 360)  # Corrected to use numpy's random.uniform
+    angle = np.random.uniform(-15, 15)
     M_rot = cv2.getRotationMatrix2D((cols / 2, rows / 2), angle, 1)
 
+    # Flip horizontal aléatoire
+    if np.random.rand() > 0.5:
+        image = cv2.flip(image, 1)
+
+    # Léger flou gaussien
+    image = cv2.GaussianBlur(image, (5, 5), 0)
+
+    # Ajout de bruit sel et poivre léger
+    noise = np.random.choice([0, 255], (rows, cols), p=[0.98, 0.02])
+    noisy_image = image.copy()
+    noisy_image[noise == 255] = 255  # Sel
+    noisy_image[noise == 0] = 0  # Poivre
+
+    # Mélange de l'image originale et de l'image bruitée
+    image = cv2.addWeighted(image, 0.9, noisy_image, 0.1, 0)
+
+    # Variation de luminosité aléatoire
+    brightness_factor = np.random.uniform(0.7, 1.2)
+    image = cv2.convertScaleAbs(image, alpha=brightness_factor, beta=0)
+
     # Translation aléatoire
-    tx = np.random.uniform(-0.1 * cols, 0.1 * cols)  # Corrected to use numpy's random.uniform
-    ty = np.random.uniform(-0.1 * rows, 0.1 * rows)  # Corrected to use numpy's random.uniform
+    tx = np.random.uniform(-0.1 * cols, 0.1 * cols)
+    ty = np.random.uniform(-0.1 * rows, 0.1 * rows)
     M_trans = np.float32([[1, 0, tx], [0, 1, ty]])
 
     transformed_img = cv2.warpAffine(image, M_rot, (cols, rows))
