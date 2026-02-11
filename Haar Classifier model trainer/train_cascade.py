@@ -6,7 +6,7 @@
 import shutil
 import os
 import platform
-
+import numpy as np
 import cv2
 
 
@@ -86,13 +86,13 @@ def validate_environment():
 
     # vérification du package numpy
     try:
-        import numpy
+        import numpy as np
     except ImportError:
         print("Le package numpy n'est pas installé. Veuillez l'installer avec 'pip install numpy'.")
         exit(1)
 
     # Si la version est correcte
-    print(f"Numpy version {numpy.__version__} détectée.")
+    print(f"Numpy version {np.__version__} détectée.")
 
     # vérification du package tqdm
     try:
@@ -178,9 +178,64 @@ def validate_images(images_dir):
     print(f"Images validées.")
     print("\n")
 
+def augment_data(data_dir, output_dir, num_augmented=5):
+    """Augmentation des données d'entraînement pour améliorer la robustesse du modèle"""
+
+    print(f"Augmentation des données dans '{data_dir}'...")
+
+    # Lister les images à augmenter
+    image_files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
+    
+    # Créer le dossier de sortie s'il n'existe pas
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    
+    # Supprimer les anciennes images augmentées
+    if os.path.exists(output_dir):
+        for f in os.listdir(output_dir):
+            os.remove(os.path.join(output_dir, f))
+        print(f"Anciennes images augmentées supprimées.")
+
+    # Augmenter les images
+    for img_file in image_files:
+        img_path = os.path.join(data_dir, img_file)
+        img = cv2.imread(img_path)
+
+        for i in range(num_augmented // len(image_files)):
+            # Appliquer des transformations aléatoires (rotation, translation, zoom, etc.)
+            augmented_img = apply_random_transformations(img)
+
+            # Sauvegarder l'image augmentée
+            augmented_img_path = os.path.join(output_dir, f"aug_{i}_{img_file}")
+            cv2.imwrite(augmented_img_path, augmented_img)
+    
+
+    print(f"Augmentation terminée. {num_augmented*len(image_files)} Images augmentées sauvegardées dans '{output_dir}'.")
+
+def apply_random_transformations(image):
+    """Applique des transformations aléatoires à une image pour l'augmentation des données"""
+
+    # Exemple de transformations : rotation, translation, zoom, etc.
+    rows, cols = image.shape[:2]
+
+    # Rotation aléatoire
+    angle = np.random.uniform(0, 360)  # Corrected to use numpy's random.uniform
+    M_rot = cv2.getRotationMatrix2D((cols / 2, rows / 2), angle, 1)
+
+    # Translation aléatoire
+    tx = np.random.uniform(-0.1 * cols, 0.1 * cols)  # Corrected to use numpy's random.uniform
+    ty = np.random.uniform(-0.1 * rows, 0.1 * rows)  # Corrected to use numpy's random.uniform
+    M_trans = np.float32([[1, 0, tx], [0, 1, ty]])
+
+    transformed_img = cv2.warpAffine(image, M_rot, (cols, rows))
+    transformed_img = cv2.warpAffine(transformed_img, M_trans, (cols, rows))
+
+    return transformed_img
 
 
-def prepare_data(positive_images_dir, negative_images_dir):
+
+def prepare_data(positive_images_dir, negative_images_dir, augmented_images_dir):
     """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar"""
 
     print("Préparation des données d'entraînement...")
@@ -188,23 +243,36 @@ def prepare_data(positive_images_dir, negative_images_dir):
 
     # Étape 1: Validation des images positives
     validate_images(positive_images_dir)
-  
-    validate_images(negative_images_dir) # a faire eventuellement anyway
+
+    # Étape 2: Annotation des images positives
+    # Si on fournit des images déja cadrées, on peut sauter cette étape. Sinon, il faudrait utiliser opencv_annotation pour créer un fichier annotations.txt
+    
+    # Étape 3: Augmentation des données 
+    augment_data(positive_images_dir, augmented_images_dir)
+    
+
+    # Étape 4: Séparation des ensembles d'entraînement et de test
+
+    
+    
+    
+    # validate_images(negative_images_dir) # a faire eventuellement anyway
 
 
 
 
 if __name__ == "__main__":
     # Chemins vers les fichiers et dossiers nécessaires    
-    positive_images_dir = os.path.join(os.path.dirname(__file__), 'data\\positive\\')  # Dossier contenant les images positives
-    negative_images_dir = os.path.join(os.path.dirname(__file__), 'data\\negative\\')  # Dossier contenant les images négatives
-    output_dir = os.path.join(os.path.dirname(__file__), 'data\\cascade\\')            # Dossier où le modèle entraîné sera sauvegardé
+    positive_images_dir = os.path.join(os.path.dirname(__file__), 'data\\positive\\')    # Dossier contenant les images positives
+    negative_images_dir = os.path.join(os.path.dirname(__file__), 'data\\negative\\')    # Dossier contenant les images négatives
+    augmented_images_dir = os.path.join(os.path.dirname(__file__), 'data\\augmented\\')  # Dossier pour les images augmentées
+    output_dir = os.path.join(os.path.dirname(__file__), 'data\\cascade\\')              # Dossier où le modèle entraîné sera sauvegardé
 
     # Étape 0: Vérification de l'environnement
     validate_environment()
 
     # Étape 1: Préparation des données
-    prepare_data(positive_images_dir, negative_images_dir)
+    prepare_data(positive_images_dir, negative_images_dir, augmented_images_dir)
 
     # Commande pour entraîner le modèle de cascade de classifieurs Haar
     # command = f"opencv_traincascade -data {output_dir} -vec positives.vec -bg negatives.txt -numPos 1000 -numNeg 500 -numStages 20"
