@@ -1,3 +1,0 @@
-numpy==2.4.2
-opencv_python==4.13.0.92
-tqdm==4.67.3
