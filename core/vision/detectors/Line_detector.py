@@ -15,7 +15,7 @@ class LineDetector(BaseDetector):
         
         line_center = self.detect_lines(frame)
 
-        return {"detector": "line", "value": self.detect_lines(frame)}
+        return {"detector": "line", "value": line_center}
     
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
@@ -38,8 +38,11 @@ class LineDetector(BaseDetector):
         M = cv2.moments(thresh)
         if M["m00"] != 0:
             cx = int(M["m10"] / M["m00"])
-            # Feedback visuel : Ligne verticale BLANCHE
-            # On dessine du haut (0) jusqu'au bas (height) de l'image à la position cx
-            cv2.line(frame, (cx, 0), (cx, height), (255, 255, 255), 2)
+            
+            # Utilisation du VERT (0, 255, 0) pour une meilleure visibilité sur le flux vidéo
+            cv2.line(frame, (cx, 0), (cx, height), (0, 255, 0), 2)
             
             return cx - (width / 2)
+        
+        # Retourner None explicitement si rien n'est détecté
+        return None

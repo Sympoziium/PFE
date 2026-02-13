@@ -74,26 +74,28 @@ zumi.clear_screen()
 import time
 def control_loop():
     while True:
-        # On récupère l'image déjà capturée par le flux vidéo
+        # 1. Récupérer la copie de l'image actuelle
         frame = vision_pipeline.get_last_frame()
         
         if frame is not None:
             results = []
-            # On traite l'image avec chaque détecteur manuellement
+            # 2. Traitement par les détecteurs (LineDetector dessine sur 'frame')
             for detector in vision_pipeline.get_detectors():
                 try:
-                    # On utilise la méthode de traitement direct
                     res = detector.process(frame)
                     results.append(res)
                 except Exception as e:
                     print("Erreur détecteur: {}".format(e))
 
-            # Logique d'affichage
+       
+            vision_pipeline.update_last_frame(frame)
+
+            # Logique d'affichage console
             for res in results:
                 if res.get("detector") == "line":
                     print("Offset ligne: ", res.get("value"))
         
-        time.sleep(0.05) 
+        time.sleep(0.05)
 
 
 # ----------------------------------------------------------------------------
