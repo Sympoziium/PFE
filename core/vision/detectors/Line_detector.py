@@ -26,7 +26,7 @@ class LineDetector(BaseDetector):
         #Définition de la région d'intéret
         height, width = frame.shape[:2]         
         roi = frame[int(height*0.7):height, :] 
-        print('In Fonction')
+        
         #Traitement
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
