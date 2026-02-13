@@ -357,7 +357,7 @@ class controller:
             while vp.is_running():
                 try:
                     # Capture du frame depuis la caméra
-                    frame_bgr = vp.capture_frame()
+                    frame_bgr = vp.get_last_frame()
                     # Mettre à jour le buffer pour les captures instantanées
                     vp.update_last_frame(frame_bgr)
                 except Exception:
