@@ -50,8 +50,8 @@ def detect_lines(self, frame):
 
             # 3. Optionnel : Afficher la valeur de l'offset sur l'écran
             offset = cx - (width / 2)
-            cv2.putText(frame, f"Offset: {int(offset)}", (20, 40), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(frame, "Offset: {}".format(int(offset)), (20, 40), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             
             return offset
         
