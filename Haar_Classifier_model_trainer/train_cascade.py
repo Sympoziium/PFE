@@ -613,7 +613,7 @@ def train_cascade(nb_annotations, nb_negatives, sample_width, sample_height, dat
     # Configuration des paramètres d'entraînement selon le mode PROTOTYPE
     if PROTOTYPE == "Rapide":
         print("Mode PROTOTYPE : utilisation de valeurs réduites pour un test rapide.")
-        num_stages = 12
+        num_stages = 15
         feature = "LBP"
     elif PROTOTYPE == "Equilibre":
         print("Mode ÉQUILIBRE : compromis entre rapidité et précision.")
@@ -796,6 +796,113 @@ def train_cascade(nb_annotations, nb_negatives, sample_width, sample_height, dat
     print("\n")
     return cascade_file if os.path.exists(cascade_file) else None
 
+##########################################################################################
+#                   Étape 4 : Test du modèle entraîné
+##########################################################################################
+
+def evaluate_model(model_path, test_pos_dir, test_neg_dir):
+    """
+    Évalue les performances du modèle entraîné sur l'ensemble de test.
+    
+    :param model_path: Chemin du fichier cascade.xml du modèle entraîné
+    :param test_pos_dir: Dossier contenant les images positives de test
+    :param test_neg_dir: Dossier contenant les images négatives de test
+    """
+    print("\n")
+    print(f"Évaluation du modèle entraîné...")
+    print("-----------------------------------")
+
+    # **Procédure** :
+    # 1. Charger le `cascade.xml` avec `cv2.CascadeClassifier`
+    # 2. Pour chaque image positive du test set :
+    # - Exécuter `detectMultiScale` avec les paramètres par défaut
+    # - Comparer la détection avec le ground truth (bounding box)
+    # - Calculer IoU, compter TP/FN
+    # 3. Pour chaque image négative :
+    # - Exécuter `detectMultiScale`
+    # - Compter les faux positifs
+    # 4. Agréger les métriques et afficher un rapport
+
+    # Étape 1 : Charger le modèle
+    if not os.path.exists(model_path):
+        print(f"  ERREUR : Modèle non trouvé à {model_path}")
+        exit(1)
+    
+    cascade = cv2.CascadeClassifier(model_path)
+
+    if cascade.empty():
+        print(f"  ERREUR : Impossible de charger le modèle à {model_path}")
+        exit(1)
+
+    # Étape 2 : Évaluer sur les positives
+    print("Évaluation sur les positives...")
+    tp, fn = test_model(cascade, test_pos_dir, positive=True)
+
+    # Étape 3 : Évaluer sur les négatives
+    print("Évaluation sur les négatives...")
+    fp = test_model(cascade, test_neg_dir, positive=False)
+
+    # Étape 4 : Afficher le rapport d'évaluation
+    nb_test_pos = len(os.listdir(test_pos_dir))
+    nb_test_neg = len(os.listdir(test_neg_dir))
+    detection_rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0
+    false_positives_per_img = fp / nb_test_neg if nb_test_neg > 0 else 0
+    precision = tp / (tp + fp) * 100 if (tp + fp) > 0 else 0
+
+    print("┌──────────────────────┬──────────┐")
+    print("│ Métrique             │ Valeur   │")
+    print("├──────────────────────┼──────────┤")
+    print(f"│ Taux de détection    │ {detection_rate:.1f}%    │")
+    print(f"│ Faux positifs / img  │ {false_positives_per_img:.3f}   │")
+    print(f"│ Précision            │ {precision:.1f}%    │")
+    print("└──────────────────────┴──────────┘")
+
+    # Paramètres detectMultiScale recommandés :
+    #     scaleFactor=1.1, minNeighbors=5
+
+def test_model(model, test_image_dir, positive = True):
+    """
+    Test rapide du modèle sur une image de test.
+    
+    :param model: Objet CascadeClassifier chargé
+    :param test_image_dir: Chemin du dossier contenant les images de test (positive ou négative)
+    :param positive: Indique si les images de test sont positives (True) ou négatives (False) pour le calcul des métriques
+    :return: (tp, fn) si positive=True, sinon fp
+    """
+    test_images = [f for f in os.listdir(test_image_dir) if os.path.isfile(os.path.join(test_image_dir, f))]
+    tp = 0 # true positives
+    fn = 0 # false negatives
+    fp = 0 # false positives
+
+    for img_file in tqdm(test_images, unit="img", colour="green", ncols=80):
+        img_path = os.path.join(test_image_dir, img_file)
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"  ATTENTION : image illisible ignorée : {img_file}")
+            continue
+        
+        # Détection
+        detections = model.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3)
+        
+        # En mode plein cadre, on considère que la bbox GT est l'image entière
+        # gt_bbox = (0, 0, img.shape[1], img.shape[0])
+        
+        if positive:
+            # Vérifier les détections contre le GT
+            if len(detections) == 0:
+                fn += 1
+            else:
+                tp += 1
+        else:
+            if len(detections) == 0:
+                pass  # Pas de comptage ici car on ne veut pas compter les TN
+            else:
+                fp += 1
+
+    if positive:            
+        return tp, fn
+    else:
+        return fp
 
 if __name__ == "__main__":
     # Chemins vers les fichiers et dossiers nécessaires    
@@ -839,4 +946,4 @@ if __name__ == "__main__":
     # Utiliser l'ensemble de test pour évaluer les performances du modèle entraîné (précision, rappel, F1-score, etc.)
     # Afficher les résultats et les métriques d'évaluation pour analyser la qualité du modèle et identifier les éventuels points d'amélioration.
     # enregistrer sous formes de graphiques les courbes de précision/rappel, la matrice de confusion, etc. pour une analyse visuelle des performances du modèle.
-    
+    evaluate_model(model_path, test_pos_dir, test_neg_dir)
