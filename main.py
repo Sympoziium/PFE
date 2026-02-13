@@ -71,6 +71,15 @@ zumi.clear_screen()
 
 # zumi.celebrate_reaction() # réaction de célébration au démarrage ATTENTION LE ROBOT BOUGE
 
+
+def control_loop():
+    results = vision_pipeline.step()
+    line_val = None
+    for res in results:
+        if res.get("detector") == "line":
+            line_val = res.get("value")
+    print(line_val)
+
 # ----------------------------------------------------------------------------
 #                           Démarrage du serveur
 # ----------------------------------------------------------------------------
@@ -81,22 +90,9 @@ if __name__ == '__main__':
     watchdog_thread.start()
 
 
-    #-------- TEST DE LA BOUCLE DE VISION AVANT LE SERVEUR FLASK --------
-    camera_lock = threading.Lock()
-    import time
-    import threading
-    def vision_loop():
-        try:
-            while vision_pipeline.is_running():
-                with camera_lock: # On verrouille l'accès pendant la capture/traitement
-                    vision_pipeline.step()
-        except Exception as e:
-            print(f"Erreur Vision: {e}")
-        finally:
-            zumi.camera.close() # On libère la ressource
-        
-    #-----------------------------------------------------------------------
-
+    control_thread = threading.Thread(target=control_loop)
+    control_thread.daemon = True
+    control_thread.start()
 
     print("Flask server démarré")
     ctrl.app.run(host='0.0.0.0', port=5000, threaded=True)
@@ -104,3 +100,5 @@ if __name__ == '__main__':
     print("Flask server arrêté")
     # Lorsque le serveur Flask s'arrête, on arrête aussi le programme principal
     exit(0)
+
+
