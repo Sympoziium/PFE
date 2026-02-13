@@ -834,33 +834,53 @@ def evaluate_model(model_path, test_pos_dir, test_neg_dir):
         print(f"  ERREUR : Impossible de charger le modèle à {model_path}")
         exit(1)
 
-    # Étape 2 : Évaluer sur les positives
-    print("Évaluation sur les positives...")
-    tp, fn = test_model(cascade, test_pos_dir, positive=True)
-
-    # Étape 3 : Évaluer sur les négatives
-    print("Évaluation sur les négatives...")
-    fp = test_model(cascade, test_neg_dir, positive=False)
-
-    # Étape 4 : Afficher le rapport d'évaluation
+    # Étape 2 : Tester le modèle avec différents paramètres pour trouver le meilleur compromis
+    scaleFactors = [1.05, 1.1, 1.2]  # Liste de scaleFactors à tester pour trouver le meilleur compromis
+    minNeighbors = [3, 5, 7]          # Liste de minNeighbors à tester
+    best_score = 0
+    best_params = (1.1, 5)  # Valeurs par défaut
     nb_test_pos = len(os.listdir(test_pos_dir))
     nb_test_neg = len(os.listdir(test_neg_dir))
-    detection_rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0
-    false_positives_per_img = fp / nb_test_neg if nb_test_neg > 0 else 0
-    precision = tp / (tp + fp) * 100 if (tp + fp) > 0 else 0
+
+    print("Recherche des meilleurs paramètres de détection...")
+    for sf in scaleFactors:
+        for mn in minNeighbors:
+            print(f"Test avec scaleFactor={sf}, minNeighbors={mn}...")
+            tp, fn = test_model(cascade, test_pos_dir, positive=True, scaleFactor=sf, minNeighbors=mn)  # test sur les positives pour calculer TP et FN
+            fp = test_model(cascade, test_neg_dir, positive=False, scaleFactor=sf, minNeighbors=mn)     # test sur les négatives pour calculer les FP
+            
+            detection_rate = tp / (tp + fn) * 100 if (tp + fn) > 0 else 0
+            false_positives_per_img = fp / nb_test_neg if nb_test_neg > 0 else 0
+            precision = tp / (tp + fp) * 100 if (tp + fp) > 0 else 0
+            
+            score = detection_rate - false_positives_per_img * 100
+            if score > best_score:
+                best_score = score
+                best_params = (sf, mn)
+                best_stats = (detection_rate, false_positives_per_img, precision)
+
+    # Étape 4 : Afficher le rapport d'évaluation
+    detection_rate = best_stats[0]
+    false_positives_per_img =  best_stats[1]
+    precision = best_stats[2]
 
     print("┌──────────────────────┬──────────┐")
     print("│ Métrique             │ Valeur   │")
     print("├──────────────────────┼──────────┤")
     print(f"│ Taux de détection    │ {detection_rate:.1f}%    │")
-    print(f"│ Faux positifs / img  │ {false_positives_per_img:.3f}   │")
+    print(f"│ Faux positifs [%]    │ {false_positives_per_img:.3f}   │")
     print(f"│ Précision            │ {precision:.1f}%    │")
     print("└──────────────────────┴──────────┘")
 
-    # Paramètres detectMultiScale recommandés :
-    #     scaleFactor=1.1, minNeighbors=5
+    print("\nInterprétation :")
+    print(f"Taux de détection : {detection_rate:.1f}% des images positives ont été correctement détectées.")
+    print(f"Faux positifs : en moyenne {false_positives_per_img:.3f} fausses détections par image négative.")
+    print(f"Précision : {precision:.1f}% des détections sont correctes (TP / (TP + FP)).")
+    print("\n")
+    print(f"Meilleurs paramètres trouvés pour detectMultiScale : scaleFactor={best_params[0]}, minNeighbors={best_params[1]}")
 
-def test_model(model, test_image_dir, positive = True):
+
+def test_model(model, test_image_dir, positive = True ,scaleFactor=1.1, minNeighbors=5):
     """
     Test rapide du modèle sur une image de test.
     
@@ -882,7 +902,7 @@ def test_model(model, test_image_dir, positive = True):
             continue
         
         # Détection
-        detections = model.detectMultiScale(img, scaleFactor=1.1, minNeighbors=3)
+        detections = model.detectMultiScale(img, scaleFactor=scaleFactor, minNeighbors=minNeighbors)
         
         # En mode plein cadre, on considère que la bbox GT est l'image entière
         # gt_bbox = (0, 0, img.shape[1], img.shape[0])
