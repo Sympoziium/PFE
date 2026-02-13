@@ -21,27 +21,38 @@ class LineDetector(BaseDetector):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
-    def detect_lines(self, frame):
-
-        #Définition de la région d'intéret
-        height, width = frame.shape[:2] 
-        offset_y = int(height * 0.3)        
-        roi = frame[int(offset_y):height, :] 
+def detect_lines(self, frame):
+        # Définition de la région d'intérêt
+        height, width = frame.shape[:2]         
+        offset_y = int(height * 0.3) # On mémorise le début de la zone de détection
+        roi = frame[offset_y:height, :] 
         
-        #Traitement
+        # Traitement
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        #Seuillage
+        # Seuillage
         _, thresh = cv2.threshold(blur, 150, 255, cv2.THRESH_BINARY)
 
-        #Calcul position ligne
+        # Calcul position ligne
         M = cv2.moments(thresh)
         if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"]) 
-            cv2.circle(frame, (cx, int(M["m01"] / M["m00"]) + offset_y), 10, (0, 0, 255), -1)
+            cx = int(M["m10"] / M["m00"])
+            # Calcul de cy pour le dessin (centre de la zone blanche dans la ROI)
+            cy = int(M["m01"] / M["m00"]) + offset_y 
+
+            # --- AJOUTS VISUELS ---
+            # 1. Dessiner un point rouge au centre de la ligne détectée
+            cv2.circle(frame, (cx, cy), 10, (0, 0, 255), -1) 
+            
+            # 2. Dessiner une ligne verticale verte pour visualiser l'alignement
             cv2.line(frame, (cx, 0), (cx, height), (0, 255, 0), 2)
-            return cx - (width / 2)
+
+            # 3. Optionnel : Afficher la valeur de l'offset sur l'écran
+            offset = cx - (width / 2)
+            cv2.putText(frame, f"Offset: {int(offset)}", (20, 40), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            
+            return offset
         
-        # Retourner None explicitement si rien n'est détecté
         return None
