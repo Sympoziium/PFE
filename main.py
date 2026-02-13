@@ -21,6 +21,7 @@ from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
 from core.vision.detectors.Stop_detector_cv import StopDetectorCV
 from core.vision.detectors.Stop_detector_matt import StopDetectorMatt
 from core.vision.detectors.Haar_classifier import HaarDetector
+from core.vision.detectors.Line_detector import LineDetector
 
 # Import pour le serveur web (Flask)
 from interface import server_controller as controller_module
@@ -45,6 +46,7 @@ stop_detector_cv = StopDetectorCV(min_area=400, aspect_tol=0.4, poly_min=6, poly
 stop_detector_matt = StopDetectorMatt(min_area=400, min_score=0.35)
 haar_classifier = HaarDetector()
 vision_pipeline = VisionPipeline(camera=zumi.camera)
+line_detector = LineDetector()
 
 # Dossier contenant les modèles .xml pour les classificateurs de Haar       
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detectors', 'models')
@@ -58,6 +60,7 @@ vision_pipeline.add_detectors(stop_detector)
 vision_pipeline.add_detectors(stop_detector_cv)
 vision_pipeline.add_detectors(stop_detector_matt)
 vision_pipeline.add_detectors(haar_classifier)
+vision_pipeline.add_detectors(line_detector)
 # Initialisation du contrôleur (serveur Flask)
 ctrl = controller_module.controller(zumi)
 routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du contrôleur (build du serveur)
