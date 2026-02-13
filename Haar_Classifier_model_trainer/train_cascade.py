@@ -9,6 +9,9 @@ import platform
 import numpy as np
 import cv2
 
+##########################################################################################
+#                         Étape 0 : Validation de l'environnement
+##########################################################################################
 
 def validate_environment():
     
@@ -118,7 +121,55 @@ def validate_environment():
 
     return 0
 
-    
+##########################################################################################
+#                   Étape 1 : Préparation des données d'entraînement
+##########################################################################################
+
+def prepare_data(positive_images_dir, negative_images_dir, data_dir):
+    """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar"""
+
+    print("Préparation des données d'entraînement...")
+    print("-----------------------------------\n")
+
+    # Étape 1.1 : Validation des images positives et négatives
+    validate_images(positive_images_dir)
+    validate_images(negative_images_dir)
+
+    # Étape 1.3 : Séparation train / test AVANT l'augmentation (évite le data leakage)
+    print("Séparation des données en train/test...")
+    train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir = split_data(
+        positive_images_dir, negative_images_dir, data_dir
+    )
+
+    # Étape 1.4 : Augmentation des positives du TRAIN set uniquement
+    print("Augmentation des positives du train set...")
+    augment_data(train_pos_dir, train_pos_dir)
+
+    # Étape 1.2 : Génération des annotations (APRÈS augmentation pour inclure les augmentées)
+    #   Mode plein cadre : bbox = image entière pour chaque image positive
+    print("Génération des annotations pour le train set...")
+    annotations_file = os.path.join(data_dir, 'annotations.txt')
+    nb_annotations = generate_annotations(train_pos_dir, annotations_file)
+
+    # Étape 1.5 : Préparation du fichier bg.txt pour les négatifs
+    print("Préparation du fichier bg.txt pour les négatifs...")
+    bg_file = os.path.join(data_dir, 'bg.txt')
+    nb_negatives = generate_bg_file(train_neg_dir, bg_file)
+
+    # Résumé final après augmentation
+    n_train_pos = len(os.listdir(train_pos_dir))
+    n_train_neg = len(os.listdir(train_neg_dir))
+    n_test_pos = len(os.listdir(test_pos_dir))
+    n_test_neg = len(os.listdir(test_neg_dir))
+    print(f"\nRésumé final des données :")
+    print(f"  Train : {n_train_pos} positives (originales + augmentées), {n_train_neg} négatives")
+    print(f"  Test  : {n_test_pos} positives, {n_test_neg} négatives")
+    print(f"  Annotations : {annotations_file} ({nb_annotations} entrées)")
+    print(f"  Négatifs    : {bg_file} ({nb_negatives} entrées)")
+    print("-----------------------------------\n")
+
+    return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir, nb_annotations, nb_negatives, annotations_file, bg_file
+
 def validate_images(images_dir):
     """"Validation et collecte de stats des images du dossier spécifié"""
     
@@ -176,6 +227,69 @@ def validate_images(images_dir):
     print(f"  Largeur : min={min_width}, max={max_width}, moyenne={avg_width:.2f}")
     print(f"  Hauteur : min={min_height}, max={max_height}, moyenne={avg_height:.2f}")
     print(f"Images validées.")
+
+def split_data(positive_dir, negative_dir, data_dir, train_ratio=0.85):
+    """
+    Sépare les données originales en ensembles d'entraînement et de test.
+    Crée les dossiers data/train/ et data/test/ avec sous-dossiers positive/ et negative/.
+    Les fichiers sont COPIÉS (les originaux restent intacts).
+    
+    Structure créée :
+        data/train/positive/   — positives pour l'entraînement
+        data/train/negative/   — négatives pour l'entraînement
+        data/test/positive/    — positives pour l'évaluation
+        data/test/negative/    — négatives pour l'évaluation
+    
+    :param positive_dir: Dossier contenant les images positives originales
+    :param negative_dir: Dossier contenant les images négatives originales
+    :param data_dir: Dossier racine data/ (pour créer train/ et test/)
+    :param train_ratio: Ratio de données d'entraînement (default 0.85)
+    :return: (train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir)
+    """
+
+    # Créer la structure de dossiers train/test
+    train_pos_dir = os.path.join(data_dir, 'train', 'positive')
+    train_neg_dir = os.path.join(data_dir, 'train', 'negative')
+    test_pos_dir = os.path.join(data_dir, 'test', 'positive')
+    test_neg_dir = os.path.join(data_dir, 'test', 'negative')
+
+    for d in [train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir]:
+        if os.path.exists(d):
+            shutil.rmtree(d)  # Nettoyer les anciens fichiers
+        os.makedirs(d)
+
+    # 1. Split des images positives originales
+    pos_files = [f for f in os.listdir(positive_dir) if os.path.isfile(os.path.join(positive_dir, f))]
+    np.random.shuffle(pos_files)
+    split_idx = max(1, int(len(pos_files) * train_ratio))  # Au moins 1 image en train
+    
+    for f in pos_files[:split_idx]:
+        shutil.copy2(os.path.join(positive_dir, f), os.path.join(train_pos_dir, f))
+    for f in pos_files[split_idx:]:
+        shutil.copy2(os.path.join(positive_dir, f), os.path.join(test_pos_dir, f))
+
+    # 2. Split des images négatives
+    neg_files = [f for f in os.listdir(negative_dir) if os.path.isfile(os.path.join(negative_dir, f))]
+    np.random.shuffle(neg_files)
+    split_idx = max(1, int(len(neg_files) * train_ratio))  # Au moins 1 image en train
+    
+    for f in neg_files[:split_idx]:
+        shutil.copy2(os.path.join(negative_dir, f), os.path.join(train_neg_dir, f))
+    for f in neg_files[split_idx:]:
+        shutil.copy2(os.path.join(negative_dir, f), os.path.join(test_neg_dir, f))
+
+    # Résumé détaillé
+    n_train_pos = len(os.listdir(train_pos_dir))
+    n_train_neg = len(os.listdir(train_neg_dir))
+    n_test_pos = len(os.listdir(test_pos_dir))
+    n_test_neg = len(os.listdir(test_neg_dir))
+
+    print(f"Split train/test terminé (ratio {train_ratio:.0%} / {1-train_ratio:.0%}) :")
+    print(f"  Train : {n_train_pos} positives, {n_train_neg} négatives")
+    print(f"  Test  : {n_test_pos} positives, {n_test_neg} négatives")
+    print(f"  Dossiers créés : data/train/ et data/test/")
+
+    return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir
 
 def augment_data(source_dir, output_dir, num_augmented=5):
     """
@@ -268,69 +382,6 @@ def apply_random_transformations(image):
 
     return transformed_img
 
-def split_data(positive_dir, negative_dir, data_dir, train_ratio=0.85):
-    """
-    Sépare les données originales en ensembles d'entraînement et de test.
-    Crée les dossiers data/train/ et data/test/ avec sous-dossiers positive/ et negative/.
-    Les fichiers sont COPIÉS (les originaux restent intacts).
-    
-    Structure créée :
-        data/train/positive/   — positives pour l'entraînement
-        data/train/negative/   — négatives pour l'entraînement
-        data/test/positive/    — positives pour l'évaluation
-        data/test/negative/    — négatives pour l'évaluation
-    
-    :param positive_dir: Dossier contenant les images positives originales
-    :param negative_dir: Dossier contenant les images négatives originales
-    :param data_dir: Dossier racine data/ (pour créer train/ et test/)
-    :param train_ratio: Ratio de données d'entraînement (default 0.85)
-    :return: (train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir)
-    """
-
-    # Créer la structure de dossiers train/test
-    train_pos_dir = os.path.join(data_dir, 'train', 'positive')
-    train_neg_dir = os.path.join(data_dir, 'train', 'negative')
-    test_pos_dir = os.path.join(data_dir, 'test', 'positive')
-    test_neg_dir = os.path.join(data_dir, 'test', 'negative')
-
-    for d in [train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir]:
-        if os.path.exists(d):
-            shutil.rmtree(d)  # Nettoyer les anciens fichiers
-        os.makedirs(d)
-
-    # 1. Split des images positives originales
-    pos_files = [f for f in os.listdir(positive_dir) if os.path.isfile(os.path.join(positive_dir, f))]
-    np.random.shuffle(pos_files)
-    split_idx = max(1, int(len(pos_files) * train_ratio))  # Au moins 1 image en train
-    
-    for f in pos_files[:split_idx]:
-        shutil.copy2(os.path.join(positive_dir, f), os.path.join(train_pos_dir, f))
-    for f in pos_files[split_idx:]:
-        shutil.copy2(os.path.join(positive_dir, f), os.path.join(test_pos_dir, f))
-
-    # 2. Split des images négatives
-    neg_files = [f for f in os.listdir(negative_dir) if os.path.isfile(os.path.join(negative_dir, f))]
-    np.random.shuffle(neg_files)
-    split_idx = max(1, int(len(neg_files) * train_ratio))  # Au moins 1 image en train
-    
-    for f in neg_files[:split_idx]:
-        shutil.copy2(os.path.join(negative_dir, f), os.path.join(train_neg_dir, f))
-    for f in neg_files[split_idx:]:
-        shutil.copy2(os.path.join(negative_dir, f), os.path.join(test_neg_dir, f))
-
-    # Résumé détaillé
-    n_train_pos = len(os.listdir(train_pos_dir))
-    n_train_neg = len(os.listdir(train_neg_dir))
-    n_test_pos = len(os.listdir(test_pos_dir))
-    n_test_neg = len(os.listdir(test_neg_dir))
-
-    print(f"Split train/test terminé (ratio {train_ratio:.0%} / {1-train_ratio:.0%}) :")
-    print(f"  Train : {n_train_pos} positives, {n_train_neg} négatives")
-    print(f"  Test  : {n_test_pos} positives, {n_test_neg} négatives")
-    print(f"  Dossiers créés : data/train/ et data/test/")
-
-    return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir
-
 def generate_annotations(images_dir, output_file):
     """
     Génère le fichier annotations.txt au format attendu par opencv_createsamples.
@@ -378,7 +429,6 @@ def generate_annotations(images_dir, output_file):
     print(f"  {len(annotations)} annotations générées → {output_file}")
     return len(annotations)
 
-
 def generate_bg_file(negative_dir, output_file):
     """
     Génère le fichier bg.txt listant les chemins des images négatives.
@@ -418,6 +468,10 @@ def generate_bg_file(negative_dir, output_file):
     print(f"  {len(paths)} images négatives listées → {output_file}")
     return len(paths)
 
+##########################################################################################
+#                   Étape 2 : Création des échantillons
+##########################################################################################
+
 def create_samples(annotations_file, vec_file, num_samples, width=24, height=24):
     """
     Crée le fichier .vec à partir des annotations pour l'entraînement du cascade de classifieurs Haar.
@@ -431,7 +485,7 @@ def create_samples(annotations_file, vec_file, num_samples, width=24, height=24)
     :param height: Hauteur des échantillons (default 24)
     """
     print(f"Création du fichier .vec avec opencv_createsamples...")
-    print("-----------------------------------")
+    print("-----------------------------------\n")
     
     command = f"opencv_createsamples -info {annotations_file} -vec {vec_file} -num {num_samples} -w {width} -h {height}"
     
@@ -439,52 +493,10 @@ def create_samples(annotations_file, vec_file, num_samples, width=24, height=24)
     os.system(command)
     print("-----------------------------------\n")
 
+##########################################################################################
+#                   Étape 3 : Entraînement de la cascade
+##########################################################################################
 
-def prepare_data(positive_images_dir, negative_images_dir, data_dir):
-    """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar"""
-
-    print("Préparation des données d'entraînement...")
-    print("-----------------------------------")
-
-    # Étape 1.1 : Validation des images positives et négatives
-    validate_images(positive_images_dir)
-    validate_images(negative_images_dir)
-
-    
-
-    # Étape 1.3 : Séparation train / test AVANT l'augmentation (évite le data leakage)
-    print("\nSéparation des données en train/test...")
-    train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir = split_data(
-        positive_images_dir, negative_images_dir, data_dir
-    )
-
-    # Étape 1.4 : Augmentation des positives du TRAIN set uniquement
-    print("\nAugmentation des positives du train set...")
-    augment_data(train_pos_dir, train_pos_dir)
-
-    # Étape 1.2 : Génération des annotations (APRÈS augmentation pour inclure les augmentées)
-    #   Mode plein cadre : bbox = image entière pour chaque image positive
-    annotations_file = os.path.join(data_dir, 'annotations.txt')
-    print("\n")
-    nb_annotations = generate_annotations(train_pos_dir, annotations_file)
-
-    # Étape 1.5 : Préparation du fichier bg.txt pour les négatifs
-    bg_file = os.path.join(data_dir, 'bg.txt')
-    nb_negatives = generate_bg_file(train_neg_dir, bg_file)
-
-    # Résumé final après augmentation
-    n_train_pos = len(os.listdir(train_pos_dir))
-    n_train_neg = len(os.listdir(train_neg_dir))
-    n_test_pos = len(os.listdir(test_pos_dir))
-    n_test_neg = len(os.listdir(test_neg_dir))
-    print(f"\nRésumé final des données :")
-    print(f"  Train : {n_train_pos} positives (originales + augmentées), {n_train_neg} négatives")
-    print(f"  Test  : {n_test_pos} positives, {n_test_neg} négatives")
-    print(f"  Annotations : {annotations_file} ({nb_annotations} entrées)")
-    print(f"  Négatifs    : {bg_file} ({nb_negatives} entrées)")
-    print("-----------------------------------\n")
-
-    return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir, nb_annotations, nb_negatives, annotations_file, bg_file
 
 
 if __name__ == "__main__":
