@@ -7,3 +7,6 @@ zumi_prepare.sh
 *.bmp
 *.tiff
 *.jpeg
+*.txt
+*.vec
+stage_*.xml
