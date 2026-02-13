@@ -80,6 +80,19 @@ if __name__ == '__main__':
     watchdog_thread.daemon = True # S'assure qu'il s'arrête avec le script
     watchdog_thread.start()
 
+
+    #-------- TEST DE LA BOUCLE DE VISION AVANT LE SERVEUR FLASK --------
+    vision_pipeline.start()
+    def vision_loop():
+        print("Boucle de vision démarrée")
+        while vision_pipeline.is_running():
+            vision_pipeline.step()
+    vision_thread = threading.Thread(target=vision_loop)
+    vision_thread.daemon = True
+    vision_thread.start()
+    #-----------------------------------------------------------------------
+
+
     print("Flask server démarré")
     ctrl.app.run(host='0.0.0.0', port=5000, threaded=True)
 
