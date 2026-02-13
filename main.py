@@ -77,14 +77,32 @@ def control_loop():
 
     while True:
 
+        # 1. On récupère l'image actuelle du pipeline
+        frame = vision_pipeline.get_last_frame()
         
-        results = vision_pipeline.step()
-        line_val = None
-        for res in results:
-            if res.get("detector") == "line":
-                line_val = res.get("value")
-        print(line_val)
+        if frame is not None:
+            # 2. On fait passer l'image dans les détecteurs
+            # Comme ils dessinent sur 'frame', l'objet est modifié ici
+            results = []
+            for detector in vision_pipeline.get_detectors():
+                try:
+                    res = detector.process(frame)
+                    results.append(res)
+                except Exception as e:
+                    print("Erreur détecteur: {}".format(e))
 
+            # 3. CRUCIAL : On renvoie l'image annotée au pipeline pour Flask
+            vision_pipeline.update_last_frame(frame)
+
+            # 4. Logique d'affichage console pour le debug
+            line_val = None
+            for res in results:
+                if res.get("detector") == "line":
+                    line_val = res.get("value")
+            if line_val is not None:
+                print("Offset ligne: {}".format(line_val))
+        
+        time.sleep(0.05)
         
         time.sleep(0.05)
 
