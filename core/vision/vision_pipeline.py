@@ -78,7 +78,7 @@ class VisionPipeline:
             try:
                 result = detectors.process(frame)
                 results.append(result)
-
+                self.update_last_frame(frame)
             except Exception as e:
                 print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detectors, e))
                 raise e
