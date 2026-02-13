@@ -73,27 +73,18 @@ zumi.clear_screen()
 
 import time
 def control_loop():
+    vision_pipeline.start()
+
     while True:
-        # 1. Récupérer la copie de l'image actuelle
-        frame = vision_pipeline.get_last_frame()
+
         
-        if frame is not None:
-            results = []
-            # 2. Traitement par les détecteurs (LineDetector dessine sur 'frame')
-            for detector in vision_pipeline.get_detectors():
-                try:
-                    res = detector.process(frame)
-                    results.append(res)
-                except Exception as e:
-                    print("Erreur détecteur: {}".format(e))
+        results = vision_pipeline.step()
+        line_val = None
+        for res in results:
+            if res.get("detector") == "line":
+                line_val = res.get("value")
+        print(line_val)
 
-       
-            vision_pipeline.update_last_frame(frame)
-
-            # Logique d'affichage console
-            for res in results:
-                if res.get("detector") == "line":
-                    print("Offset ligne: ", res.get("value"))
         
         time.sleep(0.05)
 
@@ -107,7 +98,7 @@ if __name__ == '__main__':
     watchdog_thread.daemon = True # S'assure qu'il s'arrête avec le script
     watchdog_thread.start()
 
-    vision_pipeline.start()
+    
     control_thread = threading.Thread(target=control_loop)
     control_thread.daemon = True
     control_thread.start()
