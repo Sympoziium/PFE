@@ -22,10 +22,10 @@ class LineDetector(BaseDetector):
         self.CAPTURE_DIR = capture_dir
 
     def detect_lines(self, frame):
-        print("LineDetector: Processing frame for line detection.")
+
         #Définition de la région d'intéret
         height, width = frame.shape[:2]         
-        roi = frame[int(height*0.7):height, :] 
+        roi = frame[int(height*0.3):height, :] 
         
         #Traitement
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -37,11 +37,7 @@ class LineDetector(BaseDetector):
         #Calcul position ligne
         M = cv2.moments(thresh)
         if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"])
-            
-            # Utilisation du VERT (0, 255, 0) pour une meilleure visibilité sur le flux vidéo
-            cv2.line(frame, (cx, 0), (cx, height), (0, 255, 0), 2)
-            
+            cx = int(M["m10"] / M["m00"])          
             return cx - (width / 2)
         
         # Retourner None explicitement si rien n'est détecté
