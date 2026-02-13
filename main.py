@@ -82,14 +82,16 @@ if __name__ == '__main__':
 
 
     #-------- TEST DE LA BOUCLE DE VISION AVANT LE SERVEUR FLASK --------
-    vision_pipeline.start()
+    camera_lock = threading.Lock()
+    import time
+    import threading
     def vision_loop():
         print("Boucle de vision démarrée")
         while vision_pipeline.is_running():
-            vision_pipeline.step()
-    vision_thread = threading.Thread(target=vision_loop)
-    vision_thread.daemon = True
-    vision_thread.start()
+            with camera_lock: # On verrouille l'accès pendant la capture/traitement
+                vision_pipeline.step()
+            # Petit sleep pour laisser le CPU respirer et laisser Flask prendre le verrou
+            time.sleep(0.01)
     #-----------------------------------------------------------------------
 
 
