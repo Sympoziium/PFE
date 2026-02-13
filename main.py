@@ -71,15 +71,30 @@ zumi.clear_screen()
 
 # zumi.celebrate_reaction() # réaction de célébration au démarrage ATTENTION LE ROBOT BOUGE
 
-
+import time
 def control_loop():
     while True:
-        results = vision_pipeline.step()
-        line_val = None
-        for res in results:
-            if res.get("detector") == "line":
-                line_val = res.get("value")
-        print(line_val)
+        # On récupère l'image déjà capturée par le flux vidéo
+        frame = vision_pipeline.get_last_frame()
+        
+        if frame is not None:
+            results = []
+            # On traite l'image avec chaque détecteur manuellement
+            for detector in vision_pipeline.get_detectors():
+                try:
+                    # On utilise la méthode de traitement direct
+                    res = detector.process(frame)
+                    results.append(res)
+                except Exception as e:
+                    print("Erreur détecteur: {}".format(e))
+
+            # Logique d'affichage
+            for res in results:
+                if res.get("detector") == "line":
+                    print("Offset ligne: ", res.get("value"))
+        
+        time.sleep(0.05) 
+
 
 # ----------------------------------------------------------------------------
 #                           Démarrage du serveur
