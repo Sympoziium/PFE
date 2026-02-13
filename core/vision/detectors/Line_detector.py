@@ -24,8 +24,9 @@ class LineDetector(BaseDetector):
     def detect_lines(self, frame):
 
         #Définition de la région d'intéret
-        height, width = frame.shape[:2]         
-        roi = frame[int(height*0.3):height, :] 
+        height, width = frame.shape[:2] 
+        offset_y = int(height * 0.3)        
+        roi = frame[int(offset_y):height, :] 
         
         #Traitement
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -37,7 +38,9 @@ class LineDetector(BaseDetector):
         #Calcul position ligne
         M = cv2.moments(thresh)
         if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"])          
+            cx = int(M["m10"] / M["m00"]) 
+            cv2.circle(frame, (cx, int(M["m01"] / M["m00"]) + offset_y), 10, (0, 0, 255), -1)
+            cv2.line(frame, (cx, 0), (cx, height), (0, 255, 0), 2)
             return cx - (width / 2)
         
         # Retourner None explicitement si rien n'est détecté
