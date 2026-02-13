@@ -82,6 +82,8 @@ class VisionPipeline:
             except Exception as e:
                 print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detectors, e))
                 raise e
+        self.update_last_frame(frame)
+        
         # On fait un délais pour respecter le fps souhaité
         elapsed_time = time.time() - start_time
         sleep_time = self.periode - elapsed_time

@@ -101,8 +101,7 @@ def control_loop():
                     line_val = res.get("value")
             if line_val is not None:
                 print("Offset ligne: {}".format(line_val))
-        
-        time.sleep(0.05)
+
         
         time.sleep(0.05)
 
