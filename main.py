@@ -86,12 +86,15 @@ if __name__ == '__main__':
     import time
     import threading
     def vision_loop():
-        print("Boucle de vision démarrée")
-        while vision_pipeline.is_running():
-            with camera_lock: # On verrouille l'accès pendant la capture/traitement
-                vision_pipeline.step()
-            # Petit sleep pour laisser le CPU respirer et laisser Flask prendre le verrou
-            time.sleep(0.01)
+        try:
+            while vision_pipeline.is_running():
+                with camera_lock: # On verrouille l'accès pendant la capture/traitement
+                    vision_pipeline.step()
+        except Exception as e:
+            print(f"Erreur Vision: {e}")
+        finally:
+            zumi.camera.close() # On libère la ressource
+        
     #-----------------------------------------------------------------------
 
 
