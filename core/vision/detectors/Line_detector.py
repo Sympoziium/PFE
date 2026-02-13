@@ -22,7 +22,7 @@ class LineDetector(BaseDetector):
         self.CAPTURE_DIR = capture_dir
 
     def detect_lines(self, frame):
-        
+        print("LineDetector: Processing frame for line detection.")
         #Définition de la région d'intéret
         height, width = frame.shape[:2]         
         roi = frame[int(height*0.7):height, :] 
