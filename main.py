@@ -73,12 +73,13 @@ zumi.clear_screen()
 
 
 def control_loop():
-    results = vision_pipeline.step()
-    line_val = None
-    for res in results:
-        if res.get("detector") == "line":
-            line_val = res.get("value")
-    print(line_val)
+    while True:
+        results = vision_pipeline.step()
+        line_val = None
+        for res in results:
+            if res.get("detector") == "line":
+                line_val = res.get("value")
+        print(line_val)
 
 # ----------------------------------------------------------------------------
 #                           Démarrage du serveur
@@ -89,7 +90,7 @@ if __name__ == '__main__':
     watchdog_thread.daemon = True # S'assure qu'il s'arrête avec le script
     watchdog_thread.start()
 
-
+    vision_pipeline.start()
     control_thread = threading.Thread(target=control_loop)
     control_thread.daemon = True
     control_thread.start()
