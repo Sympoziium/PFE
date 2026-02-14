@@ -76,7 +76,7 @@ class PIDController:
             'rotation_mode': self.rotation_mode  # NOUVEAU
         }
         
-        def compute(self, error):
+    def compute(self, error):
             """
             Calcule la correction PID basée sur l'erreur.
             
