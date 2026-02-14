@@ -497,9 +497,17 @@ class controller:
         try:
             print("[DEBUG] pid_start() appelé")
             
+            # Vérifier si un PID est déjà actif
             if self.pid_active:
-                print("[DEBUG] PID déjà actif")
+                print("[WARNING] PID déjà actif")
                 return jsonify({'error': 'PID already running'}), 400
+            
+            # Vérifier si un thread PID existe encore
+            if self.pid_thread and self.pid_thread.is_alive():
+                print("[WARNING] Thread PID encore actif, arrêt forcé")
+                self.pid_active = False
+                self.pid_thread.join(timeout=2.0)
+                self.pid_thread = None
             
             vp = self.vision_pipeline
             print("[DEBUG] Vision pipeline: {}".format(vp))
@@ -518,15 +526,18 @@ class controller:
                 return jsonify({'error': 'PID controller not initialized'}), 500
             
             print("[DEBUG] Réinitialisation du PID")
-            self.pid_active = True
             self.pid_controller.reset()
+            self.pid_active = True
             
             print("[DEBUG] Création du thread PID")
             import threading
             def pid_loop():
                 print("[PID_LOOP] Démarrage du pid_loop")
+                loop_count = 0
                 while self.pid_active:
                     try:
+                        loop_count += 1
+                        
                         # CHANGEMENT: Récupérer l'offset déjà calculé par control_loop
                         line_offset = getattr(vp, 'last_line_offset', None)
                         
@@ -535,6 +546,10 @@ class controller:
                             self.robot.stop()
                             time.sleep(0.05)
                             continue
+                        
+                        # Debug tous les 20 cycles
+                        if loop_count % 20 == 0:
+                            print("[PID_LOOP] Offset: {}, PID actif: {}".format(line_offset, self.pid_active))
                         
                         # Calculer la correction PID
                         left_speed, right_speed = self.pid_controller.compute(line_offset)
@@ -556,28 +571,54 @@ class controller:
                         traceback.print_exc()
                         time.sleep(0.1)
                 
-                print("[PID_LOOP] Arrêt du pid_loop")
+                print("[PID_LOOP] Arrêt du pid_loop (loops effectués: {})".format(loop_count))
+                # Arrêter les moteurs à la fin
                 self.robot.stop()
             
             self.pid_thread = threading.Thread(target=pid_loop)
             self.pid_thread.daemon = True
             self.pid_thread.start()
             
-            print("[DEBUG] PID démarré avec succès")
+            print("[DEBUG] PID démarré avec succès, thread ID: {}".format(self.pid_thread.ident))
             return jsonify({'status': 'started'})
             
         except Exception as e:
             print("[ERROR] Exception dans pid_start(): {}".format(e))
             import traceback
             traceback.print_exc()
+            self.pid_active = False
             return jsonify({'error': 'Failed to start PID: {}'.format(str(e))}), 500
 
     def pid_stop(self):
         """Arrête le contrôle PID."""
+        print("[DEBUG] pid_stop() appelé")
+        print("[DEBUG] pid_active avant arrêt: {}".format(self.pid_active))
+        
+        # Marquer le PID comme inactif
         self.pid_active = False
-        if self.pid_thread:
-            self.pid_thread.join(timeout=1.0)
+        
+        # Attendre que le thread se termine
+        if self.pid_thread and self.pid_thread.is_alive():
+            print("[DEBUG] Attente de la fin du thread PID...")
+            self.pid_thread.join(timeout=2.0)  # Augmenté à 2 secondes
+            if self.pid_thread.is_alive():
+                print("[WARNING] Le thread PID n'a pas terminé dans le délai")
+            else:
+                print("[DEBUG] Thread PID terminé proprement")
+        
+        # Nettoyer le thread
+        self.pid_thread = None
+        
+        # Arrêter les moteurs
         self.robot.stop()
+        
+        # Réinitialiser les valeurs affichées
+        self.last_line_offset = 0
+        self.last_correction = 0
+        self.last_left_speed = 0
+        self.last_right_speed = 0
+        
+        print("[DEBUG] PID arrêté avec succès")
         return jsonify({'status': 'stopped'})
 
     def pid_reset(self):
