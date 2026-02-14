@@ -233,29 +233,6 @@ def render_pid_tab(title="Asservissement PID"):
             </div>
 
             <!-- Paramètres PID -->
-
-            <!-- Paramètres du détecteur de ligne -->
-            <div class='tab-content'>
-                <h3 class='tab-subtitle'>Paramètres du détecteur de ligne</h3>
-                <div class='param-grid'>
-                    <div class='param-item'>
-                        <label class='param-label'>Seuil blanc (0-255)</label>
-                        <input type='number' min='0' max='255' step='5' class='param-input' id='whiteThresholdInput' value='200'>
-                        <small style='color: #666;'>Plus élevé = détecte seulement le blanc pur</small>
-                    </div>
-                    <div class='param-item'>
-                        <label class='param-label'>Aire minimale (pixels)</label>
-                        <input type='number' min='100' max='1000' step='50' class='param-input' id='minAreaInput' value='300'>
-                        <small style='color: #666;'>Ignore les petits objets blancs</small>
-                    </div>
-                    <div class='param-item'>
-                        <label class='param-label'>Zone de détection (0.0-1.0)</label>
-                        <input type='number' min='0' max='1' step='0.05' class='param-input' id='offsetRatioInput' value='0.6'>
-                        <small style='color: #666;'>0.6 = cherche dans les 40% inférieurs</small>
-                    </div>
-                </div>
-                <button class='primary-btn' id='updateLineDetectorBtn'>📝 Mettre à jour le détecteur</button>
-            </div>
             <div class='tab-content'>
                 <h3 class='tab-subtitle'>Paramètres PID</h3>
                 
@@ -302,6 +279,29 @@ def render_pid_tab(title="Asservissement PID"):
                     </div>
                 </div>
                 <button class='primary-btn' id='updateParamsBtn'>📝 Mettre à jour les paramètres</button>
+            </div>
+
+            <!-- Paramètres du détecteur de ligne -->
+            <div class='tab-content'>
+                <h3 class='tab-subtitle'>Paramètres du détecteur de ligne</h3>
+                <div class='param-grid'>
+                    <div class='param-item'>
+                        <label class='param-label'>Seuil blanc (0-255)</label>
+                        <input type='number' min='0' max='255' step='5' class='param-input' id='whiteThresholdInput' value='200'>
+                        <small style='color: #666;'>Plus élevé = détecte seulement le blanc pur</small>
+                    </div>
+                    <div class='param-item'>
+                        <label class='param-label'>Aire minimale (pixels)</label>
+                        <input type='number' min='100' max='1000' step='50' class='param-input' id='minAreaInput' value='300'>
+                        <small style='color: #666;'>Ignore les petits objets blancs</small>
+                    </div>
+                    <div class='param-item'>
+                        <label class='param-label'>Zone de détection (0.0-1.0)</label>
+                        <input type='number' min='0' max='1' step='0.05' class='param-input' id='offsetRatioInput' value='0.6'>
+                        <small style='color: #666;'>0.6 = cherche dans les 40% inférieurs</small>
+                    </div>
+                </div>
+                <button class='primary-btn' id='updateLineDetectorBtn'>📝 Mettre à jour le détecteur</button>
             </div>
 
             <!-- Contrôles -->
@@ -362,14 +362,10 @@ def render_pid_tab(title="Asservissement PID"):
     <div class='toast-container' id='toastContainer'></div>
 
     <script>
-    // ========================================================================
-    //                    SECTION JAVASCRIPT - COMMENCE ICI
-    // ========================================================================
-    
     // Variables globales
     var pidRunning = false;
     var statusInterval = null;
-    var rotationMode = true;  // Démarre en mode rotation par défaut
+    var rotationMode = true;
 
     // Toast notifications
     function showToast(message, type, duration) {{
@@ -402,7 +398,7 @@ def render_pid_tab(title="Asservissement PID"):
         rotationMode = true;
         document.getElementById('rotationModeBtn').style.background = '#28a745';
         document.getElementById('driveModeBtn').style.background = '#6c757d';
-        updateParams();  // Mettre à jour immédiatement
+        updateParams();
         appendLog('Mode ROTATION activé - Le Zumi tourne sur place');
         showToast('Mode Rotation activé', 'info');
     }}
@@ -412,7 +408,7 @@ def render_pid_tab(title="Asservissement PID"):
         rotationMode = false;
         document.getElementById('rotationModeBtn').style.background = '#6c757d';
         document.getElementById('driveModeBtn').style.background = '#28a745';
-        updateParams();  // Mettre à jour immédiatement
+        updateParams();
         appendLog('Mode AVANCE activé - Le Zumi suit la ligne');
         showToast('Mode Avance activé', 'info');
     }}
@@ -435,9 +431,33 @@ def render_pid_tab(title="Asservissement PID"):
         }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            var mode = rotationMode ? 'ROTATION' : 'AVANCE';
+            var mode = rotationMode? 'ROTATION' : 'AVANCE';
             appendLog('Paramètres mis à jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
             showToast('Paramètres PID mis à jour!', 'success');
+        }})
+        .catch(function(err) {{
+            appendLog('ERREUR: ' + err.message);
+            showToast('Erreur lors de la mise à jour', 'error');
+        }});
+    }}
+
+    // Mettre à jour les paramètres du détecteur de ligne
+    function updateLineDetectorParams() {{
+        var params = {{
+            white_threshold: parseInt(document.getElementById('whiteThresholdInput').value),
+            min_area: parseInt(document.getElementById('minAreaInput').value),
+            offset_ratio: parseFloat(document.getElementById('offsetRatioInput').value)
+        }};
+
+        fetch('/line_detector/update_params', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify(params)
+        }})
+        .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
+        .then(function(data) {{
+            appendLog('Détecteur de ligne mis à jour: Seuil=' + params.white_threshold + ', Aire=' + params.min_area);
+            showToast('Paramètres du détecteur mis à jour!', 'success');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
@@ -516,7 +536,7 @@ def render_pid_tab(title="Asservissement PID"):
                 }}
             }})
             .catch(function(err) {{ console.error('Status polling error:', err); }});
-        }}, 200);  // Mise à jour toutes les 200ms
+        }}, 200);
     }}
 
     function stopStatusPolling() {{
@@ -568,6 +588,9 @@ def render_pid_tab(title="Asservissement PID"):
         // Boutons de mode
         document.getElementById('rotationModeBtn').addEventListener('click', setRotationMode);
         document.getElementById('driveModeBtn').addEventListener('click', setDriveMode);
+        
+        // Bouton détecteur de ligne
+        document.getElementById('updateLineDetectorBtn').addEventListener('click', updateLineDetectorParams);
 
         // Charger les paramètres initiaux
         fetch('/pid/get_params')
@@ -579,7 +602,6 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('baseSpeedInput').value = data.base_speed || 20;
             document.getElementById('maxCorrectionInput').value = data.max_correction || 30;
             
-            // Charger le mode
             rotationMode = data.rotation_mode !== undefined ? data.rotation_mode : true;
             if (rotationMode) {{
                 document.getElementById('rotationModeBtn').style.background = '#28a745';
@@ -594,6 +616,19 @@ def render_pid_tab(title="Asservissement PID"):
         .catch(function(err) {{
             appendLog('Impossible de charger les paramètres: ' + err.message);
         }});
+        
+        // Charger les paramètres du détecteur
+        fetch('/line_detector/get_params')
+        .then(function(r) {{ return r.json(); }})
+        .then(function(data) {{
+            document.getElementById('whiteThresholdInput').value = data.white_threshold || 200;
+            document.getElementById('minAreaInput').value = data.min_area || 300;
+            document.getElementById('offsetRatioInput').value = data.offset_ratio || 0.6;
+            appendLog('Paramètres du détecteur chargés');
+        }})
+        .catch(function(err) {{
+            appendLog('Impossible de charger les paramètres du détecteur: ' + err.message);
+        }});
     }});
 
     // Cleanup on page unload
@@ -603,53 +638,8 @@ def render_pid_tab(title="Asservissement PID"):
             fetch('/pid/stop', {{ method: 'POST' }});
         }}
     }});
-    
-    // Mettre à jour les paramètres du détecteur de ligne
-    function updateLineDetectorParams() {
-        var params = {
-            white_threshold: parseInt(document.getElementById('whiteThresholdInput').value),
-            min_area: parseInt(document.getElementById('minAreaInput').value),
-            offset_ratio: parseFloat(document.getElementById('offsetRatioInput').value)
-        };
-
-        fetch('/line_detector/update_params', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(params)
-        })
-        .then(function(r) { if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); })
-        .then(function(data) {
-            appendLog('Détecteur de ligne mis à jour: Seuil=' + params.white_threshold + ', Aire=' + params.min_area);
-            showToast('Paramètres du détecteur mis à jour!', 'success');
-        })
-        .catch(function(err) {
-            appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de la mise à jour', 'error');
-        });
-    }
-
-    // Dans la section window.addEventListener('DOMContentLoaded', ...), ajoutez:
-    document.getElementById('updateLineDetectorBtn').addEventListener('click', updateLineDetectorParams);
-
-    // Charger les paramètres du détecteur au démarrage
-    fetch('/line_detector/get_params')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        document.getElementById('whiteThresholdInput').value = data.white_threshold || 200;
-        document.getElementById('minAreaInput').value = data.min_area || 300;
-        document.getElementById('offsetRatioInput').value = data.offset_ratio || 0.6;
-        appendLog('Paramètres du détecteur chargés');
-    })
-    .catch(function(err) {
-        appendLog('Impossible de charger les paramètres du détecteur: ' + err.message);
-    });
-    
-    // ========================================================================
-    //                    SECTION JAVASCRIPT - TERMINE ICI
-    // ========================================================================
     </script>
     </body></html>
     """.format(title=title)
-
 
     return html
