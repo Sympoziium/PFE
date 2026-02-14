@@ -56,7 +56,7 @@ def register_routes(ctrl):
                     lambda: ctrl.line_detector_get_params())
     
     app.add_url_rule('/state_machine/start', 'state_machine_start', lambda: ctrl.state_machine_start(), methods=['POST'])
-app.add_url_rule('/state_machine/stop', 'state_machine_stop', lambda: ctrl.state_machine_stop(), methods=['POST'])
-app.add_url_rule('/state_machine/status', 'state_machine_status', lambda: ctrl.state_machine_status())
+    app.add_url_rule('/state_machine/stop', 'state_machine_stop', lambda: ctrl.state_machine_stop(), methods=['POST'])
+    app.add_url_rule('/state_machine/status', 'state_machine_status', lambda: ctrl.state_machine_status())
 
     return app
