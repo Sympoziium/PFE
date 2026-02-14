@@ -494,67 +494,96 @@ class controller:
 
     def pid_start(self):
         """Démarre le contrôle PID."""
-        if self.pid_active:
-            return jsonify({'error': 'PID already running'}), 400
-        
-        vp = self.vision_pipeline
-        if not vp or not vp.is_running():
-            return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
-        
-        self.pid_active = True
-        self.pid_controller.reset()
-        
-        import threading
-        def pid_loop():
-            while self.pid_active:
-                try:
-                    # Récupérer le dernier offset de ligne depuis les résultats du pipeline
-                    frame = vp.get_last_frame()
-                    if frame is None:
-                        time.sleep(0.05)
-                        continue
-                    
-                    # Trouver le détecteur de ligne
-                    line_offset = None
-                    for i, detector in enumerate(vp.get_detectors()):
-                        detector_name = getattr(detector, 'name', detector.__class__.__name__)
-                        if 'line' in detector_name.lower():
-                            result = detector.process(frame.copy())
-                            line_offset = result.get('value')
-                            break
-                    
-                    if line_offset is None:
-                        # Pas de ligne détectée, arrêter les moteurs
-                        self.robot.stop()
-                        time.sleep(0.05)
-                        continue
-                    
-                    # Calculer la correction PID
-                    left_speed, right_speed = self.pid_controller.compute(line_offset)
-                    
-                    # Appliquer aux moteurs
-                    self.robot.control_motors(left_speed, right_speed)
-                    
-                    # Sauvegarder pour l'affichage
-                    self.last_line_offset = line_offset
-                    self.last_correction = self.pid_controller.correction_history[-1] if self.pid_controller.correction_history else 0
-                    self.last_left_speed = left_speed
-                    self.last_right_speed = right_speed
-                    
-                    time.sleep(0.05)  # 20 Hz
-                    
-                except Exception as e:
-                    print("Erreur dans pid_loop: {}".format(e))
-                    time.sleep(0.1)
+        try:
+            print("[DEBUG] pid_start() appelé")
             
-            # Arrêter les moteurs à la fin
-            self.robot.stop()
-        
-        self.pid_thread = threading.Thread(target=pid_loop)
-        self.pid_thread.daemon = True
-        self.pid_thread.start()
-        
-        return jsonify({'status': 'started'})
+            if self.pid_active:
+                print("[DEBUG] PID déjà actif")
+                return jsonify({'error': 'PID already running'}), 400
+            
+            vp = self.vision_pipeline
+            print("[DEBUG] Vision pipeline: {}".format(vp))
+            
+            if not vp:
+                print("[DEBUG] Vision pipeline est None")
+                return jsonify({'error': 'Vision pipeline not initialized'}), 400
+                
+            if not vp.is_running():
+                print("[DEBUG] Vision pipeline n'est pas en cours d'exécution")
+                return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
+            
+            print("[DEBUG] Vérification du PID controller")
+            if not hasattr(self, 'pid_controller') or self.pid_controller is None:
+                print("[ERROR] pid_controller n'existe pas!")
+                return jsonify({'error': 'PID controller not initialized'}), 500
+            
+            print("[DEBUG] Réinitialisation du PID")
+            self.pid_active = True
+            self.pid_controller.reset()
+            
+            print("[DEBUG] Création du thread PID")
+            import threading
+            def pid_loop():
+                print("[PID_LOOP] Démarrage du pid_loop")
+                while self.pid_active:
+                    try:
+                        # Récupérer le dernier offset de ligne depuis les résultats du pipeline
+                        frame = vp.get_last_frame()
+                        if frame is None:
+                            time.sleep(0.05)
+                            continue
+                        
+                        # Trouver le détecteur de ligne
+                        line_offset = None
+                        for i, detector in enumerate(vp.get_detectors()):
+                            detector_name = getattr(detector, 'name', detector.__class__.__name__)
+                            if 'line' in detector_name.lower():
+                                result = detector.process(frame.copy())
+                                line_offset = result.get('value')
+                                break
+                        
+                        if line_offset is None:
+                            # Pas de ligne détectée, arrêter les moteurs
+                            self.robot.stop()
+                            time.sleep(0.05)
+                            continue
+                        
+                        # Calculer la correction PID
+                        left_speed, right_speed = self.pid_controller.compute(line_offset)
+                        
+                        # Appliquer aux moteurs
+                        self.robot.control_motors(left_speed, right_speed)
+                        
+                        # Sauvegarder pour l'affichage
+                        self.last_line_offset = line_offset
+                        self.last_correction = self.pid_controller.correction_history[-1] if self.pid_controller.correction_history else 0
+                        self.last_left_speed = left_speed
+                        self.last_right_speed = right_speed
+                        
+                        time.sleep(0.05)  # 20 Hz
+                        
+                    except Exception as e:
+                        print("[ERROR] Erreur dans pid_loop: {}".format(e))
+                        import traceback
+                        traceback.print_exc()
+                        time.sleep(0.1)
+                
+                print("[PID_LOOP] Arrêt du pid_loop")
+                # Arrêter les moteurs à la fin
+                self.robot.stop()
+            
+            self.pid_thread = threading.Thread(target=pid_loop)
+            self.pid_thread.daemon = True
+            self.pid_thread.start()
+            
+            print("[DEBUG] PID démarré avec succès")
+            return jsonify({'status': 'started'})
+            
+        except Exception as e:
+            print("[ERROR] Exception dans pid_start(): {}".format(e))
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': 'Failed to start PID: {}'.format(str(e))}), 500
 
     def pid_stop(self):
         """Arrête le contrôle PID."""
