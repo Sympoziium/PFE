@@ -37,10 +37,9 @@ pid_controller = PIDController(
     max_correction=25,
     rotation_mode=True,
     deadband=1,
-    rotation_scale=0.2  # Réduit pour plus de précision
-    auto_reset_threshold=80
+    rotation_scale=0.2,
+    auto_reset_threshold=80  # Se réinitialise si erreur > 80 pixels
 )
-
 # Machine à états
 state_machine = LineFollowingStateMachine(
     robot=zumi,
