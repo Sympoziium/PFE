@@ -14,7 +14,7 @@ from flask import Flask, Response, request, jsonify, send_from_directory, url_fo
 from interface.onglet_acceuil import render_accueil_tab
 from interface.onglet_vision import render_vision_tab
 from interface.onglet_template import render_template_tab  # Exemple d'onglet template générique
-
+from core.robot.pid_controller import PIDController
 
 # --- Fonction helper pour formater les résultats de détection ---
 def format_detection_result(results, detector_name="Détecteur"):
@@ -104,6 +104,13 @@ class controller:
         self.vision_pipeline = None
         self.last_move_time = time.time()
         self.watchdog_active = False
+        self.pid_controller = PIDController()
+        self.pid_active = False
+        self.pid_thread = None
+        self.last_line_offset = 0
+        self.last_correction = 0
+        self.last_left_speed = 0
+        self.last_right_speed = 0
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
@@ -453,3 +460,124 @@ class controller:
             print("[ERREUR] zumi.stop():", e) 
             return "error", 500
 
+# ----------------------------------------------------------------------------
+#          Fonctions pour le contrôle PID du suivi de ligne
+# ----------------------------------------------------------------------------
+
+    def pid_page(self):
+        from interface.onglet_pid import render_pid_tab
+        return render_pid_tab("Asservissement PID")
+
+    def pid_update_params(self):
+        """Met à jour les paramètres du PID."""
+        data = request.get_json(silent=True) or {}
+        try:
+            kp = float(data.get('kp', self.pid_controller.kp))
+            ki = float(data.get('ki', self.pid_controller.ki))
+            kd = float(data.get('kd', self.pid_controller.kd))
+            base_speed = int(data.get('base_speed', self.pid_controller.base_speed))
+            max_correction = int(data.get('max_correction', self.pid_controller.max_correction))
+            
+            self.pid_controller.update_params(kp=kp, ki=ki, kd=kd, 
+                                            base_speed=base_speed, 
+                                            max_correction=max_correction)
+            
+            return jsonify({'status': 'ok', 'params': self.pid_controller.get_params()})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+    def pid_get_params(self):
+        """Retourne les paramètres actuels du PID."""
+        return jsonify(self.pid_controller.get_params())
+
+    def pid_start(self):
+        """Démarre le contrôle PID."""
+        if self.pid_active:
+            return jsonify({'error': 'PID already running'}), 400
+        
+        vp = self.vision_pipeline
+        if not vp or not vp.is_running():
+            return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
+        
+        self.pid_active = True
+        self.pid_controller.reset()
+        
+        import threading
+        def pid_loop():
+            while self.pid_active:
+                try:
+                    # Récupérer le dernier offset de ligne depuis les résultats du pipeline
+                    frame = vp.get_last_frame()
+                    if frame is None:
+                        time.sleep(0.05)
+                        continue
+                    
+                    # Trouver le détecteur de ligne
+                    line_offset = None
+                    for i, detector in enumerate(vp.get_detectors()):
+                        detector_name = getattr(detector, 'name', detector.__class__.__name__)
+                        if 'line' in detector_name.lower():
+                            result = detector.process(frame.copy())
+                            line_offset = result.get('value')
+                            break
+                    
+                    if line_offset is None:
+                        # Pas de ligne détectée, arrêter les moteurs
+                        self.robot.stop()
+                        time.sleep(0.05)
+                        continue
+                    
+                    # Calculer la correction PID
+                    left_speed, right_speed = self.pid_controller.compute(line_offset)
+                    
+                    # Appliquer aux moteurs
+                    self.robot.control_motors(left_speed, right_speed)
+                    
+                    # Sauvegarder pour l'affichage
+                    self.last_line_offset = line_offset
+                    self.last_correction = self.pid_controller.correction_history[-1] if self.pid_controller.correction_history else 0
+                    self.last_left_speed = left_speed
+                    self.last_right_speed = right_speed
+                    
+                    time.sleep(0.05)  # 20 Hz
+                    
+                except Exception as e:
+                    print("Erreur dans pid_loop: {}".format(e))
+                    time.sleep(0.1)
+            
+            # Arrêter les moteurs à la fin
+            self.robot.stop()
+        
+        self.pid_thread = threading.Thread(target=pid_loop)
+        self.pid_thread.daemon = True
+        self.pid_thread.start()
+        
+        return jsonify({'status': 'started'})
+
+    def pid_stop(self):
+        """Arrête le contrôle PID."""
+        self.pid_active = False
+        if self.pid_thread:
+            self.pid_thread.join(timeout=1.0)
+        self.robot.stop()
+        return jsonify({'status': 'stopped'})
+
+    def pid_reset(self):
+        """Réinitialise le PID."""
+        self.pid_controller.reset()
+        self.last_line_offset = 0
+        self.last_correction = 0
+        self.last_left_speed = 0
+        self.last_right_speed = 0
+        return jsonify({'status': 'reset'})
+
+    def pid_status(self):
+        """Retourne le statut actuel du PID."""
+        return jsonify({
+            'active': self.pid_active,
+            'error': self.last_line_offset,
+            'correction': self.last_correction,
+            'left_speed': self.last_left_speed,
+            'right_speed': self.last_right_speed,
+            'debug': self.pid_controller.get_debug_info()
+        })

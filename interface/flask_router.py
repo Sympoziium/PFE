@@ -38,5 +38,16 @@ def register_routes(ctrl):
     app.add_url_rule('/zumi/left', 'left', lambda: ctrl.left())
     app.add_url_rule('/zumi/right', 'right', lambda: ctrl.right())
     app.add_url_rule('/zumi/stop', 'stop', lambda: ctrl.stop())
+    
+    # Page PID
+    app.add_url_rule('/pid', 'pid_page', lambda: ctrl.pid_page())
+
+    # Routes PID
+    app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])
+    app.add_url_rule('/pid/get_params', 'pid_get_params', lambda: ctrl.pid_get_params())
+    app.add_url_rule('/pid/start', 'pid_start', lambda: ctrl.pid_start(), methods=['POST'])
+    app.add_url_rule('/pid/stop', 'pid_stop', lambda: ctrl.pid_stop(), methods=['POST'])
+    app.add_url_rule('/pid/reset', 'pid_reset', lambda: ctrl.pid_reset(), methods=['POST'])
+    app.add_url_rule('/pid/status', 'pid_status', lambda: ctrl.pid_status())
 
     return app
