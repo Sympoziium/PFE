@@ -12,7 +12,7 @@ import time
 
 class PIDController:
     def __init__(self, kp=0.1, ki=0.0, kd=0.05, base_speed=20, max_correction=30, 
-             rotation_mode=True, deadband=5, rotation_scale=0.3):
+             rotation_mode=True, deadband=1, rotation_scale=0.3):
         """
         Initialise le contrôleur PID.
         
