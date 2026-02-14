@@ -130,14 +130,14 @@ class PIDController:
                 left_speed = 0
                 right_speed = 0
             else:
-                left_speed = correction * self.rotation_scale
-                right_speed = -correction * self.rotation_scale
+                left_speed = -correction * self.rotation_scale
+                right_speed = correction * self.rotation_scale
         else:
             # MODE AVANCE: Avance en suivant la ligne
             # Si erreur positive (ligne à droite): ralentir roue droite, accélérer roue gauche
             # Si erreur négative (ligne à gauche): ralentir roue gauche, accélérer roue droite
-            left_speed = self.base_speed + correction
-            right_speed = self.base_speed - correction
+            left_speed = self.base_speed - correction
+            right_speed = self.base_speed + correction
         
         # Limiter les vitesses entre -100 et 100
         left_speed = max(-100, min(100, left_speed))
