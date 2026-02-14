@@ -690,3 +690,31 @@ class controller:
             return jsonify({'error': 'Line detector not found'}), 404
         
         return jsonify(line_detector.get_params())
+    
+    def state_machine_start(self):
+        """Démarre la machine à états."""
+        if not hasattr(self, 'state_machine'):
+            return jsonify({'error': 'State machine not initialized'}), 400
+        
+        self.state_machine.start()
+        return jsonify({'status': 'started', 'state': self.state_machine.get_state().name})
+
+    def state_machine_stop(self):
+        """Arrête la machine à états."""
+        if not hasattr(self, 'state_machine'):
+            return jsonify({'error': 'State machine not initialized'}), 400
+        
+        self.state_machine.stop()
+        return jsonify({'status': 'stopped'})
+
+    def state_machine_status(self):
+        """Retourne le statut de la machine à états."""
+        if not hasattr(self, 'state_machine'):
+            return jsonify({'error': 'State machine not initialized'}), 400
+        
+        return jsonify({
+            'running': self.state_machine.is_running(),
+            'state': self.state_machine.get_state().name,
+            'photos_taken': len(self.state_machine.photos_taken),
+            'rotation_count': self.state_machine.rotation_count
+        })
