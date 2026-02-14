@@ -2,22 +2,20 @@
 # -*- coding: utf-8 -*-
 # Line_detector.py
 # ------------------
-# Module de détecteur de lignes dans une image
-# en appliquant des filtres de traitement d'image,
-# comme la détection de contours
+# Module de détecteur de lignes en pointillés dans une image
 
 from .detector_base import BaseDetector
 import cv2
 import numpy as np
 
 class LineDetector(BaseDetector):
-    def __init__(self, white_threshold=200, min_area=300, offset_ratio=0.6):
+    def __init__(self, white_threshold=200, min_area=100, offset_ratio=0.5):
         """
         Initialise le détecteur de ligne.
         
         Args:
             white_threshold: Seuil pour détecter le blanc (0-255). Plus élevé = plus strict
-            min_area: Aire minimale du contour pour être considéré comme une ligne
+            min_area: Aire minimale d'un pointillé pour être considéré (plus petit que pour ligne continue)
             offset_ratio: Ratio de la hauteur où commencer la détection (0.0-1.0)
         """
         self.white_threshold = white_threshold
@@ -64,9 +62,8 @@ class LineDetector(BaseDetector):
         # Utiliser le seuil configurable
         _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
         
-        # Optionnel: Morphologie pour enlever le bruit
+        # Morphologie légère pour connecter les pointillés proches
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
         # 3. Détection de contours (compatible OpenCV 3 et 4)
@@ -77,8 +74,9 @@ class LineDetector(BaseDetector):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
             return None
         
-        # 4. Filtrer les contours pour trouver une LIGNE VERTICALE
-        valid_contours = []
+        # 4. Filtrer les contours pour trouver les POINTILLÉS
+        # On cherche plusieurs petits rectangles alignés verticalement
+        valid_dashes = []
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area < self.min_area:
@@ -86,57 +84,91 @@ class LineDetector(BaseDetector):
             
             x, y, w, h = cv2.boundingRect(cnt)
             
-            # CHANGEMENT: Critères pour une ligne VERTICALE (qui arrive vers le Zumi)
-            # - Hauteur suffisante (au moins 30% de la hauteur de la ROI)
-            # - Largeur petite par rapport à la hauteur (ratio hauteur/largeur > 2)
-            if h > roi_height * 0.3:  # Ligne doit être assez haute
+            # Critères pour un pointillé de ligne discontinue:
+            # - Petits rectangles (pas trop larges ni trop hauts)
+            # - Forme à peu près rectangulaire
+            # - Pas trop près des bords
+            if w < width * 0.3 and h < roi_height * 0.4:  # Pas trop grand
                 aspect_ratio = float(h) / float(w) if w > 0 else 0
-                if aspect_ratio > 2:  # h/w > 2 signifie ligne verticale
-                    # Position X du centre pour calculer l'offset gauche/droite
+                # Accepter les formes rectangulaires (verticales ou carrées)
+                if 0.5 < aspect_ratio < 5:  
                     cx = x + w / 2
-                    valid_contours.append((cnt, cx, area))
+                    cy = y + h / 2
+                    valid_dashes.append({
+                        'contour': cnt,
+                        'x': x,
+                        'y': y,
+                        'w': w,
+                        'h': h,
+                        'cx': cx,
+                        'cy': cy,
+                        'area': area
+                    })
         
-        if len(valid_contours) == 0:
+        if len(valid_dashes) == 0:
             cv2.putText(frame, "Pas de ligne valide", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
             return None
         
-        # 5. Prendre le contour le plus LARGE (en cas de multiples lignes)
-        # ou celui le plus centré si plusieurs candidats
-        valid_contours.sort(key=lambda x: -x[2])  # Trier par aire décroissante
-        best_contour = valid_contours[0][0]
+        # 5. Grouper les pointillés qui sont alignés verticalement
+        # On cherche les pointillés qui ont une position X similaire (tolérance)
+        X_TOLERANCE = width * 0.15  # 15% de la largeur comme tolérance
         
-        # 6. Calculer le centre de la ligne détectée
-        M = cv2.moments(best_contour)
-        if M["m00"] != 0:
-            cx = int(M["m10"] / M["m00"])
-            cy = int(M["m01"] / M["m00"]) + offset_y 
-            offset = cx - (width / 2)
-
-            # Dessin pour debug
-            x, y, w, h = cv2.boundingRect(best_contour)
-            # Rectangle bleu autour de la ligne détectée
+        # Trouver le groupe de pointillés le plus aligné
+        best_group = []
+        
+        # Essayer chaque pointillé comme point de départ d'un groupe
+        for dash in valid_dashes:
+            group = [dash]
+            base_cx = dash['cx']
+            
+            # Trouver tous les pointillés alignés avec celui-ci
+            for other_dash in valid_dashes:
+                if other_dash is dash:
+                    continue
+                if abs(other_dash['cx'] - base_cx) < X_TOLERANCE:
+                    group.append(other_dash)
+            
+            # Garder le groupe le plus grand
+            if len(group) > len(best_group):
+                best_group = group
+        
+        if len(best_group) < 2:  # Au moins 2 pointillés pour former une ligne
+            cv2.putText(frame, "Pas assez de pointilles alignes", (20, 40), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
+            return None
+        
+        # 6. Calculer le centre moyen de tous les pointillés du groupe
+        total_cx = sum([d['cx'] for d in best_group])
+        total_cy = sum([d['cy'] for d in best_group])
+        avg_cx = int(total_cx / len(best_group))
+        avg_cy = int(total_cy / len(best_group)) + offset_y
+        
+        offset = avg_cx - (width / 2)
+        
+        # Dessin pour debug
+        # Dessiner tous les pointillés du groupe
+        for dash in best_group:
+            x, y, w, h = dash['x'], dash['y'], dash['w'], dash['h']
             cv2.rectangle(frame, (x, y + offset_y), (x + w, y + h + offset_y), (255, 0, 0), 2)
-            
-            # Cercle rouge au centre de la ligne
-            cv2.circle(frame, (cx, cy), 10, (0, 0, 255), -1) 
-            
-            # Ligne verte verticale de guidage montrant le centre cible
-            cv2.line(frame, (int(width/2), 0), (int(width/2), height), (0, 255, 0), 2)
-            
-            # Ligne verte verticale montrant la position détectée de la ligne
-            cv2.line(frame, (cx, 0), (cx, height), (0, 255, 255), 2)
-            
-            # Texte avec offset
-            text = "Offset: " + str(int(offset))
-            cv2.putText(frame, text, (20, 40), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            
-            # Afficher le seuil
-            threshold_text = "Seuil: " + str(self.white_threshold)
-            cv2.putText(frame, threshold_text, (20, 70), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            
-            return offset
         
-        return None
+        # Cercle rouge au centre moyen
+        cv2.circle(frame, (avg_cx, avg_cy), 10, (0, 0, 255), -1)
+        
+        # Ligne verte au centre de l'image (cible)
+        cv2.line(frame, (int(width/2), 0), (int(width/2), height), (0, 255, 0), 2)
+        
+        # Ligne cyan montrant la position détectée de la ligne
+        cv2.line(frame, (avg_cx, 0), (avg_cx, height), (0, 255, 255), 2)
+        
+        # Texte avec offset et nombre de pointillés détectés
+        text = "Offset: " + str(int(offset)) + " (Points: " + str(len(best_group)) + ")"
+        cv2.putText(frame, text, (20, 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
+        # Afficher le seuil
+        threshold_text = "Seuil: " + str(self.white_threshold)
+        cv2.putText(frame, threshold_text, (20, 70), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        return offset
