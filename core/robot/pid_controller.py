@@ -123,7 +123,7 @@ class PIDController:
         if self.rotation_mode:
             # MODE ROTATION: Tourne sur place pour centrer la ligne
             # Ajouter une zone morte pour éviter les micro-mouvements
-            DEADBAND = 5  # Ne bouge pas si l'erreur est inférieure à 5 pixels
+            DEADBAND = 1  # Ne bouge pas si l'erreur est inférieure à 5 pixels
             ROTATION_SCALE = 0.3  # Réduit la vitesse à 30% en mode rotation
             
             if abs(error) < self.deadband:
