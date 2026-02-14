@@ -76,23 +76,30 @@ def control_loop():
     vision_pipeline.start()
 
     while True:
-      
         try:
             # vision_pipeline.step() capture l'image ET applique tous les détecteurs
             results = vision_pipeline.step()
             
-            # Logique d'affichage console pour le debug
+            # Logique d'affichage console pour le debug ET stockage de l'offset
             line_val = None
             for res in results:
                 if res.get("detector") == "line":
                     line_val = res.get("value")
+            
+            # NOUVEAU: Stocker l'offset dans le pipeline pour le PID
+            if hasattr(vision_pipeline, 'last_line_offset'):
+                vision_pipeline.last_line_offset = line_val
+            else:
+                vision_pipeline.last_line_offset = line_val
+                
             if line_val is not None:
                 print("Offset ligne: {}".format(line_val))
                 
         except Exception as e:
             print("Erreur dans control_loop: {}".format(e))
+            import traceback
+            traceback.print_exc()
             time.sleep(0.1)
-
         
 
 

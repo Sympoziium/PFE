@@ -527,20 +527,8 @@ class controller:
                 print("[PID_LOOP] Démarrage du pid_loop")
                 while self.pid_active:
                     try:
-                        # Récupérer le dernier offset de ligne depuis les résultats du pipeline
-                        frame = vp.get_last_frame()
-                        if frame is None:
-                            time.sleep(0.05)
-                            continue
-                        
-                        # Trouver le détecteur de ligne
-                        line_offset = None
-                        for i, detector in enumerate(vp.get_detectors()):
-                            detector_name = getattr(detector, 'name', detector.__class__.__name__)
-                            if 'line' in detector_name.lower():
-                                result = detector.process(frame.copy())
-                                line_offset = result.get('value')
-                                break
+                        # CHANGEMENT: Récupérer l'offset déjà calculé par control_loop
+                        line_offset = getattr(vp, 'last_line_offset', None)
                         
                         if line_offset is None:
                             # Pas de ligne détectée, arrêter les moteurs
@@ -569,7 +557,6 @@ class controller:
                         time.sleep(0.1)
                 
                 print("[PID_LOOP] Arrêt du pid_loop")
-                # Arrêter les moteurs à la fin
                 self.robot.stop()
             
             self.pid_thread = threading.Thread(target=pid_loop)
