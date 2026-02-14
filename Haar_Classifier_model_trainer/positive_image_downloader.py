@@ -1,3 +1,4 @@
+# positive_image_downloader.py
 # Ce scipt sert à télécharger massivement des images en ligne. 
 # Il utilise la bibliothèque icrawler `pip install icrawler` pour faire le travail.
 # pour l'utiliser, il suffit de lancer ce script et modifier les requêtes 
@@ -15,7 +16,11 @@ crawler = BingImageCrawler(
 
 queries = [
     
-"minifigure lego sfondo bianco foto", "minifigure lego in piedi vista frontale", "minifigure lego isolata foto", "minifigure lego vista laterale foto", "minifigure lego vista posteriore foto"
+"minifigure lego sfondo bianco foto", 
+"minifigure lego in piedi vista frontale", 
+"minifigure lego isolata foto", 
+"minifigure lego vista laterale foto", 
+"minifigure lego vista posteriore foto"
 
 
 ]

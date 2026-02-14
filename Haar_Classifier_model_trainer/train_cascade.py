@@ -1062,16 +1062,14 @@ def test_model(model, test_image_dir, positive=True, scaleFactor=1.1, minNeighbo
 
     return stats
 
-if __name__ == "__main__":
+if __name__ == "__main__"(MODEL_TRAINING_CONFIG="Rapide"):# Choix du mode d'entraînement : "Rapide", "Équilibre", "Précision"
+
     # Chemins vers les fichiers et dossiers nécessaires    
     base_dir = os.path.dirname(__file__)
     data_dir = os.path.join(base_dir, 'data')                          # Dossier racine des données
     positive_images_dir = os.path.join(data_dir, 'positive')           # Dossier contenant les images positives
     negative_images_dir = os.path.join(data_dir, 'negative')           # Dossier contenant les images négatives
     output_dir = os.path.join(data_dir, 'cascade')                     # Dossier où le modèle entraîné sera sauvegardé
-    MODEL_TRAINING_CONFIG = "Rapide"                                   # Choix du mode d'entraînement : "Rapide", "Équilibre", "Précision"
-
-
 
     # Étape 0: Vérification de l'environnement
     validate_environment()
