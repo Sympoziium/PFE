@@ -11,7 +11,7 @@ en fonction de l'erreur de position de la ligne détectée.
 import time
 
 class PIDController:
-    def __init__(self, kp=0.1, ki=0.0, kd=0.05, base_speed=20, max_correction=30):
+    def __init__(self, kp=0.1, ki=0.0, kd=0.05, base_speed=20, max_correction=30, rotation_mode=True):
         """
         Initialise le contrôleur PID.
         
@@ -21,12 +21,14 @@ class PIDController:
             kd (float): Gain dérivé
             base_speed (int): Vitesse de base des moteurs (0-100)
             max_correction (int): Correction maximale applicable
+            rotation_mode (bool): Si True, tourne sur place. Si False, avance en suivant la ligne.
         """
         self.kp = kp
         self.ki = ki
         self.kd = kd
         self.base_speed = base_speed
         self.max_correction = max_correction
+        self.rotation_mode = rotation_mode  # NOUVEAU
         
         # Variables internes
         self.previous_error = 0
@@ -45,7 +47,7 @@ class PIDController:
         self.error_history = []
         self.correction_history = []
         
-    def update_params(self, kp=None, ki=None, kd=None, base_speed=None, max_correction=None):
+    def update_params(self, kp=None, ki=None, kd=None, base_speed=None, max_correction=None, rotation_mode=None):
         """Met à jour les paramètres du PID."""
         if kp is not None:
             self.kp = kp
@@ -57,6 +59,8 @@ class PIDController:
             self.base_speed = base_speed
         if max_correction is not None:
             self.max_correction = max_correction
+        if rotation_mode is not None:  # NOUVEAU
+            self.rotation_mode = rotation_mode
             
     def get_params(self):
         """Retourne les paramètres actuels du PID."""
@@ -65,7 +69,8 @@ class PIDController:
             'ki': self.ki,
             'kd': self.kd,
             'base_speed': self.base_speed,
-            'max_correction': self.max_correction
+            'max_correction': self.max_correction,
+            'rotation_mode': self.rotation_mode  # NOUVEAU
         }
         
     def compute(self, error):
@@ -111,11 +116,19 @@ class PIDController:
         # Limiter la correction
         correction = max(-self.max_correction, min(self.max_correction, correction))
         
-        # Calculer les vitesses des moteurs
-        # Si erreur positive (ligne à droite) : ralentir roue droite, accélérer roue gauche
-        # Si erreur négative (ligne à gauche) : ralentir roue gauche, accélérer roue droite
-        left_speed = self.base_speed + correction
-        right_speed = self.base_speed - correction
+        # ===== CHANGEMENT ICI: Mode rotation vs mode avance =====
+        if self.rotation_mode:
+            # MODE ROTATION: Tourne sur place pour centrer la ligne
+            # Si erreur positive (ligne à droite): roue droite recule, roue gauche avance
+            # Si erreur négative (ligne à gauche): roue droite avance, roue gauche recule
+            left_speed = correction
+            right_speed = -correction
+        else:
+            # MODE AVANCE: Avance en suivant la ligne
+            # Si erreur positive (ligne à droite): ralentir roue droite, accélérer roue gauche
+            # Si erreur négative (ligne à gauche): ralentir roue gauche, accélérer roue droite
+            left_speed = self.base_speed + correction
+            right_speed = self.base_speed - correction
         
         # Limiter les vitesses entre -100 et 100
         left_speed = max(-100, min(100, left_speed))

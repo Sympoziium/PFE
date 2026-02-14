@@ -477,10 +477,12 @@ class controller:
             kd = float(data.get('kd', self.pid_controller.kd))
             base_speed = int(data.get('base_speed', self.pid_controller.base_speed))
             max_correction = int(data.get('max_correction', self.pid_controller.max_correction))
+            rotation_mode = bool(data.get('rotation_mode', self.pid_controller.rotation_mode))  # NOUVEAU
             
             self.pid_controller.update_params(kp=kp, ki=ki, kd=kd, 
                                             base_speed=base_speed, 
-                                            max_correction=max_correction)
+                                            max_correction=max_correction,
+                                            rotation_mode=rotation_mode)  # NOUVEAU
             
             return jsonify({'status': 'ok', 'params': self.pid_controller.get_params()})
         except Exception as e:

@@ -4,7 +4,7 @@
 # ------------------
 """Page web pour le contrôle PID du suivi de ligne."""
 
-def render_pid_tab(title: str = "Asservissement PID") -> str:
+def render_pid_tab(title="Asservissement PID"):
     """Retourne une page HTML complète pour le contrôle PID."""
 
     html = """<!DOCTYPE html><html lang='fr'>
@@ -25,6 +25,7 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
     .container {{
         display: flex; justify-content: center; align-items: flex-start;
         padding: 20px; height: calc(100vh - 40px);
+        overflow-y: auto;
     }}
 
     .tab-shell {{
@@ -234,6 +235,26 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
             <!-- Paramètres PID -->
             <div class='tab-content'>
                 <h3 class='tab-subtitle'>Paramètres PID</h3>
+                
+                <!-- Mode de contrôle -->
+                <div style='margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 10px;'>
+                    <label style='font-weight: bold; font-size: 16px; display: block; margin-bottom: 10px;'>
+                        Mode de contrôle
+                    </label>
+                    <div style='display: flex; gap: 10px;'>
+                        <button class='control-btn' id='rotationModeBtn' style='flex: 1;'>
+                            🔄 Mode Rotation (Tuning)
+                        </button>
+                        <button class='control-btn' id='driveModeBtn' style='flex: 1; background: #6c757d;'>
+                            ➡️ Mode Avance (Suivi)
+                        </button>
+                    </div>
+                    <p style='margin-top: 10px; font-size: 13px; color: #666;'>
+                        <strong>Mode Rotation:</strong> Le Zumi tourne sur place pour centrer la ligne (idéal pour régler Kp, Ki, Kd).<br>
+                        <strong>Mode Avance:</strong> Le Zumi avance en suivant la ligne.
+                    </p>
+                </div>
+                
                 <div class='param-grid'>
                     <div class='param-item'>
                         <label class='param-label'>Kp (Proportionnel)</label>
@@ -250,6 +271,7 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
                     <div class='param-item'>
                         <label class='param-label'>Vitesse de base</label>
                         <input type='number' step='1' class='param-input' id='baseSpeedInput' value='20'>
+                        <small style='color: #666;'>(utilisé uniquement en mode avance)</small>
                     </div>
                     <div class='param-item'>
                         <label class='param-label'>Correction max</label>
@@ -317,9 +339,14 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
     <div class='toast-container' id='toastContainer'></div>
 
     <script>
+    // ========================================================================
+    //                    SECTION JAVASCRIPT - COMMENCE ICI
+    // ========================================================================
+    
     // Variables globales
     var pidRunning = false;
     var statusInterval = null;
+    var rotationMode = true;  // Démarre en mode rotation par défaut
 
     // Toast notifications
     function showToast(message, type, duration) {{
@@ -347,6 +374,26 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
         terminal.scrollTop = terminal.scrollHeight;
     }}
 
+    // Basculer en mode rotation
+    function setRotationMode() {{
+        rotationMode = true;
+        document.getElementById('rotationModeBtn').style.background = '#28a745';
+        document.getElementById('driveModeBtn').style.background = '#6c757d';
+        updateParams();  // Mettre à jour immédiatement
+        appendLog('Mode ROTATION activé - Le Zumi tourne sur place');
+        showToast('Mode Rotation activé', 'info');
+    }}
+
+    // Basculer en mode avance
+    function setDriveMode() {{
+        rotationMode = false;
+        document.getElementById('rotationModeBtn').style.background = '#6c757d';
+        document.getElementById('driveModeBtn').style.background = '#28a745';
+        updateParams();  // Mettre à jour immédiatement
+        appendLog('Mode AVANCE activé - Le Zumi suit la ligne');
+        showToast('Mode Avance activé', 'info');
+    }}
+
     // Mettre à jour les paramètres PID
     function updateParams() {{
         var params = {{
@@ -354,7 +401,8 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
             ki: parseFloat(document.getElementById('kiInput').value),
             kd: parseFloat(document.getElementById('kdInput').value),
             base_speed: parseInt(document.getElementById('baseSpeedInput').value),
-            max_correction: parseInt(document.getElementById('maxCorrectionInput').value)
+            max_correction: parseInt(document.getElementById('maxCorrectionInput').value),
+            rotation_mode: rotationMode
         }};
 
         fetch('/pid/update_params', {{
@@ -364,7 +412,8 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
         }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            appendLog('Paramètres mis à jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd);
+            var mode = rotationMode ? 'ROTATION' : 'AVANCE';
+            appendLog('Paramètres mis à jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
             showToast('Paramètres PID mis à jour!', 'success');
         }})
         .catch(function(err) {{
@@ -405,7 +454,7 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l\'arrêt', 'error');
+            showToast('Erreur lors de l\\'arrêt', 'error');
         }});
     }}
 
@@ -430,10 +479,10 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
             fetch('/pid/status')
             .then(function(r) {{ return r.json(); }})
             .then(function(data) {{
-                if (data.error) {{
+                if (data.error !== undefined) {{
                     document.getElementById('currentError').textContent = parseFloat(data.error).toFixed(1);
                 }}
-                if (data.correction) {{
+                if (data.correction !== undefined) {{
                     document.getElementById('currentCorrection').textContent = parseFloat(data.correction).toFixed(1);
                 }}
                 if (data.left_speed !== undefined) {{
@@ -492,6 +541,10 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
         document.getElementById('startPidBtn').addEventListener('click', startPid);
         document.getElementById('stopPidBtn').addEventListener('click', stopPid);
         document.getElementById('resetPidBtn').addEventListener('click', resetPid);
+        
+        // Boutons de mode
+        document.getElementById('rotationModeBtn').addEventListener('click', setRotationMode);
+        document.getElementById('driveModeBtn').addEventListener('click', setDriveMode);
 
         // Charger les paramètres initiaux
         fetch('/pid/get_params')
@@ -502,6 +555,17 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
             document.getElementById('kdInput').value = data.kd || 0.05;
             document.getElementById('baseSpeedInput').value = data.base_speed || 20;
             document.getElementById('maxCorrectionInput').value = data.max_correction || 30;
+            
+            // Charger le mode
+            rotationMode = data.rotation_mode !== undefined ? data.rotation_mode : true;
+            if (rotationMode) {{
+                document.getElementById('rotationModeBtn').style.background = '#28a745';
+                document.getElementById('driveModeBtn').style.background = '#6c757d';
+            }} else {{
+                document.getElementById('rotationModeBtn').style.background = '#6c757d';
+                document.getElementById('driveModeBtn').style.background = '#28a745';
+            }}
+            
             appendLog('Paramètres chargés depuis le serveur');
         }})
         .catch(function(err) {{
@@ -516,8 +580,12 @@ def render_pid_tab(title: str = "Asservissement PID") -> str:
             fetch('/pid/stop', {{ method: 'POST' }});
         }}
     }});
+    
+    // ========================================================================
+    //                    SECTION JAVASCRIPT - TERMINE ICI
+    // ========================================================================
     </script>
     </body></html>
-    """
+    """.format(title=title)
 
-    return html.format(title=title)
+    return html
