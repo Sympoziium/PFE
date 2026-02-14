@@ -112,7 +112,7 @@ class LineDetector(BaseDetector):
         
         # 5. Grouper les pointillés qui sont alignés verticalement
         # On cherche les pointillés qui ont une position X similaire (tolérance)
-        X_TOLERANCE = width * 0.15  # 15% de la largeur comme tolérance
+        X_TOLERANCE = width * 0.30  # 15% de la largeur comme tolérance
         
         # Trouver le groupe de pointillés le plus aligné
         best_group = []
