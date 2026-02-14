@@ -76,84 +76,109 @@ class PIDController:
             'rotation_mode': self.rotation_mode  # NOUVEAU
         }
         
-    def compute(self, error):
-        """
-        Calcule la correction PID basée sur l'erreur.
-        
-        Args:
-            error (float): Erreur de position (offset de la ligne)
-                          Négatif = ligne à gauche, Positif = ligne à droite
-        
-        Returns:
-            tuple: (left_speed, right_speed) vitesses des moteurs
-        """
-        current_time = time.time()
-        
-        # Calculer dt (delta time)
-        if self.last_time is None:
-            dt = 0.05  # Valeur par défaut pour la première itération
-        else:
-            dt = current_time - self.last_time
-            if dt <= 0:
-                dt = 0.05
-                
-        self.last_time = current_time
-        
-        # Terme proportionnel
-        P = self.kp * error
-        
-        # Terme intégral (avec anti-windup)
-        self.integral += error * dt
-        # Limiter l'intégrale pour éviter le windup
-        max_integral = self.max_correction / (self.ki if self.ki != 0 else 1)
-        self.integral = max(-max_integral, min(max_integral, self.integral))
-        I = self.ki * self.integral
-        
-        # Terme dérivé
-        derivative = (error - self.previous_error) / dt if dt > 0 else 0
-        D = self.kd * derivative
-        
-        # Calcul de la correction totale
-        correction = P + I + D
-        
-        # Limiter la correction
-        correction = max(-self.max_correction, min(self.max_correction, correction))
-        
-        # ===== CHANGEMENT ICI: Mode rotation vs mode avance =====
-        if self.rotation_mode:
-            # MODE ROTATION: Tourne sur place pour centrer la ligne
-            # Ajouter une zone morte pour éviter les micro-mouvements
-            DEADBAND = 1  # Ne bouge pas si l'erreur est inférieure à 5 pixels
-            ROTATION_SCALE = 0.3  # Réduit la vitesse à 30% en mode rotation
+        def compute(self, error):
+            """
+            Calcule la correction PID basée sur l'erreur.
             
-            if abs(error) < self.deadband:
-                left_speed = 0
-                right_speed = 0
+            Args:
+                error (float): Erreur de position (offset de la ligne)
+                            Négatif = ligne à gauche, Positif = ligne à droite
+            
+            Returns:
+                tuple: (left_speed, right_speed) vitesses des moteurs
+            """
+            current_time = time.time()
+            
+            # Calculer dt (delta time)
+            if self.last_time is None:
+                dt = 0.05  # Valeur par défaut pour la première itération
             else:
-                left_speed = -correction * self.rotation_scale
-                right_speed = correction * self.rotation_scale
-        else:
-            # MODE AVANCE: Avance en suivant la ligne
-            # Si erreur positive (ligne à droite): ralentir roue droite, accélérer roue gauche
-            # Si erreur négative (ligne à gauche): ralentir roue gauche, accélérer roue droite
-            left_speed = self.base_speed - correction
-            right_speed = self.base_speed + correction
-        
-        # Limiter les vitesses entre -100 et 100
-        left_speed = max(-100, min(100, left_speed))
-        right_speed = max(-100, min(100, right_speed))
-        
-        # Sauvegarder pour la prochaine itération
-        self.previous_error = error
-        
-        # Historique (garder les 100 dernières valeurs)
-        self.error_history.append(error)
-        self.correction_history.append(correction)
-        if len(self.error_history) > 100:
-            self.error_history.pop(0)
-            self.correction_history.pop(0)
-        
-        return (int(left_speed), int(right_speed))
+                dt = current_time - self.last_time
+                if dt <= 0:
+                    dt = 0.05
+                    
+            self.last_time = current_time
+            
+            # Terme proportionnel
+            P = self.kp * error
+            
+            # Terme intégral (avec anti-windup)
+            self.integral += error * dt
+            # Limiter l'intégrale pour éviter le windup
+            max_integral = self.max_correction / (self.ki if self.ki != 0 else 1)
+            self.integral = max(-max_integral, min(max_integral, self.integral))
+            I = self.ki * self.integral
+            
+            # Terme dérivé
+            derivative = (error - self.previous_error) / dt if dt > 0 else 0
+            D = self.kd * derivative
+            
+            # Calcul de la correction totale
+            correction = P + I + D
+            
+            # Limiter la correction
+            correction = max(-self.max_correction, min(self.max_correction, correction))
+            
+            # ===== NOUVELLE FONCTION: Saturation non-linéaire =====
+            def apply_nonlinear_scaling(speed):
+                """
+                Applique une courbe non-linéaire pour réduire les petites vitesses.
+                Utilise une fonction cubique pour avoir un contrôle plus fin.
+                """
+                # Seuil en dessous duquel on applique la mise à l'échelle agressive
+                if abs(speed) < 1.0:
+                    return 0  # Vitesses vraiment minuscules = 0
+                
+                # Fonction cubique: vitesse_finale = signe * (vitesse_normalisée)^3 * échelle
+                # Cela donne une courbe douce avec plus de résolution pour les petites valeurs
+                sign = 1 if speed >= 0 else -1
+                abs_speed = abs(speed)
+                
+                # Normaliser par rapport à la correction max
+                normalized = abs_speed / self.max_correction
+                
+                # Appliquer une courbe cubique (x^3) pour avoir plus de granularité en bas
+                # puis re-scaler à la correction max
+                scaled = (normalized ** 3) * self.max_correction
+                
+                return sign * scaled
+            
+            # ===== Mode rotation vs mode avance =====
+            if self.rotation_mode:
+                # MODE ROTATION: Tourne sur place pour centrer la ligne
+                # Appliquer la correction avec mise à l'échelle non-linéaire
+                left_correction = apply_nonlinear_scaling(correction) * self.rotation_scale
+                right_correction = apply_nonlinear_scaling(correction) * self.rotation_scale
+                
+                # Si erreur négative (ligne à gauche): tourner à gauche (L-, R+)
+                # Si erreur positive (ligne à droite): tourner à droite (L+, R-)
+                left_speed = -left_correction
+                right_speed = right_correction
+            else:
+                # MODE AVANCE: Avance en suivant la ligne
+                # Appliquer la mise à l'échelle non-linéaire
+                scaled_correction = apply_nonlinear_scaling(correction)
+                
+                # Si erreur positive (ligne à droite): ralentir roue droite, accélérer roue gauche
+                # Si erreur négative (ligne à gauche): ralentir roue gauche, accélérer roue droite
+                left_speed = self.base_speed - scaled_correction
+                right_speed = self.base_speed + scaled_correction
+            
+            # Limiter les vitesses entre -100 et 100
+            left_speed = max(-100, min(100, left_speed))
+            right_speed = max(-100, min(100, right_speed))
+            
+            # Sauvegarder pour la prochaine itération
+            self.previous_error = error
+            
+            # Historique (garder les 100 dernières valeurs)
+            self.error_history.append(error)
+            self.correction_history.append(correction)
+            if len(self.error_history) > 100:
+                self.error_history.pop(0)
+                self.correction_history.pop(0)
+            
+            return (int(left_speed), int(right_speed))
     
     def get_debug_info(self):
         """Retourne les informations de debug."""
