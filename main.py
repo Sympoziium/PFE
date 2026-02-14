@@ -76,22 +76,22 @@ def control_loop():
     vision_pipeline.start()
 
     while True:
-
-        while True:
-            try:
-                # vision_pipeline.step() capture l'image ET applique tous les détecteurs
-                results = vision_pipeline.step()
+      
+        try:
+            # vision_pipeline.step() capture l'image ET applique tous les détecteurs
+            results = vision_pipeline.step()
+            
+            # Logique d'affichage console pour le debug
+            line_val = None
+            for res in results:
+                if res.get("detector") == "line":
+                    line_val = res.get("value")
+            if line_val is not None:
+                print("Offset ligne: {}".format(line_val))
                 
-                # Logique d'affichage console pour le debug
-                line_val = None
-                for res in results:
-                    if res.get("detector") == "line":
-                        line_val = res.get("value")
-                if line_val is not None:
-                    print("Offset ligne: {}".format(line_val))
-                    
-            except Exception as e:
-                print("Erreur dans control_loop: {}".format(e))
+        except Exception as e:
+            print("Erreur dans control_loop: {}".format(e))
+            time.sleep(0.1)
 
         
 

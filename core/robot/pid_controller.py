@@ -11,7 +11,8 @@ en fonction de l'erreur de position de la ligne détectée.
 import time
 
 class PIDController:
-    def __init__(self, kp=0.1, ki=0.0, kd=0.05, base_speed=20, max_correction=30, rotation_mode=True):
+    def __init__(self, kp=0.1, ki=0.0, kd=0.05, base_speed=20, max_correction=30, 
+             rotation_mode=True, deadband=5, rotation_scale=0.3):
         """
         Initialise le contrôleur PID.
         
@@ -28,7 +29,9 @@ class PIDController:
         self.kd = kd
         self.base_speed = base_speed
         self.max_correction = max_correction
-        self.rotation_mode = rotation_mode  # NOUVEAU
+        self.rotation_mode = rotation_mode
+        self.deadband = deadband
+        self.rotation_scale = rotation_scale
         
         # Variables internes
         self.previous_error = 0
@@ -119,10 +122,16 @@ class PIDController:
         # ===== CHANGEMENT ICI: Mode rotation vs mode avance =====
         if self.rotation_mode:
             # MODE ROTATION: Tourne sur place pour centrer la ligne
-            # Si erreur positive (ligne à droite): roue droite recule, roue gauche avance
-            # Si erreur négative (ligne à gauche): roue droite avance, roue gauche recule
-            left_speed = correction
-            right_speed = -correction
+            # Ajouter une zone morte pour éviter les micro-mouvements
+            DEADBAND = 5  # Ne bouge pas si l'erreur est inférieure à 5 pixels
+            ROTATION_SCALE = 0.3  # Réduit la vitesse à 30% en mode rotation
+            
+            if abs(error) < self.deadband:
+                left_speed = 0
+                right_speed = 0
+            else:
+                left_speed = correction * self.rotation_scale
+                right_speed = -correction * self.rotation_scale
         else:
             # MODE AVANCE: Avance en suivant la ligne
             # Si erreur positive (ligne à droite): ralentir roue droite, accélérer roue gauche
