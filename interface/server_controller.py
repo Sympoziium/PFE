@@ -583,3 +583,53 @@ class controller:
             'right_speed': self.last_right_speed,
             'debug': self.pid_controller.get_debug_info()
         })
+    
+    def line_detector_update_params(self):
+        """Met à jour les paramètres du détecteur de ligne."""
+        vp = self.vision_pipeline
+        if not vp:
+            return jsonify({'error': 'Vision pipeline not initialized'}), 400
+        
+        # Trouver le détecteur de ligne
+        line_detector = None
+        for detector in vp.get_detectors():
+            if hasattr(detector, 'white_threshold'):  # C'est le LineDetector
+                line_detector = detector
+                break
+        
+        if not line_detector:
+            return jsonify({'error': 'Line detector not found'}), 404
+        
+        data = request.get_json(silent=True) or {}
+        try:
+            white_threshold = data.get('white_threshold')
+            min_area = data.get('min_area')
+            offset_ratio = data.get('offset_ratio')
+            
+            line_detector.update_params(
+                white_threshold=white_threshold,
+                min_area=min_area,
+                offset_ratio=offset_ratio
+            )
+            
+            return jsonify({'status': 'ok', 'params': line_detector.get_params()})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+    def line_detector_get_params(self):
+        """Retourne les paramètres actuels du détecteur de ligne."""
+        vp = self.vision_pipeline
+        if not vp:
+            return jsonify({'error': 'Vision pipeline not initialized'}), 400
+        
+        # Trouver le détecteur de ligne
+        line_detector = None
+        for detector in vp.get_detectors():
+            if hasattr(detector, 'white_threshold'):
+                line_detector = detector
+                break
+        
+        if not line_detector:
+            return jsonify({'error': 'Line detector not found'}), 404
+        
+        return jsonify(line_detector.get_params())

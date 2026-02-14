@@ -38,7 +38,7 @@ def register_routes(ctrl):
     app.add_url_rule('/zumi/left', 'left', lambda: ctrl.left())
     app.add_url_rule('/zumi/right', 'right', lambda: ctrl.right())
     app.add_url_rule('/zumi/stop', 'stop', lambda: ctrl.stop())
-    
+
     # Page PID
     app.add_url_rule('/pid', 'pid_page', lambda: ctrl.pid_page())
 
@@ -49,5 +49,10 @@ def register_routes(ctrl):
     app.add_url_rule('/pid/stop', 'pid_stop', lambda: ctrl.pid_stop(), methods=['POST'])
     app.add_url_rule('/pid/reset', 'pid_reset', lambda: ctrl.pid_reset(), methods=['POST'])
     app.add_url_rule('/pid/status', 'pid_status', lambda: ctrl.pid_status())
+    # Routes pour le détecteur de ligne
+    app.add_url_rule('/line_detector/update_params', 'line_detector_update_params', 
+                    lambda: ctrl.line_detector_update_params(), methods=['POST'])
+    app.add_url_rule('/line_detector/get_params', 'line_detector_get_params', 
+                    lambda: ctrl.line_detector_get_params())
 
     return app
