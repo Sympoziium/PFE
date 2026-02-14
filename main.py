@@ -38,6 +38,7 @@ pid_controller = PIDController(
     rotation_mode=True,
     deadband=1,
     rotation_scale=0.2  # Réduit pour plus de précision
+    auto_reset_threshold=80
 )
 
 # Machine à états

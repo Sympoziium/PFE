@@ -12,7 +12,7 @@ import time
 
 class PIDController:
     def __init__(self, kp=0.1, ki=0.0, kd=0.05, base_speed=20, max_correction=30, 
-             rotation_mode=True, deadband=1, rotation_scale=0.3):
+             rotation_mode=True, deadband=1, rotation_scale=0.3, auto_reset_threshold=100):
         """
         Initialise le contrôleur PID.
         
@@ -32,6 +32,7 @@ class PIDController:
         self.rotation_mode = rotation_mode
         self.deadband = deadband
         self.rotation_scale = rotation_scale
+        self.auto_reset_threshold = auto_reset_threshold 
         
         # Variables internes
         self.previous_error = 0
@@ -62,7 +63,7 @@ class PIDController:
             self.base_speed = base_speed
         if max_correction is not None:
             self.max_correction = max_correction
-        if rotation_mode is not None:  # NOUVEAU
+        if rotation_mode is not None:  
             self.rotation_mode = rotation_mode
             
     def get_params(self):
@@ -73,7 +74,9 @@ class PIDController:
             'kd': self.kd,
             'base_speed': self.base_speed,
             'max_correction': self.max_correction,
-            'rotation_mode': self.rotation_mode  # NOUVEAU
+            'rotation_mode': self.rotation_mode,  
+            'auto_reset_threshold': self.auto_reset_threshold
+
         }
         
     def compute(self, error):
@@ -87,6 +90,13 @@ class PIDController:
             Returns:
                 tuple: (left_speed, right_speed) vitesses des moteurs
             """
+            # ===== AUTO-RESET si erreur trop grande =====
+            if abs(error) > self.auto_reset_threshold:
+                print("[PID] Erreur trop grande ({}), réinitialisation automatique".format(error))
+                self.integral = 0  # Reset de l'intégrale
+                self.previous_error = 0  # Reset du terme dérivé
+                # On garde last_time pour éviter un saut dans dt
+    
             current_time = time.time()
             
             # Calculer dt (delta time)
