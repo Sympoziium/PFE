@@ -51,8 +51,8 @@ MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detector
 
 # config du classificateur de Haar pour l'ajout de détecteurs
 haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_classifier_2.xml'))
-haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'pedestrian_classifier.xml'))
-
+# haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'pedestrian_classifier.xml'))
+haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Alpha.xml'))
 
 # On ajoute le détecteur au pipeline de vision
 # vision_pipeline.add_detectors(Lum_detector)
