@@ -438,7 +438,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					DISPLAY_MODE = 'livefeed';
 					CAMERA_ACTIVE = true;
 					captureBtn.textContent = '📸 Capture Image';
-					captureBtn.onclick = captureImage;
 				})
 				.catch(function(err) {
 					logError('toggleCamera: /start_camera', err);
@@ -453,7 +452,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			DISPLAY_MODE = 'livefeed';
 			CAMERA_ACTIVE = false;
 			captureBtn.textContent = '📸 Capture Image';
-			captureBtn.onclick = captureImage;
 			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
 		}
 	}
@@ -509,7 +507,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				mainDisplay.style.display = 'block';
 				DISPLAY_MODE = 'captured';
 				captureBtn.textContent = '↩️ Return to Livefeed';
-				captureBtn.onclick = returnToLivefeed;
 
 				// Mise à jour de la dernière image capturée (pour diagnostic)
 				imageCapturedCallback(file_url);
@@ -531,7 +528,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			mainImage.src = '/video?' + new Date().getTime();
 			DISPLAY_MODE = 'livefeed';
 			captureBtn.textContent = '📸 Capture Image';
-			captureBtn.onclick = captureImage;
 		} else {
 			// Caméra pas active, la redémarrer
 			var btn = document.getElementById('cameraToggleBtn');
@@ -544,7 +540,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					DISPLAY_MODE = 'livefeed';
 					CAMERA_ACTIVE = true;
 					captureBtn.textContent = '📸 Capture Image';
-					captureBtn.onclick = captureImage;
 				})
 				.catch(function(err) {
 					logError('returnToLivefeed: /start_camera', err);
