@@ -491,13 +491,13 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 				// enregistrement de l'image sur le PC client si demandé
 				if (downloadEnabled) {
-					alert('Image capturee et enregistree sur le serveur : ' + download_url);
 					var link = document.createElement('a');
 					link.href = download_url;
 					link.download = filename;
 					document.body.appendChild(link);
 					link.click();
 					link.remove();
+					showToast('Image sauvegardée: ' + filename, 'success', 2000);
 				}
 
 				// Basculer vers l'image capturée dans l'affichage principal
@@ -778,9 +778,15 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		// Camera toggle
 		var camBtn = document.getElementById('cameraToggleBtn');
 		if (camBtn) camBtn.addEventListener('click', toggleCamera);
-		// Capture image
+		// Capture image — dispatche selon le mode d'affichage courant
 		var capBtn = document.getElementById('captureImageBtn');
-		if (capBtn) capBtn.addEventListener('click', captureImage);
+		if (capBtn) capBtn.addEventListener('click', function() {
+			if (DISPLAY_MODE === 'captured') {
+				returnToLivefeed();
+			} else {
+				captureImage();
+			}
+		});
 		// Toggle download
 		var dlBtn = document.getElementById('toggleDownloadCapturedBtn');
 		if (dlBtn) dlBtn.addEventListener('click', toggleDownloadCaptured);
