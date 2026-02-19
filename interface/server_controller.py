@@ -197,18 +197,32 @@ class controller:
         if vp is None or not vp.is_running():
             return jsonify({'error': 'camera not running'}), 400
 
-        # 1. Récupération de l'image actuelle sans ré-entrer dans le générateur
-        #    Si le flux vidéo tourne, on utilise le dernier frame mis en buffer.
-        frame = vp.get_last_frame()
-        if frame is None:
-            # Pas de flux actif ou pas encore d'image en buffer: on capture directement
-            return jsonify({'error': 'Activer la camera car le flux est pas encore disponible'}), 400
+        # ── Mode haute résolution (optionnel) ──
+        # Si ?hires=1 est passé en query param, on capture en haute résolution
+        # pour améliorer la qualité de détection (surtout pour les petits objets).
+        # La résolution par défaut est 320×240 mais peut être personnalisée via
+        # ?hires_w=640&hires_h=480
+        use_hires = request.args.get('hires', '0') == '1'
+        
+        if use_hires and vp.has_hires_capture():
+            hires_w = int(request.args.get('hires_w', '320'))
+            hires_h = int(request.args.get('hires_h', '240'))
+            frame = vp.capture_hires_frame(width=hires_w, height=hires_h)
+            if frame is None:
+                return jsonify({'error': 'hires capture failed, try normal capture'}), 500
+        else:
+            # 1. Récupération de l'image actuelle sans ré-entrer dans le générateur
+            #    Si le flux vidéo tourne, on utilise le dernier frame mis en buffer.
+            frame = vp.get_last_frame()
+            if frame is None:
+                return jsonify({'error': 'Activer la camera car le flux est pas encore disponible'}), 400
 
         frame_to_save = frame.copy()  # Toujours en BGR
 
         # 2. Génération d'un nom de fichier unique
         ts = time.strftime("%Y%m%d-%H%M%S")
-        filename = '{}_{}.jpg'.format(ts, uuid.uuid4().hex[:6])
+        hires_tag = '_hires' if use_hires else ''
+        filename = '{}{}_{}.jpg'.format(ts, hires_tag, uuid.uuid4().hex[:6])
         save_path = os.path.join(self.CAPTURE_DIR, filename)
 
         # 3. Sauvegarde directe en BGR (format natif OpenCV)
@@ -221,7 +235,8 @@ class controller:
         download_url = '/download_image/{}'.format(filename)
         # Mémoriser la dernière image capturée pour une détection à la demande
         self.last_captured_filename = filename
-        return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url})
+        hires_info = {'hires': True, 'resolution': '{}x{}'.format(hires_w, hires_h)} if use_hires else {'hires': False}
+        return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url, **hires_info})
 
     # Statut
     def status(self):

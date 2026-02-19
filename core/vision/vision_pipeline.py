@@ -28,6 +28,8 @@ class VisionPipeline:
         # Buffer de la dernière image et protection de concurrence
         self._lock = threading.Lock()
         self._last_frame = None
+        # Fonction optionnelle de capture haute résolution (injectée depuis l'extérieur)
+        self._hires_capture_fn = None
 
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
@@ -163,6 +165,54 @@ class VisionPipeline:
                 return self._last_frame.copy()
             except Exception:
                 return self._last_frame
+
+    def set_hires_capture_fn(self, fn):
+        """
+        Injecte une fonction de capture haute résolution.
+        
+        La fonction doit avoir la signature : fn(width, height) -> np.ndarray (BGR)
+        Elle sera appelée par capture_hires_frame() pour obtenir une image à
+        résolution supérieure sans que le pipeline ait besoin de connaître les
+        détails de la caméra sous-jacente (modularité).
+        
+        :param fn: callable(width: int, height: int) -> np.ndarray
+        """
+        self._hires_capture_fn = fn
+
+    def capture_hires_frame(self, width=640, height=480):
+        """
+        Capture une image haute résolution via la fonction injectée.
+        
+        Si aucune fonction hires n'a été injectée, retombe sur la capture
+        normale (get_last_frame ou capture_frame).
+        
+        Note : pendant la capture hires, le flux vidéo normal est brièvement
+        interrompu (la caméra est fermée et rouverte). C'est normal.
+        
+        :param width: Largeur souhaitée pour la capture hires
+        :param height: Hauteur souhaitée pour la capture hires
+        :return: np.ndarray BGR ou None
+        """
+        if self._hires_capture_fn is not None:
+            try:
+                frame = self._hires_capture_fn(width, height)
+                if frame is not None:
+                    return frame
+                print("[VisionPipeline] Hires capture returned None, falling back to normal")
+            except Exception as e:
+                print("[VisionPipeline] Hires capture failed: {}, falling back".format(e))
+        
+        # Fallback : capture normale
+        frame = self.get_last_frame()
+        if frame is not None:
+            return frame
+        if self.running:
+            return self.capture_frame()
+        return None
+
+    def has_hires_capture(self):
+        """Vérifie si la capture haute résolution est disponible."""
+        return self._hires_capture_fn is not None
 
     def get_detectors(self):
         """ obtenir la liste des détecteurs ajoutés au pipeline de vision """

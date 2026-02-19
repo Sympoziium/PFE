@@ -46,6 +46,12 @@ stop_detector_matt = StopDetectorMatt(min_area=400, min_score=0.35)
 haar_classifier = HaarDetector()
 vision_pipeline = VisionPipeline(camera=zumi.camera)
 
+# Injection de la capture haute résolution (modularité : le pipeline ne connaît pas Zumi)
+# La caméra Zumi supporte capture_hires(w, h) pour temporairement switcher de résolution
+if hasattr(zumi.camera, 'capture_hires'):
+    vision_pipeline.set_hires_capture_fn(lambda w, h: zumi.camera.capture_hires(w, h))
+    print("[main] Capture haute résolution disponible via ZumiCamera")
+
 # Dossier contenant les modèles .xml pour les classificateurs de Haar       
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detectors', 'models')
 

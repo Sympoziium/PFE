@@ -38,5 +38,4 @@ class PiCam2(CameraBase):
         except Exception as e:
             print("Erreur lors de la capture d'une image avec PiCam2: {}".format(e))
             raise e
-        
         return frame

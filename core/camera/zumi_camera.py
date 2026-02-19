@@ -11,6 +11,7 @@ from zumi.util.camera import Camera
 from .camera_base import CameraBase
 import numpy as np
 import cv2
+import threading
 
 
 class ZumiCamera(CameraBase):
@@ -19,13 +20,31 @@ class ZumiCamera(CameraBase):
 
     La bibliothèque Zumi retourne des images en format RGB, mais OpenCV
     s'attend à du BGR. Cette classe effectue la conversion automatiquement.
+    
+    Supporte la capture haute résolution temporaire via capture_hires().
+    La résolution par défaut (160×128) est utilisée pour le flux vidéo en
+    direct (Pi Zero V1), tandis que la capture hires permet d'augmenter
+    temporairement la résolution pour la détection.
     """
 
-    def __init__(self):
-        """Initialise le wrapper de la caméra Zumi."""
+    # Résolution par défaut pour le flux vidéo (Pi Zero V1)
+    DEFAULT_W = 160
+    DEFAULT_H = 128
+
+    def __init__(self, image_w=None, image_h=None):
+        """
+        Initialise le wrapper de la caméra Zumi.
+        
+        :param image_w: Largeur par défaut (None = défaut Zumi 160px)
+        :param image_h: Hauteur par défaut (None = défaut Zumi 128px)
+        """
+        self._default_w = image_w or self.DEFAULT_W
+        self._default_h = image_h or self.DEFAULT_H
+        self._hires_lock = threading.Lock()
         try:
-            self.camera = Camera()
-            print("[ZumiCamera] Initialized - will convert RGB to BGR for OpenCV compatibility")
+            self.camera = Camera(image_w=self._default_w, image_h=self._default_h)
+            print("[ZumiCamera] Initialized ({}x{}) - RGB to BGR conversion active".format(
+                self._default_w, self._default_h))
         except Exception as e:
             print("Erreur lors de l'initialisation de ZumiCamera: {}".format(e))
             raise e
@@ -78,3 +97,64 @@ class ZumiCamera(CameraBase):
         except Exception as e:
             print("Erreur lors de la capture d'une image avec ZumiCamera: {}".format(e))
             raise e
+
+    def capture_hires(self, width=640, height=480):
+        """
+        Capture une image à haute résolution temporairement.
+        
+        Cycle : fermer la caméra courante → créer une caméra haute résolution →
+        capturer un frame → fermer la caméra hires → relancer la caméra par défaut.
+        
+        Thread-safe : un verrou empêche les captures concurrentes.
+        
+        :param width: Largeur de la capture hires (défaut 320)
+        :param height: Hauteur de la capture hires (défaut 240)
+        :return: np.ndarray BGR ou None en cas d'erreur
+        """
+        import time
+        
+        with self._hires_lock:
+            frame_bgr = None
+            try:
+                # 1. Fermer la caméra courante
+                print("[ZumiCamera] Hires capture: closing default camera...")
+                self.camera.close()
+                time.sleep(0.1)
+                
+                # 2. Créer une caméra haute résolution
+                print("[ZumiCamera] Hires capture: opening {}x{} camera...".format(width, height))
+                hires_cam = Camera(image_w=width, image_h=height)
+                hires_cam.start_camera()
+                time.sleep(0.3)  # Laisser la caméra se stabiliser
+                
+                # 3. Capturer
+                frame_rgb = hires_cam.capture()
+                
+                # 4. Fermer la caméra hires
+                hires_cam.close()
+                time.sleep(0.1)
+                
+                # 5. Convertir RGB → BGR
+                if frame_rgb is not None and len(frame_rgb.shape) == 3 and frame_rgb.shape[2] == 3:
+                    frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                else:
+                    frame_bgr = frame_rgb
+                
+                print("[ZumiCamera] Hires capture: got {}x{} frame".format(
+                    frame_bgr.shape[1] if frame_bgr is not None else 0,
+                    frame_bgr.shape[0] if frame_bgr is not None else 0))
+                
+            except Exception as e:
+                print("[ZumiCamera] Hires capture error: {}".format(e))
+            
+            finally:
+                # 6. Toujours relancer la caméra par défaut
+                try:
+                    self.camera = Camera(image_w=self._default_w, image_h=self._default_h)
+                    self.camera.start_camera()
+                    print("[ZumiCamera] Hires capture: default camera restored ({}x{})".format(
+                        self._default_w, self._default_h))
+                except Exception as e2:
+                    print("[ZumiCamera] CRITICAL: failed to restore default camera: {}".format(e2))
+            
+            return frame_bgr
