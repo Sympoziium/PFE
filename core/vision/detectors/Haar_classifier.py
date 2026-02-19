@@ -18,7 +18,7 @@ from flask import url_for
 import numpy as np
 
 class HaarDetector(BaseDetector):
-    def __init__(self, scaleFactor=1.1, minNeighbors=5):
+    def __init__(self):
         """
         Initialise le détecteur générique basé sur des classifieurs de Haar.
         On peut y charger plusieurs fichiers .xml via add_classifier().
@@ -29,8 +29,6 @@ class HaarDetector(BaseDetector):
         self.name = "HaarDetector"
         self.classifiers = {}      # {nom: cv2.CascadeClassifier}
         self.cascade_paths = {}    # {nom: chemin_xml}
-        self.scaleFactor = scaleFactor
-        self.minNeighbors = minNeighbors
         self.CAPTURE_DIR = None
         self.DIAGNOSTIC_DIR = None
         # Diagnostique et logs des messages
@@ -38,11 +36,13 @@ class HaarDetector(BaseDetector):
         self.steps = []
 
 
-    def add_classifier(self, name, cascade_path):
+    def add_classifier(self, name, cascade_path, scaleFactor=1.1, minNeighbors=5):
         """Ajoute un classifieur .xml à la liste.
         
         :param name: Nom identifiant le classifieur (ex: 'stop_sign').
         :param cascade_path: Chemin vers le fichier .xml du classifieur.
+        :param scaleFactor: Facteur de réduction d'image à chaque échelle.
+        :param minNeighbors: Nombre minimum de voisins pour qu'une détection soit retenue.
         """
         try:
             if not os.path.exists(cascade_path):
@@ -51,7 +51,11 @@ class HaarDetector(BaseDetector):
             classifier = cv2.CascadeClassifier(cascade_path)
             if classifier.empty():
                 print("ATTENTION: le classifieur '{}' est vide (fichier invalide?)".format(name))
-            self.classifiers[name] = classifier
+            self.classifiers[name] = {
+                'classifier': classifier,
+                'scaleFactor': scaleFactor,
+                'minNeighbors': minNeighbors
+            }
             print("Classifieur '{}' chargé depuis: {}".format(name, cascade_path))
         except Exception as e:
             print("Erreur lors de l'ajout du classifieur {}: {}".format(name, str(e)))
@@ -111,7 +115,7 @@ class HaarDetector(BaseDetector):
             self.logs.append('=== DETECTION HAAR CASCADE ===')
             self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
             self.logs.append('Classifieurs charges: {}'.format(', '.join(classifier_names) if classifier_names else 'aucun'))
-            self.logs.append('Config: scaleFactor={}, minNeighbors={}'.format(self.scaleFactor, self.minNeighbors))
+            self.logs.append('Config: scaleFactor={}, minNeighbors={}'.format(self.classifiers[classifier_names[0]]['scaleFactor'], self.classifiers[classifier_names[0]]['minNeighbors']) if classifier_names else 'aucun')
 
             if not self.classifiers:
                 self.logs.append('ERREUR: aucun classifieur charge. Utilisez add_classifier().')
@@ -336,12 +340,12 @@ class HaarDetector(BaseDetector):
             gray_blur_quick = cv2.GaussianBlur(gray_raw, (5, 5), 0)
             quick_found = False
             for cname, clf in self.classifiers.items():
-                if clf.empty():
+                if clf['classifier'].empty():
                     continue
                 try:
-                    qresults = clf.detectMultiScale(
+                    qresults = clf['classifier'].detectMultiScale(
                         gray_blur_quick,
-                        scaleFactor=1.05,
+                        scaleFactor=1.05, ## on hardcode les param pour augmenter les detections du test rapide
                         minNeighbors=3,
                         minSize=(5, 5)
                     )
@@ -419,18 +423,15 @@ class HaarDetector(BaseDetector):
                 self.logs.append('  On teste chaque pretraitement avec les params par defaut.')
                 self.logs.append('')
 
-                test_sf = 1.05
-                test_mn = 3
-
                 for prep_name, gray_img in preprocess_variants:
                     for cname, clf in self.classifiers.items():
-                        if clf.empty():
+                        if clf['classifier'].empty():
                             continue
                         try:
-                            results = clf.detectMultiScale(
+                            results = clf['classifier'].detectMultiScale(
                                 gray_img,
-                                scaleFactor=test_sf,
-                                minNeighbors=test_mn,
+                                scaleFactor=clf['scaleFactor'],
+                                minNeighbors=clf['minNeighbors'],
                                 minSize=(5, 5)
                             )
                             n_det = len(results) if results is not None else 0
@@ -446,7 +447,7 @@ class HaarDetector(BaseDetector):
                                 if a > best['area']:
                                     best.update({
                                         'bbox': (int(rx), int(ry), int(rw), int(rh)), 'area': a,
-                                        'sf': test_sf, 'mn': test_mn,
+                                        'sf': clf['scaleFactor'], 'mn': clf['minNeighbors'],
                                         'ms': '(5,5)',
                                         'preprocess': prep_name,
                                         'classifier': cname, 'count': n_det
@@ -490,14 +491,14 @@ class HaarDetector(BaseDetector):
                 for prep_name, gray_img in preprocess_variants:
                     detect_by_preprocess[prep_name] = 0
                     for cname, clf in self.classifiers.items():
-                        if clf.empty():
+                        if clf['classifier'].empty():
                             continue
                         for sf in scale_factors:
                             for mn in min_neighbors_list:
                                 for ms_w, ms_h in min_size_list:
                                     total_tested += 1
                                     try:
-                                        results = clf.detectMultiScale(
+                                        results = clf['classifier'].detectMultiScale(
                                             gray_img,
                                             scaleFactor=sf,
                                             minNeighbors=mn,
@@ -572,8 +573,8 @@ class HaarDetector(BaseDetector):
                 # Recommandations post-détection
                 self.logs.append('')
                 self.logs.append('  Recommandation: utilisez ces parametres dans process():')
-                self.logs.append('    self.scaleFactor = {}'.format(best['sf']))
-                self.logs.append('    self.minNeighbors = {}'.format(best['mn']))
+                self.logs.append('    add_classifier("{}", "chemin/vers/{}.xml", scaleFactor={}, minNeighbors={})'.format(
+                    best['classifier'], best['classifier'], best['sf'], best['mn']))
             else:
                 self.logs.append('')
                 self.logs.append('  AUCUNE DETECTION.')
@@ -661,13 +662,13 @@ class HaarDetector(BaseDetector):
         Applique un filtrage à l'image pour réduire le bruit et améliorer la détection.
         Si diagnostic_mode est True, sauvegarde les étapes de filtrage pour l'affichage web.
         """
-        # Appliquer un flou gaussien pour réduire le bruit
-        img_filter = cv2.GaussianBlur(frame, (5, 5), 0)
-        if diagnostic_mode:
-            self._save_step(img_filter, '1_gaussian_blur', 'bgr')
+        # # Appliquer un flou gaussien pour réduire le bruit
+        # img_filter = cv2.GaussianBlur(frame, (5, 5), 0)
+        # if diagnostic_mode:
+        #     self._save_step(img_filter, '1_gaussian_blur', 'bgr')
 
         # Convertir en niveaux de gris
-        gray_filtered = cv2.cvtColor(img_filter, cv2.COLOR_BGR2GRAY)
+        gray_filtered = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if diagnostic_mode:
             self._save_step(gray_filtered, '2_gray_filtered', 'gray')
 
@@ -690,14 +691,15 @@ class HaarDetector(BaseDetector):
             self.logs.append('')
             self.logs.append('--- Classifieur: {} ---'.format(name))
 
-            if classifier.empty():
+            if classifier['classifier'].empty():
                 self.logs.append('  ATTENTION: classifieur vide, ignore.')
                 continue
 
-            results = classifier.detectMultiScale(
+            results = classifier['classifier'].detectMultiScale(
                 gray_filtered,
-                scaleFactor=self.scaleFactor,
-                minNeighbors=self.minNeighbors
+                scaleFactor=classifier['scaleFactor'],
+                minNeighbors=classifier['minNeighbors'],
+                minSize=(5, 5)# Buffer de sécurité pour éviter les erreurs sur les petites images ou les modèles avec minSize élevé
             )
 
             # test de détection
