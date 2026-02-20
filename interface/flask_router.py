@@ -21,6 +21,7 @@ def register_routes(ctrl):
     # Vision actions
     app.add_url_rule('/download_image/<filename>', 'download_image', lambda filename: ctrl.download_image(filename))
     app.add_url_rule('/capture_image', 'capture_image', lambda: ctrl.capture_image(), methods=['POST'])
+    app.add_url_rule('/capture_image_hires', 'capture_image_hires', lambda: ctrl.capture_image_hires(), methods=['POST'])
     app.add_url_rule('/status', 'status', lambda: ctrl.status())
     app.add_url_rule('/video', 'video_feed', lambda: ctrl.video_feed())
     app.add_url_rule('/close_camera', 'close_camera', lambda: ctrl.close_camera(), methods=['POST'])

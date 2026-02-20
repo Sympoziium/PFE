@@ -45,16 +45,19 @@ class VisionPipeline:
             self.running = True
         except Exception as e:
             print("Erreur lors du demarrage du pipeline de vision: {}".format(e))
-            raise e
+            
         
     def stop(self):
         """ appeler pour arrêter le pipeline de vision """
+        # Signaler l'arrêt AVANT de fermer la caméra
+        # pour que le générateur vidéo s'arrête proprement
+        self.running = False
+        import time
+        time.sleep(0.15)  # Laisser le générateur vidéo terminer son cycle
         try:
             self.camera.close()
-            self.running = False
         except Exception as e:
             print("Erreur lors de l'arret du pipeline de vision: {}".format(e))
-            raise e
         
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
@@ -71,7 +74,7 @@ class VisionPipeline:
             frame = self.camera.capture()
         except Exception as e:
             print("Erreur lors de la capture d'une image: {}".format(e))
-            raise e
+            
 
         results = []
 
@@ -83,7 +86,7 @@ class VisionPipeline:
 
             except Exception as e:
                 print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detectors, e))
-                raise e
+                
 
         # On fait un délais pour respecter le fps souhaité
         elapsed_time = time.time() - start_time
@@ -121,7 +124,7 @@ class VisionPipeline:
 
         except Exception as e:
             print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
-            raise e
+            
 
     def is_running(self):
         """ vérifier si le pipeline de vision est en cours d'exécution """
@@ -142,7 +145,7 @@ class VisionPipeline:
                 return self.camera.capture()
             except Exception as e:
                 print("Erreur lors de la capture d'une image brute: {}".format(e))
-                raise e
+                
 
     def update_last_frame(self, frame):
         """Met à jour le buffer de la dernière image capturée (thread-safe)."""

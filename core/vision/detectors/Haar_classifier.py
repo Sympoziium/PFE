@@ -256,7 +256,9 @@ class HaarDetector(BaseDetector):
 
             for cname in classifier_names:
                 cpath = self.cascade_paths.get(cname, '???')
-                clf = self.classifiers.get(cname)
+                clf_entry = self.classifiers.get(cname)
+                # clf_entry est un dict {'classifier': ..., 'scaleFactor': ..., 'minNeighbors': ...}
+                clf = clf_entry['classifier'] if isinstance(clf_entry, dict) else clf_entry
                 exists = os.path.exists(cpath)
                 fsize = os.path.getsize(cpath) if exists else 0
                 empty = clf.empty() if clf else True

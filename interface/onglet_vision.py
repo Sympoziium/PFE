@@ -471,9 +471,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		console.log('captureImage() appelee');
 		var downloadEnabled = document.getElementById('toggleDownloadCapturedBtn').getAttribute('aria-pressed') === 'true';
 
-		fetch('/capture_image', { method: 'POST' })
+		fetch('/capture_image_hires', { method: 'POST' })
 			.then(function(response) {
-				if (!response.ok) throw new Error('capture_image failed: ' + response.status + ' ' + response.statusText);
+				if (!response.ok) throw new Error('capture_image_hires failed: ' + response.status + ' ' + response.statusText);
 				return response.json();
 			})
 			.then(function(data) {
@@ -512,7 +512,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				imageCapturedCallback(file_url);
 			})
 			.catch(function(err) {
-				logError('captureImage: /capture_image', err);
+				logError('captureImage: /capture_image_hires', err);
 				alert('Erreur lors de la communication avec le serveur : ' + err);
 			});
 	}
