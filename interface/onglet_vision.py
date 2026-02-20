@@ -506,6 +506,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				mainImage.src = file_url;
 				mainDisplay.style.display = 'block';
 				DISPLAY_MODE = 'captured';
+				CAMERA_ACTIVE = false; // La caméra a été stoppée par le serveur pour la capture hires
 				captureBtn.textContent = '↩️ Return to Livefeed';
 
 				// Mise à jour de la dernière image capturée (pour diagnostic)

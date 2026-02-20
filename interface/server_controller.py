@@ -269,12 +269,10 @@ class controller:
 
         frame = vp.capture_hires_frame(width=hires_w, height=hires_h)
 
-        # Relancer le flux vidéo
-        if was_running:
-            try:
-                vp.start()
-            except Exception as e:
-                print("[controller] Warning: could not restart camera after hires: {}".format(e))
+        # NE PAS relancer le flux vidéo ici.
+        # Le JS affiche une image statique après la capture, donc la caméra
+        # n'a pas besoin de tourner. Elle sera redémarrée quand l'utilisateur
+        # clique "Return to Livefeed" (via /start_camera).
 
         if frame is None:
             return jsonify({'error': 'hires capture returned no image'}), 500
