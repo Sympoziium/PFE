@@ -70,6 +70,19 @@ class HaarDetector(BaseDetector):
             except Exception as e:
                 print("Erreur lors de la suppression du classifieur {}: {}".format(name, str(e)))
 
+    def get_classifier_attributes(self, name):
+        """Retourne les attributs d'un classifieur donné (ex: scaleFactor, minNeighbors)."""
+        clf_entry = self.classifiers.get(name)
+        if clf_entry:
+            return {
+                'scaleFactor': clf_entry['scaleFactor'],
+                'minNeighbors': clf_entry['minNeighbors'],
+                'cascade_path': self.cascade_paths.get(name, '')
+            }
+        else:
+            print("Classifieur '{}' non trouvé.".format(name))
+            return None
+
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         try:
@@ -697,10 +710,14 @@ class HaarDetector(BaseDetector):
                 self.logs.append('  ATTENTION: classifieur vide, ignore.')
                 continue
 
+            classifier_params = self.get_classifier_attributes(name)
+            self.logs.append('  Parametres: nom={}, scaleFactor={}, minNeighbors={}, minSize={}'.format(
+                name, classifier_params['scaleFactor'], classifier_params['minNeighbors'], '(5,5)'))
+
             results = classifier['classifier'].detectMultiScale(
                 gray_filtered,
-                scaleFactor=classifier['scaleFactor'],
-                minNeighbors=classifier['minNeighbors'],
+                scaleFactor=classifier_params['scaleFactor'],
+                minNeighbors=classifier_params['minNeighbors'],
                 minSize=(5, 5)# Buffer de sécurité pour éviter les erreurs sur les petites images ou les modèles avec minSize élevé
             )
 
