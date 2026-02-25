@@ -279,6 +279,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
 				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
 				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
+				<button class='remoteDL-toggle-btn off' id='toggleHighResCapturedBtn' aria-pressed='false'> Low Res</button>
 				<div id='zone-resultats'></div>
 				<!-- Conteneur unifié pour livefeed et image capturée -->
 				<div class='live-feed' id='mainImageDisplay' style='display:none;'>
@@ -456,6 +457,17 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		}
 	}
 
+	function toggleHighResCaptured() {
+		console.log('toggleHighResCaptured() appelee'); // pour debug
+		var btn = document.getElementById('toggleHighResCapturedBtn');
+		var isActive = btn.getAttribute('aria-pressed') === 'true';
+		var nextActive = !isActive;
+		btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+		btn.classList.toggle('on', nextActive);
+		btn.classList.toggle('off', !nextActive);
+		btn.textContent = nextActive ? 'High Res' : 'Low Res';
+	}
+
 	function toggleDownloadCaptured() {
 		console.log('toggleDownloadCaptured() appelee'); // pour debug
 		var btn = document.getElementById('toggleDownloadCapturedBtn');
@@ -470,10 +482,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	function captureImage() {
 		console.log('captureImage() appelee');
 		var downloadEnabled = document.getElementById('toggleDownloadCapturedBtn').getAttribute('aria-pressed') === 'true';
+		var highResEnabled = document.getElementById('toggleHighResCapturedBtn').getAttribute('aria-pressed') === 'true';
 
-		fetch('/capture_image_hires', { method: 'POST' })
+		fetch(highResEnabled ? '/capture_image_hires' : '/capture_image', { method: 'POST' })
 			.then(function(response) {
-				if (!response.ok) throw new Error('capture_image_hires failed: ' + response.status + ' ' + response.statusText);
+				if (!response.ok) throw new Error('capture_image failed: ' + response.status + ' ' + response.statusText);
 				return response.json();
 			})
 			.then(function(data) {
@@ -513,7 +526,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				imageCapturedCallback(file_url);
 			})
 			.catch(function(err) {
-				logError('captureImage: /capture_image_hires', err);
+				logError('captureImage: /capture_image', err);
 				alert('Erreur lors de la communication avec le serveur : ' + err);
 			});
 	}
@@ -786,6 +799,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		// Toggle download
 		var dlBtn = document.getElementById('toggleDownloadCapturedBtn');
 		if (dlBtn) dlBtn.addEventListener('click', toggleDownloadCaptured);
+		// Toggle high res
+		var hrBtn = document.getElementById('toggleHighResCapturedBtn');
+		if (hrBtn) hrBtn.addEventListener('click', toggleHighResCaptured);
 		// Run detection
 		var runDetBtn = document.getElementById('runDetectionBtn');
 		if (runDetBtn) runDetBtn.addEventListener('click', runDetection);
@@ -801,6 +817,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	window.navigateTo = navigateTo;
 	window.toggleCamera = toggleCamera;
 	window.toggleDownloadCaptured = toggleDownloadCaptured;
+	window.toggleHighResCaptured = toggleHighResCaptured;
 	window.captureImage = captureImage;
 	window.returnToLivefeed = returnToLivefeed;
 	window.runDetection = runDetection;
