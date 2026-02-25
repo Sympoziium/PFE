@@ -59,10 +59,14 @@ class ZumiCamera(CameraBase):
             raise e
 
     def close(self):
-        """Ferme la caméra Zumi."""
+        """Ferme la caméra Zumi (tolérant aux erreurs de generator)."""
         try:
             self.camera.close()
             print("[ZumiCamera] Camera closed")
+        except ValueError as e:
+            # "generator already executing" — le flux vidéo était en cours de capture.
+            # La caméra sera libérée quand le générateur se terminera.
+            print("[ZumiCamera] Camera close (generator busy, will release): {}".format(e))
         except Exception as e:
             print("Erreur lors de la fermeture de ZumiCamera: {}".format(e))
             raise e
@@ -102,39 +106,34 @@ class ZumiCamera(CameraBase):
         """
         Capture une image à haute résolution temporairement.
         
-        Cycle : fermer la caméra courante → créer une caméra haute résolution →
-        capturer un frame → fermer la caméra hires → relancer la caméra par défaut.
+        IMPORTANT : Le flux vidéo doit être arrêté AVANT d'appeler cette méthode
+        (le contrôleur s'en charge via vp.stop()). Cette méthode crée une caméra
+        temporaire à la résolution demandée, capture un frame, puis la ferme.
+        La caméra par défaut n'est PAS relancée ici — c'est le contrôleur qui
+        appelle vp.start() après.
         
         Thread-safe : un verrou empêche les captures concurrentes.
         
-        :param width: Largeur de la capture hires (défaut 320)
-        :param height: Hauteur de la capture hires (défaut 240)
+        :param width: Largeur de la capture hires (défaut 640)
+        :param height: Hauteur de la capture hires (défaut 480)
         :return: np.ndarray BGR ou None en cas d'erreur
         """
         import time
         
         with self._hires_lock:
             frame_bgr = None
+            hires_cam = None
             try:
-                # 1. Fermer la caméra courante
-                print("[ZumiCamera] Hires capture: closing default camera...")
-                self.camera.close()
-                time.sleep(0.1)
-                
-                # 2. Créer une caméra haute résolution
+                # 1. Créer une caméra haute résolution
                 print("[ZumiCamera] Hires capture: opening {}x{} camera...".format(width, height))
                 hires_cam = Camera(image_w=width, image_h=height)
                 hires_cam.start_camera()
                 time.sleep(0.3)  # Laisser la caméra se stabiliser
                 
-                # 3. Capturer
+                # 2. Capturer
                 frame_rgb = hires_cam.capture()
                 
-                # 4. Fermer la caméra hires
-                hires_cam.close()
-                time.sleep(0.1)
-                
-                # 5. Convertir RGB → BGR
+                # 3. Convertir RGB → BGR
                 if frame_rgb is not None and len(frame_rgb.shape) == 3 and frame_rgb.shape[2] == 3:
                     frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
                 else:
@@ -148,13 +147,11 @@ class ZumiCamera(CameraBase):
                 print("[ZumiCamera] Hires capture error: {}".format(e))
             
             finally:
-                # 6. Toujours relancer la caméra par défaut
-                try:
-                    self.camera = Camera(image_w=self._default_w, image_h=self._default_h)
-                    self.camera.start_camera()
-                    print("[ZumiCamera] Hires capture: default camera restored ({}x{})".format(
-                        self._default_w, self._default_h))
-                except Exception as e2:
-                    print("[ZumiCamera] CRITICAL: failed to restore default camera: {}".format(e2))
+                # 4. Toujours fermer la caméra hires
+                if hires_cam is not None:
+                    try:
+                        hires_cam.close()
+                    except Exception:
+                        pass
             
             return frame_bgr
