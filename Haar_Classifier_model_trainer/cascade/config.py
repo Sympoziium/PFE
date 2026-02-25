@@ -36,3 +36,9 @@ WINDOW_SIZE = {
     'recommended': (16, 30),  # Taille recommandée basée sur l'analyse des images positives
     'max': (24, 42),          # Taille maximale de la fenêtre de détection
 }
+
+# Taux maximum de fausses alarmes par stage.
+# Plus bas = stages plus sélectifs = entraînement plus long mais potentiellement meilleur.
+# Valeur standard : 0.5 (chaque stage divise les FP par 2)
+# Valeur agressive : 0.4 (stages plus discriminants, risque d'échec si données insuffisantes)
+MAX_FALSE_ALARM_RATE = 0.5

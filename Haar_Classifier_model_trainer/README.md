@@ -3,11 +3,11 @@
 **Module d'entraînement automatisé de détecteurs d'objets** — Crée des fichiers `.xml` 
 prêts à déployer sur le robot Zumi (Raspberry Pi Zero V1).
 
-Le script gère le pipeline complet : préparation des données, augmentation, entraînement 
-de la cascade Haar, et évaluation. **Aucune connaissance préalable en machine learning 
-requise** — il suffit de collecter des images et lancer le script.
+Le module gère le pipeline complet : préparation des données, augmentation, entraînement 
+de la cascade Haar/LBP, évaluation, hard negative mining et analyse avancée.  
+**Aucune connaissance préalable en machine learning requise** — il suffit de collecter des images et lancer le script.
 
-> **Environnement** : Le script tourne sur votre **PC** (Python 3.8+). 
+> **Environnement** : Le module tourne sur votre **PC** (Python 3.8+). 
 > Seul le résultat final (`.xml`) est déployé sur le Raspberry Pi.
 
 ---
@@ -16,21 +16,42 @@ requise** — il suffit de collecter des images et lancer le script.
 
 ```
 Haar_Classifier_model_trainer/
-├── train_cascade.py              # Script principal — lancer celui-ci
+├── train_cascade.py              # Point d'entrée — menu interactif
 ├── positive_image_downloader.py  # Utilitaire pour télécharger des images
 ├── requirements.txt              # Dépendances Python
 ├── README.md                     # Ce fichier
 │
-└── data/                         # Dossier des données
-    ├── positive/                 # Vos images positives (à remplir)
-    ├── negative/                 # Images de fond / négatives (~500 incluses)
-    ├── train/                    # Données d'entraînement (généré automatiquement)
-    ├── test/                     # Données de test (généré automatiquement)
-    ├── augmented/                # Images augmentées (généré automatiquement)
-    ├── annotations.txt           # Fichier d'annotations (généré automatiquement)
-    ├── bg.txt                    # Liste des images négatives (généré automatiquement)
-    ├── samples.vec               # Données binaires pour l'entraînement (généré)
-    └── cascade/                  # Modèle final (cascade.xml généré ici)
+├── cascade/                      # Package principal (logique métier)
+│   ├── __init__.py               # API publique + exports
+│   ├── config.py                 # Constantes et préconfigurations
+│   ├── environment.py            # Validation de l'environnement
+│   ├── data_prep.py              # Préparation des données (split, augmentation, annotations)
+│   ├── training.py               # Entraînement (samples .vec, cascade, génération XML)
+│   ├── evaluation.py             # Évaluation (test, métriques, plaque modèle)
+│   ├── mining.py                 # Hard Negative Mining (simple + itératif)
+│   └── analysis/                 # Analyse avancée du modèle
+│       ├── __init__.py           # Orchestrateur (7 phases d'analyse)
+│       ├── utils.py              # Utilitaires internes
+│       ├── stages.py             # Évaluation par stage, mosaïque FN/TP
+│       ├── charts.py             # Courbes PR/ROC, graphiques par stage
+│       ├── sweep.py              # Sweep complet scaleFactor × minNeighbors
+│       └── data_quality.py       # Qualité des données, fenêtre optimale
+│
+├── data/                         # Dossier des données
+│   ├── positive/                 # Images positives (à remplir par l'utilisateur)
+│   ├── negative/                 # Images négatives (~500 incluses)
+│   ├── train/                    # Données d'entraînement (généré automatiquement)
+│   ├── test/                     # Données de test (généré automatiquement)
+│   ├── augmented/                # Images augmentées (généré automatiquement)
+│   ├── hard_negatives/           # Hard negatives extraits (généré par option [5])
+│   ├── filtered_too_small/       # Images positives filtrées (trop petites)
+│   ├── cascade/                  # Modèle final (cascade.xml + stages)
+│   ├── analysis/                 # Graphiques d'analyse (généré par option [6])
+│   ├── annotations.txt           # Annotations positives (généré)
+│   ├── bg.txt                    # Liste des négatifs (généré)
+│   └── samples.vec               # Données binaires pour l'entraînement (généré)
+│
+└── Incubator/                    # Archive des modèles entraînés (plaques .md + .xml)
 ```
 
 ---
@@ -39,9 +60,7 @@ Haar_Classifier_model_trainer/
 
 ### 1. Python et dépendances
 
-**Étape 1.1 : Créer un environnement virtuel dans VS Code**
-
-Un environnement virtuel isole les dépendances du projet — c'est une bonne pratique pour éviter les conflits.
+**Étape 1.1 : Créer un environnement virtuel**
 
 1. Ouvrir le terminal dans VS Code : `Ctrl + '` (backtick)
 2. Lancer la commande pour créer l'environnement :
@@ -61,17 +80,12 @@ Avec l'environnement activé (vous devriez voir `(.venv)` au début du terminal)
 pip install -r requirements.txt
 ```
 
-Cela installe :
-- `opencv-python` (bibliothèque de vision par ordinateur)
-- `numpy` (calculs numériques)
-- `tqdm` (barres de progression)
+Packages installés : `opencv-python`, `numpy`, `tqdm`, `matplotlib`, `scikit-learn` (optionnel)
 
 **Vérifier l'installation** :
 ```powershell
 python -c "import cv2; print('OpenCV', cv2.__version__)"
 ```
-
----
 
 ### 2. Outils CLI OpenCV (obligatoire)
 
@@ -121,269 +135,285 @@ OpenCV ne gère **pas** les chemins avec espaces ou accents. Vérifiez que :
 
 ---
 
-## 🚀 Utilisation rapide
+## 🚀 Utilisation
 
-### Cas d'usage typique : Entraîner un détecteur de panneau stop
+### Lancer le module
 
-**Étape 0 : Collecter les images (voir section suivante)**
-
-Placer ~300 images croppées de panneaux dans `data/positive/`
-
-**Étape 1 : Lancer le script**
-
-Ouvrir le terminal (`.venv` activé) et exécuter :
 ```powershell
 python train_cascade.py
 ```
 
-Le script va :
-1. ✓ Valider votre environnement
-2. ✓ Préparer les données (split 85% entraînement / 15% test)
-3. ✓ Augmenter automatiquement les images positives (×5)
-4. ✓ Entraîner le modèle (durée : ~15 min pour le profil rapide, ~4h pour équilibré)
-5. ✓ Évaluer le modèle sur les images de test
-6. ✓ Générer un rapport avec des recommandations
+### Menu principal
 
-**Le résultat final** : `data/cascade/cascade.xml`
+Le menu s'affiche avec l'**état actuel des données** (✓/✗) et les options disponibles :
+
+| Option | Description | Quand l'utiliser |
+|--------|-------------|------------------|
+| **[1]** | Pipeline complet | Première utilisation — fait tout automatiquement |
+| **[2]** | Préparer les données | Split + augmentation + .vec seulement |
+| **[3]** | Entraîner / reprendre | Données déjà préparées, lancer l'entraînement |
+| **[4]** | Finaliser cascade.xml | Générer le .xml à partir des stages existants |
+| **[5]** | Hard Negative Mining | Extraire les FP pour améliorer le modèle |
+| **[6]** | Analyse avancée | Graphiques, métriques par stage, sweep SF×MN |
+| **[7]** | Stage intermédiaire | Générer un modèle à partir d'un stage choisi |
+| **[8]** | HNM Itératif | Automatise mine → retrain × N rounds |
+| **[Q]** | Quitter | — |
+
+> Les options sont affichées dynamiquement selon l'état des données.  
+> Par exemple, [5] n'apparaît que si un `cascade.xml` existe.
 
 ---
 
-## 📸 Collecter les données (le plus important)
+## 📋 Workflow recommandé
 
-**La qualité des images = la qualité du modèle**. Garbage in, garbage out.
+### Premier entraînement
 
-### Qu'est-ce qu'une bonne image positive ?
+1. Placer les images positives croppées dans `data/positive/`
+2. Lancer `python train_cascade.py` → **Option [1]** (Pipeline complet)
+3. Choisir le profil d'entraînement (Rapide pour tester, Équilibré pour production)
+4. Le script fait tout : filtrage → split → augmentation → .vec → entraînement → évaluation
 
-Une **image positive** est une photo contenant l'objet à détecter, **croppée serrée** :
-- ✓ L'objet doit occuper **70-100 %** de l'image
-- ✓ Fond **uni ou simple** (blanc, gris, texture uniforme)
-- ✓ **Un seul objet par image**
-- ✓ Variés : différents angles, éclairages, distances, arrière-plans
-- ✗ Pas de cadre, pas d'arrière-plan complexe, pas d'autres objets
+### Améliorer un modèle existant
 
-**Exemple** : Pour un panneau stop
-- ✓ BON : Photo de juste le panneau rouge-blanc, fond blanc
-- ✗ MAUVAIS : Panneau stop au loin sur une route (trop petit, arrière-plan complexe)
+1. **Option [6]** — Analyse avancée : identifier les faiblesses (FN visuels, sweep SF×MN)
+2. **Option [5]** ou **[8]** — Hard Negative Mining : corriger les faux positifs
+3. **Option [1]** — Ré-entraîner avec les hard negatives intégrés automatiquement
+4. Répéter jusqu'à satisfaction
 
-### Combien d'images ?
+### Cycle HNM itératif (automatisé)
 
-Minimum : **150-200 images**  
-Recommandé : **500-2000 images**  
-➜ Plus d'images = meilleur modèle, mais la qualité prime toujours.
+Pour automatiser le cycle mine → retrain :
 
-### Télécharger automatiquement depuis Internet
+1. Avoir un `cascade.xml` existant
+2. **Option [8]** → Choisir le nombre de rounds (recommandé : 2-3)
+3. Le module va automatiquement : miner les FP → ré-entraîner → évaluer → répéter
 
-Utiliser `positive_image_downloader.py` pour récupérer facilement des centaines d'images.
+---
 
-**Utilisation** :
+## 📸 Collecter les données
 
-1. Éditer le dossier `positive_image_downloader.py` et modifier la liste `queries` :
-   ```python
-   queries = [
-       "stop sign isolated white background",
-       "stop sign red white photo",
-       "panneau stop fond blanc",
-       # Ajouter plus de variantes...
-   ]
-   ```
-   ➜ Utiliser des mots-clés en anglais ou français ou même d'autres langues, **plusieurs queries = plus de variétés**.
+**La qualité des images = la qualité du modèle.**
 
-2. Lancer le script :
-   ```powershell
-   pip install icrawler  # Une seule fois
-   python positive_image_downloader.py
-   ```
+### Images positives
 
-3. Les images seront téléchargées dans un dossier `positives/` organisé par query.
+- **Croppées serrées** : l'objet occupe 70-100% de l'image
+- **Un seul objet par image**
+- **Variées** : différents angles, éclairages, distances
+- **Minimum 150-200**, recommandé **500+**
 
-4. **Trier manuellement** :
-   - Garder les images de bonne qualité (crop serré, fond simple)
-   - Supprimer les mauvaises (trop petites, arrière-plans complexes, plusieurs objets)
-   - Copier les bonnes dans `data/positive/`
-   - Vous pouvez même les modifier sur paint pour crop l'objet et uniformiser le background.
+> ⚠️ Les images trop petites (< 2× la fenêtre de détection) sont automatiquement  
+> filtrées et indexées dans `data/filtered_small_images.log`.
 
-**Conseils pour les queries** :
-- Varier les langues : "stop sign", "panneau arrêt", "señal de alto"
-- Ajouter les contextes : "white background", "isolated", "close-up", "product photo"
-- Utiliser des variantes : "stop sign", "octagon red", "traffic stop"
+### Images négatives
 
-### Où trouver des images négatives
-
-Les **images négatives** sont des photos sans l'objet d'intérêt (fond, paysages, routes, etc.).  
+Photos **sans** l'objet d'intérêt (fonds, textures, paysages).
 
 Ressource recommandée : [Describable Textures Dataset (DtD)](https://www.robots.ox.ac.uk/~vgg/data/dtd/)
-- Télécharger, extraire, copier les images dans `data/negative/`
+
+### Télécharger automatiquement
+
+```powershell
+pip install icrawler
+python positive_image_downloader.py
+```
+
+Éditer les `queries` dans le script pour cibler votre objet.
 
 ---
 
-## 🔧 Méthodologie du script
+## 🔧 Pipeline détaillé
 
-Le script automatise un **pipeline complet** d'entraînement. Voici ce qui se passe :
+### 1. Préparation des données
 
-### 1️⃣ Préparation des données
+- **Filtrage** : les images < 2× la fenêtre de détection sont écartées et indexées dans `data/filtered_small_images.log`
+- **Split** : 85% train / 15% test (avant augmentation pour éviter le data leakage)
+- **Hard negatives** : si `data/hard_negatives/` contient des images, elles sont intégrées au train set
+- **Augmentation** : ×5 variantes par image (9 transforms sans modification des contours)
 
-- **Annotation automatique** : Chaque image croppée devient un exemple d'entraînement
-- **Séparation train/test** : 85% pour entraîner, 15% pour évaluer
-- **Aucune normalisation manuelle** : Le script gère tout automatiquement
+### 2. Augmentation des images
 
-### 2️⃣ Augmentation (multiplication des images)
+Les images positives étant croppées plein cadre, **aucune transformation géométrique** 
+n'est utilisée (pas de rotation, translation, perspective — elles ajouteraient des bordures parasites).
 
-Chaque image positive est transformée aléatoirement (rotation, flou, luminosité, etc.)  
-➜ 300 images originales → ~1500 images d'entraînement  
-➜ **Augmente la robustesse du modèle.**
+Transforms appliquées :
 
-### 3️⃣ Création du fichier .vec
+| Transform | Probabilité | Effet |
+|-----------|------------|-------|
+| Flip horizontal | 50% | Double la variabilité |
+| Brightness + contraste | 100% | Simule éclairages variables |
+| Correction gamma | 40% | Simule réponse caméra |
+| **Flou gaussien** | 35% | Simule défocus / flou caméra Zumi |
+| **Bruit gaussien** | 30% | Simule bruit capteur Pi camera |
+| **CLAHE** | 20% | Égalisation adaptative (conditions extrêmes) |
+| **Sharpening** | 20% | Renforce les contours |
+| **Scale jitter** | 25% | Downscale+upscale → simule basse résolution |
+| **Compression JPEG** | 20% | Simule artefacts de compression |
 
-Conversion des images en format binaire optimisé pour l'entraînement.
-
-### 4️⃣ Entraînement de la cascade
-
-Le script entraîne un **classifieur en cascade** (Viola-Jones) avec OpenCV.
+### 3. Entraînement de la cascade
 
 **Profils disponibles** :
 
-| Profil | Durée | Précision | Usage |
-|--------|-------|-----------|-------|
-| 🚀 **Rapide** | ~15 min | Moyenne | Prototypage / tests |
-| ⚖️ **Équilibré** | ~4 heures | Bonne | **Recommandé** |
-| 🎯 **Précis** | ~12 heures+ | Excellente | Production |
+| Profil | Feature | Stages | Durée estimée | Usage |
+|--------|---------|--------|---------------|-------|
+| 🚀 **Rapide** | LBP | 14 | ~1-2h | Prototypage |
+| ⚖️ **Équilibre** | HAAR | 14 | ~6-12h | **Recommandé** |
+| 🎯 **Précision** | HAAR | 18 | ~12-24h+ | Production |
+| 🔧 **Test** | Au choix | Custom | Variable | Expérimentation |
 
-Le script affiche la progression en temps réel.
+Le profil **Test** permet de configurer : feature type, nombre de stages, `minHitRate`, 
+`maxFalseAlarmRate`, et taille de la fenêtre.
 
-### 5️⃣ Évaluation du modèle
+**Paramètres clés** :
+- `maxFalseAlarmRate` : taux max de FP par stage (défaut 0.5, configurable via profil Test ou `cascade/config.py`)
+- `minHitRate` : taux min de détection par stage (défaut 0.995)
+- L'entraînement peut être **interrompu et repris** automatiquement
 
-Le modèle est testé sur le 15% d'images réservé.
+### 4. Évaluation
 
-**Métriques affichées** :
+Le modèle est testé avec 3 presets de détection :
 
-| Métrique | Signification | Bon score |
-|----------|---------------|-----------|
-| **Recall** (Taux de détection) | % d'objets correctement détectés | > 85 % |
-| **Précision** | % des détections qui sont correctes | > 80 % |
-| **F1-Score** | Moyenne harmoniqu recall + précision | > 0.7 |
-| **Spécificité** | % des images sans objet correctement rejetées | > 90 % |
-| **IoU** | Qualité de localisation (où est l'objet) | > 0.6 |
-| **Multi-détections** | % des objets avec >1 détection | < 30 % |
+| Preset | scaleFactor | minNeighbors | Caractéristique |
+|--------|------------|-------------|-----------------|
+| Sensible | 1.05 | 3 | Max recall, plus de FP |
+| Équilibré | 1.10 | 5 | Compromis |
+| Strict | 1.20 | 7 | Max précision |
 
-Le script recommande aussi les **paramètres optimaux pour le Raspberry Pi Zero** (vitesse vs précision).
+**Métriques** : Recall, Précision, F1-Score, Spécificité, FP/image, IoU moyen, taux de multi-détections.
 
-### 6️⃣ Export du modèle
+### 5. Analyse avancée (Option [6])
 
-Le fichier `cascade.xml` est généré dans `data/cascade/`  
-➜ Prêt à déployer !
+7 phases d'analyse automatique :
+
+1. **Sweep SF×MN** — Heatmap 70 combinaisons (7 SF × 10 MN)
+2. **Mosaïque FN/TP** — Visualisation des images manquées vs détectées
+3. **Évaluation par stage** — Évolution des métriques stage par stage
+4. **Courbes PR/ROC** — Precision-Recall et ROC avec points annotés
+5. **Qualité des données** — Analyse de diversité, complexité, clustering des négatifs
+6. **Graphiques par stage** — F1, Recall, Précision, Spécificité par nombre de stages
+7. **Fenêtre optimale** — Analyse dimensionnelle + recommandation de taille
+
+Tous les graphiques sont sauvegardés dans `data/analysis/`.
+
+### 6. Hard Negative Mining
+
+**Simple (Option [5])** : 
+- Analyse les images négatives avec le modèle courant
+- Croppe chaque fausse détection → sauvegarde dans `data/hard_negatives/`
+- Au prochain entraînement, ces images sont intégrées automatiquement
+
+**Itératif (Option [8])** :
+- Automatise le cycle : mine → retrain → évalue → mine → retrain...
+- 1 à 5 rounds configurables
+- Arrêt anticipé si aucun FP n'est trouvé (convergence)
 
 ---
 
 ## 📊 Interpréter les résultats
 
-### L'script affiche un rapport avec 3 sections
+### Métriques principales
 
-**1. Tableau comparatif** de toutes les configurations testées :
-```
-     SF   MN    Recall    Préc.      F1    Spéc.   FP/img
-  ► 1.20    7    73.4%    42.3%   0.537    90.8%    0.092
-```
-La ligne avec `►` est le meilleur compromis.
+| Métrique | Signification | Bon score |
+|----------|---------------|-----------|
+| **Recall** | % d'objets correctement détectés | > 85% |
+| **Précision** | % des détections qui sont correctes | > 80% |
+| **F1-Score** | Moyenne harmonique recall + précision | > 0.7 |
+| **Spécificité** | % des négatifs correctement rejetés | > 90% |
 
-**2. Rapport détaillé** de la meilleure configuration :
-- Tous les scores (Recall, Précision, F1, etc.)
-- Compteurs bruts (TP, FN, FP, TN)
-- IoU moyen et pourcentage de multi-détections
+### Qualité du modèle
 
-**3. Diagnostic + Recommandations** :
-```
-⚠ Recall faible (73.4%) — ~27% des objets manqués.
-  → Augmenter le nombre d'images positives originales
-  → Diversifier les augmentations (angles, éclairages)
-  → Réduire scaleFactor pour scanner plus d'échelles
-```
-
-### Quand le modèle est-il bon ?
-
-✅ **Excellent** : Recall > 90 %, Précision > 85 %, F1 > 0.8
-✅ **Bon** : Recall > 80 %, Précision > 75 %, F1 > 0.7
-⚠️ **Acceptable** : Recall > 70 %, Précision > 60 %, F1 > 0.5
-❌ **À améliorer** : F1 < 0.5 → recommencer avec plus d'images ou profil Équilibré
+| Niveau | F1 | Recall | Précision |
+|--------|----|--------|-----------|
+| ✅ Excellent | > 0.8 | > 90% | > 85% |
+| ✅ Bon | > 0.7 | > 80% | > 75% |
+| ⚠️ Acceptable | > 0.5 | > 70% | > 60% |
+| ❌ À améliorer | < 0.5 | — | — |
 
 ### Recommandations Raspberry Pi Zero V1
 
-Le script estime la **vitesse de détection** selon les paramètres :
 - `scaleFactor=1.2` → ~2-4 FPS (bon compromis)
 - `scaleFactor=1.3` → ~4-6 FPS (rapide mais moins précis)
-
-➜ Préférer `scaleFactor ≥ 1.2` pour le temps réel sur le Pi Zero.
+- Préférer `scaleFactor ≥ 1.2` pour le temps réel sur le Pi Zero
 
 ---
 
 ## 🔌 Déployer le modèle sur le robot
 
-### Étape 1 : Renommer le modèle
-
-Le modèle `.xml` généré est dans `data/cascade/cascade.xml`.  
-Le renommer selon l'objet détecté (ex: `stop_sign_v1.xml`) pour mieux l'identifier.
-
-### Étape 2 : Copier sur le robot
-
-1. Naviguer jusqu'à : `PFE/core/vision/detectors/models/`
-2. Coller le fichier `.xml` là-dedans
-
-### Étape 3 : Charger dans le détecteur
-
-Ouvrir `PFE/main.py` et ajouter le classifieur à la liste :
+1. **Renommer** `data/cascade/cascade.xml` → `mon_objet_v1.xml`
+2. **Copier** dans `PFE/core/vision/detectors/models/`
+3. **Charger** dans `PFE/main.py` :
 
 ```python
-# Dossier contenant les modèles .xml pour les classificateurs de Haar       
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detectors', 'models')
-
-haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_v1.xml'))
-haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'pedestrian_classifier.xml'))
-# Ajouter votre nouveau classifieur ici
 haar_classifier.add_classifier('mon_objet', os.path.join(MODELS_DIR, 'mon_objet_v1.xml'))
 ```
 
-### Étape 4 : Tester sur le robot
-
-Démarrage du robot → accéder à l'interface web → voir les détections en direct.
+4. **Tester** : démarrer le robot → interface web → détections en direct.
 
 ---
 
-## 📖 Pour aller plus loin
+## 🏗️ Architecture du code
 
-- **Évolution du modèle** : Si les résultats ne sont pas bons, retourner à l'étape de collecte de données (mais plus d'images ou meilleure variété)
-- **Hard negative mining** : Récolter les fausses détections (FP), les ajouter comme négatifs, ré-entraîner
-- **Paramètres avancés** : Voir [PLAN_DEVELOPPEMENT.md](PLAN_DEVELOPPEMENT.md) pour la configuration complète
+Le module est organisé en **package `cascade/`** avec séparation claire des responsabilités :
 
----
+```
+train_cascade.py          ← Point d'entrée (menu + dispatch, ~550 lignes)
+  └── cascade/
+        ├── config.py     ← Constantes partagées (DETECTION_PRESETS, WINDOW_SIZE, etc.)
+        ├── environment.py← Validation (CLI tools, Python, OpenCV, dossiers)
+        ├── data_prep.py  ← Pipeline données (filter → split → augment → annotate)
+        ├── training.py   ← Entraînement (create_samples → train_cascade → generate_xml)
+        ├── evaluation.py ← Évaluation (detect → metrics → plaque markdown)
+        ├── mining.py     ← HNM simple + itératif
+        └── analysis/     ← Analyse avancée (sweep, PR/ROC, stages, data quality)
+```
 
-## 📚 Ressources
-
-- [Documentation officielle OpenCV 3.4 — Cascade Classifier](https://docs.opencv.org/3.4/dc/d88/tutorial_traincascade.html)
-- [Algorithme Viola-Jones (2001)](https://www.cs.cmu.edu/~efros/courses/LBMV07/Papers/viola-cvpr-01.pdf)
-- [PLAN_DEVELOPPEMENT.md](PLAN_DEVELOPPEMENT.md) — Documentation technique complète
+Pour modifier une étape spécifique, éditez le fichier correspondant. Les constantes 
+partagées sont centralisées dans `config.py`.
 
 ---
 
 ## ❓ FAQ
 
-**Q: Mon modèle n'a que 50 % de recall. Que faire ?**  
-R: Augmenter le nombre d'images positives (minimum 500) et diversifier (angles, backgrounds).
+**Q: Mon modèle n'a que 50% de recall. Que faire ?**  
+R: 1) Ajouter plus d'images positives (minimum 500). 2) Lancer l'option [6] pour 
+identifier les faiblesses. 3) Utiliser le HNM itératif [8] si le problème est la précision.
 
-**Q: Script interrompu. Comment reprendre ?**  
-R: Relancer simplement `python train_cascade.py` — il détectera l'entraînement précédent et demandera si reprendre ou recommencer.
+**Q: Le script a filtré des images "trop petites". Pourquoi ?**  
+R: Les images plus petites que 2× la fenêtre de détection (32×60 px par défaut) ne 
+contiennent pas assez de pixels pour que le cascade apprenne. Consultez 
+`data/filtered_small_images.log` pour la liste complète. Si beaucoup d'images sont 
+filtrées, recollectez des images plus grandes ou ajustez la taille de fenêtre.
 
-**Q: Combien de temps pour entraîner ?**  
-R: Profil Rapide (LBP) = 15 min. Profil Équilibré (HAAR) = 4h. Profil Précis = 12h+.
+**Q: Comment reprendre un entraînement interrompu ?**  
+R: Relancer `python train_cascade.py` → Option [3]. Le script détecte les stages 
+existants et propose de reprendre.
+
+**Q: Quelle est la différence entre HNM simple [5] et itératif [8] ?**  
+R: L'option [5] fait un seul cycle de mining (extraction des FP). L'option [8] automatise le 
+cycle complet : mine → retrain → évalue → mine → retrain... pour N rounds, avec arrêt 
+anticipé si le modèle ne produit plus de FP.
+
+**Q: Comment changer la taille de la fenêtre de détection ?**  
+R: Modifier `WINDOW_SIZE['recommended']` dans `cascade/config.py`. La taille doit 
+correspondre au ratio d'aspect de votre objet. Utilisez l'option [6] → analyse de 
+fenêtre optimale pour une recommandation basée sur vos données.
+
+**Q: Puis-je ajuster le `maxFalseAlarmRate` ?**  
+R: Oui, de deux façons : 1) Via le profil **Test** [4] dans le menu d'entraînement — 
+vous pouvez saisir une valeur custom. 2) Modifier la constante globale `MAX_FALSE_ALARM_RATE` 
+dans `cascade/config.py`. La valeur par défaut est 0.5 (chaque stage divise les FP par 2). 
+Une valeur plus basse (ex: 0.4) rend chaque stage plus sélectif.
 
 **Q: Puis-je utiliser mon propre dataset d'images ?**  
-R: Oui, ces pour ça que j'ai fait ce module. Place les images croppées dans `data/positive/`. Le script gère le reste.
+R: Oui, c'est le but du module. Placez vos images croppées dans `data/positive/` et le script gère tout le reste.
 
 ---
 
-## 📝 Notes
+## 📚 Ressources
 
-- ✅ L'augmentation crée automatiquement 5 variantes par image
-- ✅ L'entraînement peut être interrompu et repris
-- ✅ Aucune édition de code requis, sauf pour le script de download d'images — juste des images et un clic
+- [Documentation OpenCV 3.4 — Cascade Classifier](https://docs.opencv.org/3.4/dc/d88/tutorial_traincascade.html)
+- [Algorithme Viola-Jones (2001)](https://www.cs.cmu.edu/~efros/courses/LBMV07/Papers/viola-cvpr-01.pdf)
+- [PLAN_DEVELOPPEMENT.md](PLAN_DEVELOPPEMENT.md) — Documentation technique détaillée
 
 ---
 

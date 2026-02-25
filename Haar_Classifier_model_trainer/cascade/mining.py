@@ -185,3 +185,145 @@ def hard_negative_mining(model_path, negative_images_dir, output_dir, data_dir,
     print("-----------------------------------")
     print("\n")
     return nb_crops
+
+
+def iterative_hnm(model_path, negative_images_dir, data_dir, output_dir,
+                  num_rounds=3, scaleFactor=1.10, minNeighbors=3):
+    """
+    Hard Negative Mining itératif — Automatise le cycle :
+      mine → retrain → mine → retrain → ...
+    
+    À chaque round :
+      1. Mine les HN avec le modèle courant
+      2. Intègre les HN au train set
+      3. Re-prépare les données (annotations + bg.txt + .vec)
+      4. Ré-entraîne le modèle
+      5. Évalue le nouveau modèle
+    
+    :param model_path: Chemin du modèle cascade.xml initial
+    :param negative_images_dir: Dossier des images négatives originales
+    :param data_dir: Dossier data/ racine
+    :param output_dir: Dossier cascade/ de sortie
+    :param num_rounds: Nombre de rounds de mining (default 3)
+    :param scaleFactor: SF pour la détection HNM
+    :param minNeighbors: MN pour la détection HNM
+    :return: Chemin du modèle final, ou None si échec
+    """
+    from cascade.config import WINDOW_SIZE
+    from cascade.data_prep import prepare_data, create_samples_only
+    from cascade.training import check_cascade_resume, train_cascade
+
+    print(f"\n{'='*60}")
+    print(f"  Hard Negative Mining Itératif — {num_rounds} rounds")
+    print(f"{'='*60}")
+    print(f"  Ce processus va automatiquement :")
+    print(f"    1. Extraire les fausses détections (hard negatives)")
+    print(f"    2. Les ajouter au jeu d'entraînement")
+    print(f"    3. Ré-entraîner le modèle")
+    print(f"    ... répété {num_rounds} fois\n")
+
+    current_model = model_path
+    sample_width, sample_height = WINDOW_SIZE['recommended']
+    positive_images_dir = os.path.join(data_dir, 'positive')
+
+    results = []
+
+    for round_num in range(1, num_rounds + 1):
+        print(f"\n  {'─'*50}")
+        print(f"  Round {round_num}/{num_rounds}")
+        print(f"  {'─'*50}")
+
+        # Étape 1 : Mine les hard negatives
+        nb_hn = hard_negative_mining(
+            model_path=current_model,
+            negative_images_dir=negative_images_dir,
+            output_dir=negative_images_dir,
+            data_dir=data_dir,
+            scaleFactor=scaleFactor,
+            minNeighbors=minNeighbors
+        )
+
+        if nb_hn == 0:
+            print(f"\n  ℹ Round {round_num} : Aucun hard negative trouvé.")
+            print(f"    → Le modèle actuel ne produit plus de FP avec ces paramètres.")
+            print(f"    → Arrêt anticipé du HNM itératif.")
+            break
+
+        # Étape 2 : Re-préparer les données (split + intégrer HN + augment + annotations)
+        print(f"\n  Re-préparation des données (round {round_num})...")
+        train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir, \
+            nb_annotations, nb_negatives, annotations_file, bg_file = \
+            prepare_data(positive_images_dir, negative_images_dir, data_dir)
+
+        # Étape 3 : Recréer le .vec
+        from cascade.training import create_samples
+        create_samples(
+            annotations_file=annotations_file,
+            vec_file=os.path.join(data_dir, 'samples.vec'),
+            num_samples=nb_annotations,
+            width=sample_width, height=sample_height
+        )
+
+        # Étape 4 : Ré-entraîner
+        print(f"\n  Ré-entraînement (round {round_num})...")
+        # Nettoyer l'ancien cascade pour forcer un nouvel entraînement
+        cascade_file = os.path.join(output_dir, 'cascade.xml')
+        for f in os.listdir(output_dir):
+            fpath = os.path.join(output_dir, f)
+            if os.path.isfile(fpath):
+                os.remove(fpath)
+
+        config = {'name': f'HNM-Round-{round_num}', 'feature': 'LBP',
+                  'stages': 14, 'min_hit_rate': 0.995}
+
+        new_model = train_cascade(
+            nb_annotations, nb_negatives,
+            sample_width, sample_height,
+            data_dir, output_dir, config=config
+        )
+
+        if new_model is None:
+            print(f"\n  ✗ Round {round_num} : Entraînement échoué.")
+            break
+
+        # Étape 5 : Évaluer
+        from cascade.evaluation import evaluate_model
+        eval_results, best_idx = evaluate_model(
+            new_model, test_pos_dir, test_neg_dir)
+
+        best = eval_results[best_idx]
+        results.append({
+            'round': round_num,
+            'hn_added': nb_hn,
+            'recall': best['recall'],
+            'precision': best['precision'],
+            'f1': best['f1'],
+            'model': new_model
+        })
+
+        current_model = new_model
+
+        print(f"\n  Round {round_num} terminé : "
+              f"F1={best['f1']:.3f}  Recall={best['recall']:.1%}  "
+              f"Précision={best['precision']:.1%}  (+{nb_hn} HN)")
+
+    # Résumé final
+    print(f"\n{'='*60}")
+    print(f"  Résumé HNM Itératif — {len(results)} rounds complétés")
+    print(f"{'='*60}")
+
+    if results:
+        print(f"\n  {'Round':<8} {'HN ajoutés':<14} {'Recall':<10} {'Précision':<12} {'F1':<8}")
+        print(f"  {'─'*52}")
+        for r in results:
+            print(f"  {r['round']:<8} +{r['hn_added']:<13} "
+                  f"{r['recall']:<10.1%} {r['precision']:<12.1%} {r['f1']:<8.3f}")
+
+        best_round = max(results, key=lambda r: r['f1'])
+        print(f"\n  Meilleur round : #{best_round['round']} (F1={best_round['f1']:.3f})")
+        print(f"  Modèle final   : {current_model}")
+    else:
+        print(f"\n  Aucun round complété. Modèle inchangé.")
+
+    print(f"{'='*60}\n")
+    return current_model

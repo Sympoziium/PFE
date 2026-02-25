@@ -11,6 +11,9 @@ import subprocess
 from tqdm import tqdm
 
 
+from cascade.config import MAX_FALSE_ALARM_RATE
+
+
 def create_samples(annotations_file, vec_file, num_samples, width=24, height=24):
     """
     Crée le fichier .vec à partir des annotations pour l'entraînement.
@@ -136,7 +139,8 @@ def train_cascade(nb_annotations, nb_negatives, sample_width, sample_height,
     num_stages = config['stages']
     feature = config['feature']
     min_hit_rate = config['min_hit_rate']
-    print(f"Mode {config['name']} : {feature}, {num_stages} stages, minHitRate={min_hit_rate}")
+    max_fa_rate = config.get('max_false_alarm_rate', MAX_FALSE_ALARM_RATE)
+    print(f"Mode {config['name']} : {feature}, {num_stages} stages, minHitRate={min_hit_rate}, maxFalseAlarmRate={max_fa_rate}")
 
     command = (
         f"opencv_traincascade"
@@ -148,7 +152,7 @@ def train_cascade(nb_annotations, nb_negatives, sample_width, sample_height,
         f" -numStages {num_stages}"
         f" -featureType {feature}"
         f" -minHitRate {min_hit_rate}"
-        f" -maxFalseAlarmRate 0.5"
+        f" -maxFalseAlarmRate {max_fa_rate}"
         f" -w {sample_width} -h {sample_height}"
         f" -precalcValBufSize {dedicated_RAM_MB}"
         f" -precalcIdxBufSize {dedicated_RAM_MB}"

@@ -9,6 +9,8 @@ import numpy as np
 import cv2
 from tqdm import tqdm
 
+from cascade.config import WINDOW_SIZE
+
 
 def prepare_data(positive_images_dir, negative_images_dir, data_dir):
     """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar"""
@@ -30,6 +32,9 @@ def prepare_data(positive_images_dir, negative_images_dir, data_dir):
     validate_images(positive_images_dir)
     validate_images(negative_images_dir)
 
+    # Étape 1.2 : Filtrer les images trop petites (< 2× fenêtre de détection)
+    filtered_log = filter_small_images(positive_images_dir, data_dir)
+
     # Étape 1.3 : Séparation train / test AVANT l'augmentation (évite le data leakage)
     train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir = split_data(positive_images_dir, negative_images_dir, data_dir)
 
@@ -46,7 +51,7 @@ def prepare_data(positive_images_dir, negative_images_dir, data_dir):
             print(f"  {nb_hn_added} hard negatives ajoutés au train set.")
 
     # Étape 1.4 : Augmentation des positives du TRAIN set uniquement
-    augment_data(train_pos_dir, train_pos_dir)
+    augment_data(train_pos_dir, train_pos_dir, num_augmented=5)
 
     # Étape 1.2 : Génération des annotations
     #   Mode plein cadre : bbox = image entière pour chaque image positive
@@ -124,6 +129,78 @@ def validate_images(images_dir):
     print(f"Images validées.\n")
 
 
+def filter_small_images(positive_dir, data_dir, min_factor=2.0):
+    """
+    Filtre les images positives trop petites pour être apprenables par le cascade.
+    
+    Critère : l'image doit faire au moins min_factor × la fenêtre de détection
+    en largeur ET en hauteur. Les images sous ce seuil sont déplacées dans un
+    dossier data/filtered_too_small/ et indexées dans un log.
+    
+    :param positive_dir: Dossier des images positives originales
+    :param data_dir: Dossier data/ racine
+    :param min_factor: Facteur minimum (default 2.0 → image ≥ 2× la fenêtre)
+    :return: Chemin vers le fichier log des images filtrées (ou None si aucune)
+    """
+    win_w, win_h = WINDOW_SIZE['recommended']
+    min_w = int(win_w * min_factor)
+    min_h = int(win_h * min_factor)
+    
+    print(f"Filtrage des images trop petites (seuil : {min_w}×{min_h} px = "
+          f"{min_factor:.0f}× fenêtre {win_w}×{win_h})...")
+    
+    image_files = [f for f in os.listdir(positive_dir)
+                   if os.path.isfile(os.path.join(positive_dir, f))]
+    
+    filtered_dir = os.path.join(data_dir, 'filtered_too_small')
+    log_entries = []
+    
+    for img_file in image_files:
+        img_path = os.path.join(positive_dir, img_file)
+        img = cv2.imread(img_path)
+        if img is None:
+            continue
+        h, w = img.shape[:2]
+        if w < min_w or h < min_h:
+            log_entries.append({
+                'file': img_file,
+                'width': w,
+                'height': h,
+                'reason': f'{w}×{h} < seuil {min_w}×{min_h}'
+            })
+    
+    if not log_entries:
+        print(f"  ✓ Aucune image trop petite détectée.")
+        return None
+    
+    # Créer le dossier de quarantaine
+    os.makedirs(filtered_dir, exist_ok=True)
+    
+    # Déplacer les images etLogger
+    log_path = os.path.join(data_dir, 'filtered_small_images.log')
+    with open(log_path, 'w', encoding='utf-8') as f:
+        f.write(f"# Images positives filtrées (trop petites)\n")
+        f.write(f"# Seuil minimum : {min_w}×{min_h} px ({min_factor:.0f}× fenêtre {win_w}×{win_h})\n")
+        f.write(f"# Date : {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        f.write(f"# Total filtré : {len(log_entries)}\n")
+        f.write(f"#\n")
+        f.write(f"# {'Fichier':<50} {'Dimensions':<15} {'Raison'}\n")
+        f.write(f"# {'='*80}\n")
+        
+        for entry in log_entries:
+            src = os.path.join(positive_dir, entry['file'])
+            dst = os.path.join(filtered_dir, entry['file'])
+            shutil.move(src, dst)
+            f.write(f"  {entry['file']:<50} {entry['width']}×{entry['height']:<10} {entry['reason']}\n")
+    
+    print(f"  ⚠ {len(log_entries)} images filtrées (trop petites pour l'entraînement)")
+    print(f"    → Déplacées dans : {filtered_dir}")
+    print(f"    → Index détaillé : {log_path}")
+    print(f"    → Consultez le log pour retirer ces images de votre source si désiré.\n")
+    
+    return log_path
+
+
 def split_data(positive_dir, negative_dir, data_dir, train_ratio=0.85):
     """
     Sépare les données originales en ensembles d'entraînement et de test.
@@ -185,7 +262,7 @@ def split_data(positive_dir, negative_dir, data_dir, train_ratio=0.85):
     return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir
 
 
-def augment_data(source_dir, output_dir, num_augmented=3):
+def augment_data(source_dir, output_dir, num_augmented=5):
     """
     Augmentation des données d'entraînement.
     
@@ -234,29 +311,94 @@ def augment_data(source_dir, output_dir, num_augmented=3):
 def apply_random_transformations(image):
     """Applique des transformations aléatoires adaptées aux images CROPPÉES serrées.
     
-    Stratégie pour mode plein cadre (bbox = image entière) :
-    - variation luminosité/contraste : simule conditions d'éclairage variables
-    - correction gamma : simule la réponse caméra du robot
-    - flip horizontal : double la variabilité sans artefact
+    IMPORTANT : Aucune transformation géométrique (rotation, translation, perspective)
+    car les images sont croppées plein cadre sur l'objet — toute bordure ajoutée
+    serait du bruit non représentatif du contexte de détection.
+    
+    Transforms disponibles (sans modification des contours) :
+    - Flip horizontal : double la variabilité
+    - Brightness / contraste : simule éclairages variables
+    - Correction gamma : simule réponse caméra robot
+    - Flou gaussien : simule défocus / flou de mouvement (camera Zumi)
+    - Bruit gaussien : simule bruit capteur (Pi camera)
+    - CLAHE : égalisation adaptative pour conditions de lumière extrêmes
+    - Sharpening : augmente les contours (contraste local)
+    - Scale jitter : downscale + upscale → simule basse résolution / distance
+    - Compression JPEG : simule artefacts de compression
     """
-    # Flip horizontal aléatoire (50%)
+    # ── Flip horizontal aléatoire (50%) ──
     if np.random.rand() > 0.5:
         image = cv2.flip(image, 1)
 
-    # Variation de luminosité ET contraste aléatoire
-    alpha = np.random.uniform(0.8, 1.2)
-    beta = np.random.uniform(-15, 15)
+    # ── Brightness + contraste (toujours, mais intensité variable) ──
+    alpha = np.random.uniform(0.75, 1.25)
+    beta = np.random.uniform(-20, 20)
     image = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
 
-    # Correction gamma aléatoire (30% de chance)
-    if np.random.rand() > 0.7:
-        gamma = np.random.uniform(0.7, 1.4)
+    # ── Correction gamma (40% de chance) ──
+    if np.random.rand() < 0.4:
+        gamma = np.random.uniform(0.6, 1.5)
         inv_gamma = 1.0 / gamma
         table = np.array([
             ((i / 255.0) ** inv_gamma) * 255
             for i in np.arange(0, 256)
         ]).astype('uint8')
         image = cv2.LUT(image, table)
+
+    # ── Flou gaussien (35% de chance) — simule défocus / flou caméra ──
+    if np.random.rand() < 0.35:
+        ksize = np.random.choice([3, 5])
+        image = cv2.GaussianBlur(image, (ksize, ksize), 0)
+
+    # ── Bruit gaussien (30% de chance) — simule bruit capteur Pi camera ──
+    if np.random.rand() < 0.30:
+        sigma = np.random.uniform(5, 20)
+        noise = np.random.normal(0, sigma, image.shape).astype(np.float32)
+        image = np.clip(image.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+
+    # ── CLAHE — égalisation adaptative (20% de chance) ──
+    if np.random.rand() < 0.20:
+        if len(image.shape) == 3:
+            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+            clahe = cv2.createCLAHE(clipLimit=np.random.uniform(1.5, 4.0),
+                                     tileGridSize=(8, 8))
+            lab[:, :, 0] = clahe.apply(lab[:, :, 0])
+            image = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        else:
+            clahe = cv2.createCLAHE(clipLimit=np.random.uniform(1.5, 4.0),
+                                     tileGridSize=(8, 8))
+            image = clahe.apply(image)
+
+    # ── Sharpening (20% de chance) — renforce les arêtes ──
+    if np.random.rand() < 0.20:
+        strength = np.random.uniform(0.3, 0.8)
+        kernel = np.array([[0, -1, 0],
+                           [-1, 5, -1],
+                           [0, -1, 0]], dtype=np.float32)
+        kernel = (1 - strength) * np.eye(3, dtype=np.float32) + strength * kernel / 5
+        # Utiliser un kernel simple sharpen
+        sharpen_kernel = np.array([[ 0, -1,  0],
+                                   [-1,  5, -1],
+                                   [ 0, -1,  0]], dtype=np.float32)
+        blended = cv2.filter2D(image, -1, sharpen_kernel)
+        image = cv2.addWeighted(image, 1 - strength, blended, strength, 0)
+
+    # ── Scale jitter (25% de chance) — downscale + upscale → perte de détails ──
+    if np.random.rand() < 0.25:
+        h, w = image.shape[:2]
+        if h > 16 and w > 16:  # seulement si l'image est assez grande
+            scale = np.random.uniform(0.4, 0.8)
+            small = cv2.resize(image, (max(4, int(w * scale)), max(4, int(h * scale))),
+                               interpolation=cv2.INTER_AREA)
+            image = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+
+    # ── Compression JPEG (20% de chance) — simule artefacts ──
+    if np.random.rand() < 0.20:
+        quality = np.random.randint(30, 70)
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+        _, encoded = cv2.imencode('.jpg', image, encode_param)
+        image = cv2.imdecode(encoded, cv2.IMREAD_COLOR if len(image.shape) == 3
+                             else cv2.IMREAD_GRAYSCALE)
 
     return image
 

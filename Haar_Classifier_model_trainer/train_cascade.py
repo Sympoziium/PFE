@@ -21,12 +21,12 @@ import os
 import re
 
 from cascade import (
-    DETECTION_PRESETS, HNM_PRESETS, WINDOW_SIZE,
+    DETECTION_PRESETS, HNM_PRESETS, WINDOW_SIZE, MAX_FALSE_ALARM_RATE,
     validate_environment,
     prepare_data, create_samples,
     train_cascade, generate_cascade_xml,
     evaluate_model, generate_model_plaque,
-    hard_negative_mining,
+    hard_negative_mining, iterative_hnm,
     advanced_model_analysis,
 )
 from cascade.training import check_cascade_resume
@@ -179,6 +179,7 @@ def show_main_menu(data_dir):
 
     if state['has_cascade_xml']:
         print(f"    [5] Hard Negative Mining (extraire les FP → améliorer précision)")
+        print(f"    [8] HNM Itératif (mine → retrain × N rounds automatiques)")
 
     if state['has_cascade_xml'] or state['n_stages'] > 0:
         print(f"    [6] Analyse avancée (FN visuels + métriques par stage + graphiques)")
@@ -194,6 +195,7 @@ def show_main_menu(data_dir):
         valid_choices.add('4')
     if state['has_cascade_xml']:
         valid_choices.add('5')
+        valid_choices.add('8')
     if state['has_cascade_xml'] or state['n_stages'] > 0:
         valid_choices.add('6')
     if state['n_stages'] > 0 and state['has_cascade_xml']:
@@ -213,7 +215,7 @@ def choose_training_config():
     print(f"    [1] Rapide    — LBP, 14 stages  (~1-2h, test rapide)")
     print(f"    [2] Équilibre — HAAR, 14 stages  (~6-12h, bon compromis)")
     print(f"    [3] Précision — HAAR, 18 stages  (~12-24h+, meilleure qualité)")
-    print(f"    [4] Test      — LBP, stages et minHitRate personnalisés")
+    print(f"    [4] Test      — Tout personnalisé (feature, stages, minHitRate, maxFalseAlarmRate)")
 
     while True:
         c = input(f"\n  Choix (1/2/3/4) : ").strip()
@@ -247,6 +249,15 @@ def choose_training_config():
                     print("    minHitRate doit être entre 0.9 et 0.9999.")
                     continue
 
+                max_fa_input = input(f"    maxFalseAlarmRate (défaut: {MAX_FALSE_ALARM_RATE}, ex: 0.4 plus bas = plus strict) : ").strip()
+                if max_fa_input:
+                    max_fa = float(max_fa_input)
+                    if max_fa < 0.1 or max_fa > 0.7:
+                        print("    maxFalseAlarmRate doit être entre 0.1 et 0.7.")
+                        continue
+                else:
+                    max_fa = MAX_FALSE_ALARM_RATE
+
                 width = int(input("    Largeur de la fenêtre (ex: 24) : ").strip())
                 height = int(input("    Hauteur de la fenêtre (ex: 24) : ").strip())
                 if width < 12 or width > 200 or height < 12 or height > 200:
@@ -254,7 +265,8 @@ def choose_training_config():
                     continue
 
                 return {'name': 'Test', 'feature': feature, 'stages': stages,
-                        'min_hit_rate': min_hr, 'w': width, 'h': height}
+                        'min_hit_rate': min_hr, 'max_false_alarm_rate': max_fa,
+                        'w': width, 'h': height}
             except ValueError:
                 print("    Valeur invalide.")
         print("  Choix invalide. Entrer 1, 2, 3 ou 4.")
@@ -505,6 +517,54 @@ if __name__ == "__main__":
             print(f"  ✓ Généré : {cascade_file}")
         else:
             print("  ✗ Échec de la génération.")
+
+    # ──────────────────────────────────────────────────────
+    #  [8] HNM Itératif
+    # ──────────────────────────────────────────────────────
+    elif choice == '8':
+        cascade_file = os.path.join(output_dir, 'cascade.xml')
+
+        # Nombre de rounds
+        rounds_input = input(
+            f"\n  Nombre de rounds HNM (1-5, défaut 3) : ").strip()
+        try:
+            num_rounds = int(rounds_input) if rounds_input else 3
+            num_rounds = max(1, min(5, num_rounds))
+        except ValueError:
+            num_rounds = 3
+
+        # Paramètres de mining
+        print(f"\n  Paramètres de détection pour le mining :")
+        hnm_presets = list(HNM_PRESETS.values())
+        for i, p in enumerate(hnm_presets, 1):
+            print(f"    [{i}] {p['label']:<12} — SF={p['sf']}, MN={p['mn']}  "
+                  f"({p['desc']})")
+
+        while True:
+            hn_choice = input(f"\n  Choix (1/2/3, défaut 2) : ").strip()
+            if not hn_choice:
+                hn_choice = '2'
+            if hn_choice in ('1', '2', '3'):
+                preset = hnm_presets[int(hn_choice) - 1]
+                sf, mn = preset['sf'], preset['mn']
+                break
+            print("  Choix invalide.")
+
+        print(f"\n  Configuration : {num_rounds} rounds, SF={sf}, MN={mn}")
+        confirm = input("  Lancer le HNM itératif ? (O/N) : ").strip().upper()
+        if confirm != 'O':
+            print("  Annulé.")
+            exit(0)
+
+        iterative_hnm(
+            model_path=cascade_file,
+            negative_images_dir=negative_images_dir,
+            data_dir=data_dir,
+            output_dir=output_dir,
+            num_rounds=num_rounds,
+            scaleFactor=sf,
+            minNeighbors=mn
+        )
 
     # ──────────────────────────────────────────────────────
     #  [Q] Quitter

@@ -121,7 +121,7 @@ PFE/
 │   │
 │   └── vision/
 │       ├── detectors/
-│       │   ├── detector_base.py    # Classe de base pour tous les détecteurs
+│       │   ├── detector_base.py       # Classe de base pour tous les détecteurs
 │       │   ├── Line_detector.py
 │       │   ├── Luminosity.py
 │       │   ├── Stop_detector_zumi.py  # Détecteur Zumi (lib Vision)
