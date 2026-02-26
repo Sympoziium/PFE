@@ -210,8 +210,8 @@ def iterative_hnm(model_path, negative_images_dir, data_dir, output_dir,
     :return: Chemin du modèle final, ou None si échec
     """
     from cascade.config import WINDOW_SIZE
-    from cascade.data_prep import prepare_data, create_samples_only
-    from cascade.training import check_cascade_resume, train_cascade
+    from cascade.data_prep import prepare_data
+    from cascade.training import check_cascade_resume, train_cascade, create_samples
 
     print(f"\n{'='*60}")
     print(f"  Hard Negative Mining Itératif — {num_rounds} rounds")

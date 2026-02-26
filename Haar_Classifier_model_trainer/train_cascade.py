@@ -308,13 +308,13 @@ if __name__ == "__main__":
             annotations_file=annotations_file,
             vec_file=os.path.join(data_dir, 'samples.vec'),
             num_samples=nb_annotations,
-            width=sample_width, height=sample_height
+            width=config.get('w', sample_width), height=config.get('h', sample_height)
         )
 
         check_cascade_resume(output_dir)
         model_path = train_cascade(
             nb_annotations, nb_negatives,
-            sample_width, sample_height,
+            config.get('w', sample_width), config.get('h', sample_height),
             data_dir, output_dir, config=config
         )
 
@@ -323,7 +323,7 @@ if __name__ == "__main__":
                 model_path, test_pos_dir, test_neg_dir)
             generate_model_plaque(
                 model_path=model_path, config=config,
-                sample_width=sample_width, sample_height=sample_height,
+                sample_width=config.get('w', sample_width), sample_height=config.get('h', sample_height),
                 eval_results=eval_results, best_idx=best_idx,
                 data_dir=data_dir, base_dir=base_dir,
                 state_checker=check_data_state
@@ -340,12 +340,12 @@ if __name__ == "__main__":
         train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir, \
             nb_annotations, nb_negatives, annotations_file, bg_file = \
             prepare_data(positive_images_dir, negative_images_dir, data_dir)
-
+        config = choose_training_config()
         create_samples(
             annotations_file=annotations_file,
             vec_file=os.path.join(data_dir, 'samples.vec'),
             num_samples=nb_annotations,
-            width=sample_width, height=sample_height
+            width=config.get('w', sample_width), height=config.get('h', sample_height)
         )
 
         print("\n  ✓ Données préparées avec succès.")
