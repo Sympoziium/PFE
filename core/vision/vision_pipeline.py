@@ -76,11 +76,11 @@ class VisionPipeline:
         
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
-        self.detectors.extend(detectors)
+        self.detectors.append(detectors)
 
     def add_passive_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
-        self._passive_detectors.extend(detectors)
+        self._passive_detectors.append(detectors)
 
     def process_frame(self, frame, detetor_index=0, filename=None):
         """ traiter un frame spécifique avec un détecteur spécifique """
