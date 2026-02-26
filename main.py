@@ -61,6 +61,9 @@ haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_
 haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Beta_Prime.xml'), scaleFactor=1.03, minNeighbors=2)
 # haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion_Pompier.xml'), scaleFactor=1.03, minNeighbors=8)
 haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion2.xml'), scaleFactor=1.08, minNeighbors=7)
+# haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion3.xml'), scaleFactor=1.15, minNeighbors=8)
+
+
 
 # On ajoute le détecteur au pipeline de vision
 # vision_pipeline.add_detectors(Lum_detector)
