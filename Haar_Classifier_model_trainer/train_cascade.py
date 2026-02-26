@@ -88,7 +88,8 @@ def check_data_state(data_dir):
     vec_file = os.path.join(data_dir, 'samples.vec')
     state['has_vec'] = os.path.isfile(vec_file) and os.path.getsize(vec_file) > 0
 
-    cascade_dir = os.path.join(data_dir, 'cascade')
+    cascade_dir = os.path.join(data_dir, 'model_output')
+    print(f"Vérification des stages dans {cascade_dir}...")
     state['n_stages'] = 0
     state['has_cascade_xml'] = False
     state['has_params_xml'] = False
@@ -154,7 +155,7 @@ def show_main_menu(data_dir):
         print(status(False, "Aucun stage entraîné"))
 
     if state['has_cascade_xml']:
-        cascade_path = os.path.join(data_dir, 'cascade', 'cascade.xml')
+        cascade_path = os.path.join(data_dir, 'model_output', 'cascade.xml')
         size_kb = os.path.getsize(cascade_path) / 1024
         print(status(True, f"Modèle final cascade.xml ({size_kb:.1f} KB)"))
     else:
