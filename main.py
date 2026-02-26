@@ -71,6 +71,11 @@ vision_pipeline.add_detectors(stop_detector)
 vision_pipeline.add_detectors(stop_detector_cv)
 vision_pipeline.add_detectors(stop_detector_matt)
 vision_pipeline.add_detectors(haar_classifier)
+
+# Ajout des détecteurs pour la détection passive (live feed)
+vision_pipeline.add_passive_detectors(stop_detector_cv)
+vision_pipeline.add_passive_detectors(haar_classifier)
+
 # Initialisation du contrôleur (serveur Flask)
 ctrl = controller_module.controller(zumi)
 routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du contrôleur (build du serveur)

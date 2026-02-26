@@ -26,7 +26,11 @@ def register_routes(ctrl):
     app.add_url_rule('/video', 'video_feed', lambda: ctrl.video_feed())
     app.add_url_rule('/close_camera', 'close_camera', lambda: ctrl.close_camera(), methods=['POST'])
     app.add_url_rule('/start_camera', 'start_camera', lambda: ctrl.start_camera(), methods=['POST'])
-
+    app.add_url_rule('/start_passive_detection', 'start_passive_detection', lambda: ctrl.start_passive_detection(), methods=['POST'])
+    app.add_url_rule('/stop_passive_detection', 'stop_passive_detection', lambda: ctrl.stop_passive_detection(), methods=['POST'])
+    app.add_url_rule('/pause_passive_detection', 'pause_passive_detection', lambda: ctrl.pause_passive_detection(), methods=['POST'])
+    app.add_url_rule('/resume_passive_detection', 'resume_passive_detection', lambda: ctrl.resume_passive_detection(), methods=['POST'])
+    app.add_url_rule('/get_passive_detection', 'get_passive_detection', lambda: ctrl.get_passive_detection(), methods=['GET'])
     # Détecteurs: liste/selection et exécution
     app.add_url_rule('/detectors', 'detectors', lambda: ctrl.detectors())  # GET
     app.add_url_rule('/detector', 'set_detector', lambda: ctrl.set_detector(), methods=['POST'])

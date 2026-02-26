@@ -21,6 +21,9 @@ def format_detection_result(results, detector_name="Détecteur"):
     """
     Formate les résultats de détection pour un affichage lisible dans les logs.
 
+    Supporte le format standardisé (clé 'detections') ainsi que les
+    anciens formats legacy ('detection_box', 'Object coordinates', etc.).
+
     Args:
         results (dict): Résultats de détection du détecteur
         detector_name (str): Nom du détecteur
@@ -33,36 +36,41 @@ def format_detection_result(results, detector_name="Détecteur"):
     lines.append('RÉSULTATS DE DÉTECTION - {}'.format(detector_name))
     lines.append('=' * 60)
 
-    # Détection générale (clé standardisée + fallbacks legacy)
-    detected = results.get('Object_detected',
-        results.get('Stop_detected',
-        results.get('Object detected', False)))
+    # Détection générale
+    detected = results.get('Object_detected', False)
     lines.append('Objet détecté: {}'.format('OUI' if detected else 'NON'))
 
-    # Boîte de détection (clé standardisée + fallback legacy)
-    bbox = results.get('detection_box') or results.get('Object coordinates')
-    if bbox:
-        if len(bbox) == 4:  # (x, y, w, h)
-            x, y, w, h = bbox
-            lines.append('Position: x={}, y={}'.format(int(x), int(y)))
-            lines.append('Taille: largeur={}, hauteur={}'.format(int(w), int(h)))
-        elif len(bbox) == 2:  # (x, y)
-            x, y = bbox
-            lines.append('Position: x={}, y={}'.format(int(x), int(y)))
-            size = results.get('Object size')
-            if size and len(size) == 2:
-                w, h = size
+    # --- Format standardisé : liste 'detections' ---
+    detections = results.get('detections', [])
+    if detections:
+        lines.append('Nombre de détections: {}'.format(len(detections)))
+        for i, det in enumerate(detections):
+            bbox = det.get('detection_box')
+            label = det.get('object', '?')
+            conf = det.get('confidence', '?')
+            if bbox and len(bbox) == 4:
+                x, y, w, h = bbox
+                line = '  #{} [{}]: pos=({},{}) taille={}x{} aire={}'.format(
+                    i + 1, label, int(x), int(y), int(w), int(h), int(w) * int(h))
+                if conf is not None and conf != '?':
+                    line += ' conf={:.1%}'.format(float(conf))
+                lines.append(line)
+    else:
+        # Fallback legacy (pour diagnostic ou ancien code)
+        bbox = results.get('detection_box') or results.get('Object coordinates')
+        if bbox:
+            if len(bbox) == 4:
+                x, y, w, h = bbox
+                lines.append('Position: x={}, y={}'.format(int(x), int(y)))
                 lines.append('Taille: largeur={}, hauteur={}'.format(int(w), int(h)))
 
-    # Confiance (si disponible)
-    conf = results.get('confidence')
-    if conf is not None and conf > 0:
-        lines.append('Confiance: {:.1%}'.format(float(conf)))
+        conf = results.get('confidence')
+        if conf is not None and conf > 0:
+            lines.append('Confiance: {:.1%}'.format(float(conf)))
 
-    # Aire (si disponible)
-    area = results.get('area')
-    if area is not None and area > 0:
-        lines.append('Aire du contour: {} pixels'.format(int(area)))
+        area = results.get('area')
+        if area is not None and area > 0:
+            lines.append('Aire du contour: {} pixels'.format(int(area)))
 
     # Temps de traitement
     proc_time = results.get('Processing time')
@@ -352,8 +360,8 @@ class controller:
     def run_detection(self):
         """
         Exécute le détecteur sélectionné sur la dernière image capturée.
-        Le détecteur se charge de l'annotation et retourne un payload
-        standardisé (Object_detected, detection_box, annotated_url, etc.).
+        Le détecteur retourne les données de détection, puis le contrôleur
+        se charge de l'annotation et de la sauvegarde de l'image annotée.
         """
         vp = self.vision_pipeline
         if vp is None:
@@ -380,13 +388,40 @@ class controller:
             detector_name = vp.get_detectors()[self.selected_detector_index].name if hasattr(vp.get_detectors()[self.selected_detector_index], 'name') else 'Unknown'
             print(format_detection_result(results, detector_name))
 
-            # Inclure les URLs utiles pour l'interface
+            # --- Annotation centralisée ---
+            detections = results.get('detections', [])
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
-            payload = dict(results)
-            payload['source_filename'] = filename
-            # S'assurer que les clés standardisées sont présentes
-            if 'source_file_url' not in payload:
-                payload['source_file_url'] = source_url
+            annotated_url = None
+
+            if detections:
+                ann_name, ann_rel_url = vp.save_annotated_image(frame_bgr, detections, filename)
+                if ann_rel_url:
+                    annotated_url = url_for('static', filename=ann_rel_url)
+
+            # Construire le payload pour le frontend
+            # On extrait la plus grande bbox comme détection principale (indicateur UI)
+            best_box = None
+            best_area = 0
+            for det in detections:
+                bbox = det.get('detection_box')
+                if bbox and len(bbox) == 4:
+                    a = int(bbox[2]) * int(bbox[3])
+                    if a > best_area:
+                        best_area = a
+                        best_box = bbox
+
+            payload = {
+                'Object_detected': results.get('Object_detected', False),
+                'detection_box': best_box,
+                'detections': detections,
+                'confidence': 1.0 if detections else 0.0,
+                'area': best_area if best_area > 0 else None,
+                'logs': results.get('logs', []),
+                'source_filename': filename,
+                'source_file_url': source_url,
+                'annotated_url': annotated_url,
+                'Processing time': results.get('Processing time'),
+            }
 
             return jsonify(payload)
         except IndexError:
@@ -436,18 +471,49 @@ class controller:
                     # Capture du frame depuis la caméra
                     frame_bgr = vp.capture_frame()
                     # Mettre à jour le buffer pour les captures instantanées
+                    # NOTE: on stocke la frame BRUTE (sans annotations) pour que
+                    # le thread de détection passive travaille sur une image propre.
                     vp.update_last_frame(frame_bgr)
                 except Exception:
                     time.sleep(0.1)
                     break
+
+                # --- Overlay détection passive sur la frame d'affichage ---
+                display_frame = frame_bgr
+                if vp._passive_running:
+                    result = vp.get_last_detection_result()
+                    if result and result.get('Object_detected'):
+                        # Dessiner sur une copie pour ne pas polluer le buffer brut
+                        display_frame = self._draw_passive_overlay(frame_bgr.copy(), result)
+
                 # Encodage direct en JPEG depuis BGR
-                ret, jpeg = cv2.imencode('.jpg', frame_bgr)
+                ret, jpeg = cv2.imencode('.jpg', display_frame)
                 if not ret:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-                time.sleep(0.05)
+                time.sleep(0.05) ### on impose une limite du livefeed a 20fps si on veux faire de la détection passive sa pourrais bloquer le Pi
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    # --- Helper: dessiner les résultats de détection passive sur une frame ---
+    def _draw_passive_overlay(self, frame, result):
+        """
+        Dessine les bounding boxes et labels de la détection passive
+        directement sur *frame* (qui doit être une copie).
+
+        Utilise VisionPipeline.annotate_frame() pour garder un seul
+        point de dessin dans tout le projet.
+
+        :param frame: image BGR (copie) sur laquelle dessiner.
+        :param result: dict retourné par process_passive() du détecteur,
+                       contenant 'detections' -> list[{object, detection_box}].
+        :return: frame annotée.
+        """
+        from core.vision.vision_pipeline import VisionPipeline
+        detections = result.get('detections', [])
+        if not detections:
+            return frame
+        return VisionPipeline.annotate_frame(frame, detections)
 
     # Caméra: stop/start
     def close_camera(self):
@@ -464,6 +530,57 @@ class controller:
         vp.start()
         return ("", 204)
     
+# ----------------------------------------------------------------------------
+#          Fonctions de callback pour les actions moteur du robot
+# ----------------------------------------------------------------------------
+    def start_passive_detection(self):
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline vision non initialisé'}), 400
+        if vp._passive_running: # éviter de lancer plusieurs fois le mode passif
+            return ("", 204)
+        vp.start_passive_detection(detector_index=self.selected_detector_index)
+        return ("", 204)
+    
+    def stop_passive_detection(self):
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline vision non initialisé'}), 400
+        if not vp._passive_running:
+            return ("", 204)
+        vp.stop_passive_detection()
+        return ("", 204)
+    
+    def pause_passive_detection(self):
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline vision non initialisé'}), 400
+        if not vp._passive_running:
+            return ("", 204)
+        vp.pause_passive_detection()
+        return ("", 204)
+    
+    def resume_passive_detection(self):
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline vision non initialisé'}), 400
+        if vp._passive_running:
+            return ("", 204)
+        vp.resume_passive_detection()
+        return ("", 204)
+    
+    def get_passive_detection(self):
+        """
+        Retourne le dernier résultat de détection passive.
+        Route appelable en polling depuis le JS (ex: toutes les 2s).
+        """
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline not initialized'}), 400
+        result = vp.get_last_detection_result()
+        if result is None:
+            return jsonify({'Object_detected': False, 'detections': [], 'ready': False})
+        return jsonify({**result, 'ready': True})
 # ----------------------------------------------------------------------------
 #          Fonctions de callback pour les actions moteur du robot
 # ----------------------------------------------------------------------------

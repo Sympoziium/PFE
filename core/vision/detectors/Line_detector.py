@@ -20,3 +20,7 @@ class LineDetector(BaseDetector):
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
+
+    def process_passive(self, frame):
+        """Détection de lignes optimisée pour le live feed."""
+        return {"detector": "line", "value": self.detect_lines(frame)}

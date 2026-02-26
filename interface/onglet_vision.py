@@ -280,6 +280,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
 				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
 				<button class='remoteDL-toggle-btn off' id='toggleHighResCapturedBtn' aria-pressed='false'> Low Res</button>
+				<button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
 				<div id='zone-resultats'></div>
 				<!-- Conteneur unifié pour livefeed et image capturée -->
 				<div class='live-feed' id='mainImageDisplay' style='display:none;'>
@@ -466,6 +467,17 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		btn.classList.toggle('on', nextActive);
 		btn.classList.toggle('off', !nextActive);
 		btn.textContent = nextActive ? 'High Res' : 'Low Res';
+	}
+
+	function togglePassiveDetection() {
+		console.log('togglePassiveDetection() appelee'); // pour debug
+		var btn = document.getElementById('togglePassiveDetectionBtn');
+		var isActive = btn.getAttribute('aria-pressed') === 'true';
+		var nextActive = !isActive;
+		btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+		btn.classList.toggle('on', nextActive);
+		btn.classList.toggle('off', !nextActive);
+		btn.textContent = nextActive ? 'Stop Passive Detection' : 'Start Passive Detection';
 	}
 
 	function toggleDownloadCaptured() {
@@ -802,6 +814,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		// Toggle high res
 		var hrBtn = document.getElementById('toggleHighResCapturedBtn');
 		if (hrBtn) hrBtn.addEventListener('click', toggleHighResCaptured);
+		// Toggle passive detection
+		var pdBtn = document.getElementById('togglePassiveDetectionBtn');
+		if (pdBtn) pdBtn.addEventListener('click', togglePassiveDetection);
 		// Run detection
 		var runDetBtn = document.getElementById('runDetectionBtn');
 		if (runDetBtn) runDetBtn.addEventListener('click', runDetection);
@@ -818,6 +833,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	window.toggleCamera = toggleCamera;
 	window.toggleDownloadCaptured = toggleDownloadCaptured;
 	window.toggleHighResCaptured = toggleHighResCaptured;
+	window.togglePassiveDetection = togglePassiveDetection;
 	window.captureImage = captureImage;
 	window.returnToLivefeed = returnToLivefeed;
 	window.runDetection = runDetection;

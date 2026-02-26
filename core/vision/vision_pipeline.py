@@ -15,6 +15,9 @@ Cette classe assure la gestion du pipeline de vision
 """
 import threading
 import time
+import cv2
+import os
+import uuid
 
 
 class VisionPipeline:
@@ -30,6 +33,18 @@ class VisionPipeline:
         self._last_frame = None
         # Fonction optionnelle de capture haute résolution (injectée depuis l'extérieur)
         self._hires_capture_fn = None
+        # threads pour la détection passive
+        self._passive_thread = None         # instance du thread
+        self._passive_running = False       # Flag pour contrôler l'exécution du thread
+        self._passive_interval = 4.0        # Intervalle de 4 secondes entre chaque détection passive
+        self._passive_pause_event = threading.Event() # Event pour contrôler la pause du thread de détection passive
+        self._passive_pause_event.clear()     # pause par défaut
+
+        # Buffer résultat détection passive (thread-safe)
+        self._passive_detectors = []         # Liste des détecteurs à utiliser pour la détection passive (peut être différente de ceux du pipeline principal)
+        self._last_detection_result = None
+        self._result_lock = threading.Lock()
+
 
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
@@ -61,41 +76,12 @@ class VisionPipeline:
         
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
-        self.detectors.append(detectors)
+        self.detectors.extend(detectors)
 
-    def step(self):
-        """ effectuer un cycle du pipeline de vision """
-        if not self.running:
-            raise RuntimeError("Le pipeline de vision n'est pas en cours d'exécution.")
+    def add_passive_detectors(self, detectors):
+        """ ajouter un détecteur au pipeline de vision """
+        self._passive_detectors.extend(detectors)
 
-        start_time = time.time()
-
-        try:
-            frame = self.camera.capture()
-        except Exception as e:
-            print("Erreur lors de la capture d'une image: {}".format(e))
-            
-
-        results = []
-
-        # Appliquer chaque détecteur sur l'image capturée
-        for detectors in self.detectors:
-            try:
-                result = detectors.process(frame)
-                results.append(result)
-
-            except Exception as e:
-                print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detectors, e))
-                
-
-        # On fait un délais pour respecter le fps souhaité
-        elapsed_time = time.time() - start_time
-        sleep_time = self.periode - elapsed_time
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-
-        return results
-    
     def process_frame(self, frame, detetor_index=0, filename=None):
         """ traiter un frame spécifique avec un détecteur spécifique """
 
@@ -125,7 +111,6 @@ class VisionPipeline:
         except Exception as e:
             print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
             
-
     def is_running(self):
         """ vérifier si le pipeline de vision est en cours d'exécution """
         return self.running
@@ -217,6 +202,61 @@ class VisionPipeline:
         """Vérifie si la capture haute résolution est disponible."""
         return self._hires_capture_fn is not None
 
+# ----------------------------------------
+#        Annotation centralisée
+# ----------------------------------------
+    @staticmethod
+    def annotate_frame(frame, detections, box_color=(0, 255, 0), text_color=(0, 255, 0),
+                       thickness=2, font_scale=0.5):
+        """
+        Dessine les bounding boxes et labels sur une **copie** de l'image.
+
+        :param frame:      Image BGR originale (ne sera PAS modifiée).
+        :param detections:  Liste de dicts [{object, detection_box, ...}, ...].
+        :param box_color:   Couleur BGR du rectangle (défaut vert).
+        :param text_color:  Couleur BGR du texte (défaut vert).
+        :param thickness:   Épaisseur du trait.
+        :param font_scale:  Échelle de la police.
+        :return: Copie de l'image annotée (BGR).
+        """
+        annotated = frame.copy()
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        for det in detections:
+            bbox = det.get('detection_box')
+            if not bbox or len(bbox) != 4:
+                continue
+            x, y, w, h = [int(v) for v in bbox]
+            label = det.get('object', 'Objet')
+            cv2.rectangle(annotated, (x, y), (x + w, y + h), box_color, thickness)
+            label_y = max(y - 6, 14)
+            cv2.putText(annotated, label, (x, label_y), font, font_scale,
+                        text_color, 1, cv2.LINE_AA)
+        return annotated
+
+    def save_annotated_image(self, frame, detections, filename):
+        """
+        Annote une image puis la sauvegarde sur disque.
+
+        :param frame:       Image BGR source.
+        :param detections:  Liste de dicts [{object, detection_box}, ...].
+        :param filename:    Nom de fichier de la capture originale.
+        :return: (ann_filename, ann_url) ou (None, None) si rien à sauvegarder.
+        """
+        if not detections or not self.CAPTURE_DIR:
+            return None, None
+
+        annotated = self.annotate_frame(frame, detections)
+
+        base, ext = os.path.splitext(filename)
+        ann_name = '{}_det_{}{}'.format(base, uuid.uuid4().hex[:6], ext or '.jpg')
+        ann_path = os.path.join(self.CAPTURE_DIR, ann_name)
+        cv2.imwrite(ann_path, annotated)
+
+        # URL relative générée sans importer Flask ici
+        ann_url = 'captured_images/{}'.format(ann_name)
+        return ann_name, ann_url
+
     def get_detectors(self):
         """ obtenir la liste des détecteurs ajoutés au pipeline de vision """
         return self.detectors
@@ -246,3 +286,74 @@ class VisionPipeline:
             traceback.print_exc()
             return {'error': "Erreur lors de l'obtention du diagnostic du détecteur", 'details': str(e)}
 
+# ----------------------------------------
+#        thread de détection passive
+# ----------------------------------------
+    def _passive_detection_loop(self):
+        """
+        Boucle de détection passive. Tourne dans un thread daemon.
+        S'endort entre chaque détection pour ne pas saturer le CPU.
+        """
+        # fait la liste des détecteurs assigné à la détection passive
+        nb_detectors = len(self._passive_detectors)
+        detector_index = 0
+        while self._passive_running:
+            # attend si le mode pause est activé
+            self._passive_pause_event.wait()
+
+            # récupération de la dernière frame du livefeed
+            frame = self.get_last_frame()
+            if frame is not None and nb_detectors > 0:
+                # faire la détection avec le détecteur courant
+                detector = self._passive_detectors[detector_index]
+                try:
+                    detection_result = detector.process_passive(frame)
+                    with self._result_lock:
+                        self._last_detection_result = detection_result
+                except Exception as e:
+                    print("Erreur lors de la détection passive avec le détecteur {}: {}".format(detector, e))
+
+                # passer au détecteur suivant pour la prochaine itération
+                detector_index = (detector_index + 1) % nb_detectors
+        
+            # Interval de détection passive
+            time.sleep(self._passive_interval)
+
+    def start_passive_detection(self, interval=4.0, detctor_index=0):
+        """Démarre le thread de détection passive avec l'intervalle spécifié."""
+        if self._passive_thread and self._passive_thread.is_alive():
+            return  # déjà actif
+        self._passive_interval = interval
+        self._passive_running = True
+        self._passive_pause_event.set()
+        self._passive_thread = threading.Thread(
+            target=self._passive_detection_loop,
+            name="PassiveDetection",
+            daemon=True  # s'arrête automatiquement quand le programme principal se termine
+        )
+        self._passive_thread.start()
+        print("[PassiveVision] Démarré (intervalle: {}s)".format(interval))
+
+    def stop_passive_detection(self):
+        """Arrête le thread de détection passive."""
+        self._passive_running = False
+        self._passive_pause_event.set()  # s'assurer que le thread n'est pas bloqué en pause
+        if self._passive_thread:
+            self._passive_thread.join(timeout=2.0)  # attendre que le thread se termine proprement
+        
+        print("[PassiveVision] Arrêté")
+    
+    def pause_passive_detection(self):
+        """Met en pause le thread de détection passive."""
+        self._passive_pause_event.clear()
+        print("[PassiveVision] En pause")
+    
+    def resume_passive_detection(self):
+        """Reprend le thread de détection passive s'il était en pause."""
+        self._passive_pause_event.set()
+        print("[PassiveVision] Repris")
+
+    def get_last_detection_result(self):
+        """Retourne le dernier résultat de détection passive (thread-safe)."""
+        with self._result_lock:
+            return self._last_detection_result

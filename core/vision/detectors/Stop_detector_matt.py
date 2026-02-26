@@ -77,6 +77,10 @@ class StopDetectorMatt(BaseDetector):
             self.h_high_min, self.h_high_max, self.s_min, self.s_max, self.v_min, self.v_max))
         print('  Detection: min_area={}, min_score={}'.format(self.min_area, self.min_score))
 
+    def process_passive(self, frame):
+        """Détection de panneau STOP optimisée pour le live feed."""
+        return self.process(frame)
+    
     def process(self, frame, filename=None):
         """
         Analyse une image BGR et retourne un dict de résultat standardisé.
@@ -96,23 +100,24 @@ class StopDetectorMatt(BaseDetector):
         self.steps = []
         self.logs = []
 
-        if not filename:
-            return {'error': 'no captured image available. Please capture an image first.'}
-
-        img_path = os.path.join(self.CAPTURE_DIR, filename)
-        if not os.path.exists(img_path):
-            return {'error': 'last captured image not found on server'}
+        # Déterminer l'image source
+        if filename and self.CAPTURE_DIR:
+            img_path = os.path.join(self.CAPTURE_DIR, filename)
+            if not os.path.exists(img_path):
+                return {'error': 'last captured image not found on server'}
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return {'error': 'failed to read captured image'}
+        else:
+            if frame is None:
+                return {'error': 'no frame provided'}
+            frame_bgr = frame
 
         # Créer le dossier de diagnostics
         self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
         os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
 
         try:
-            # Charger l'image en BGR
-            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
-            if frame_bgr is None:
-                return {'error': 'failed to read captured image'}
-
             self.logs.append('=== DETECTION STOP DETECTOR MATT ===')
             self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
             self.logs.append('Config: min_area={}, min_score={}'.format(self.min_area, self.min_score))

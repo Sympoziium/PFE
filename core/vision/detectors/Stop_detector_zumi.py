@@ -9,12 +9,16 @@
 # de paramètres (scaleFactor, minNeighbors, minSize) en BGR et RGB
 # pour aider à trouver les réglages optimaux.
 
-import os, uuid
+import os, uuid, time
 from .detector_base import BaseDetector
 from zumi.util.vision import Vision
 
 import cv2
-from flask import url_for
+
+try:
+    from flask import url_for
+except ImportError:
+    url_for = None
 
 class StopDetectorZumi(BaseDetector):
 
@@ -39,18 +43,48 @@ class StopDetectorZumi(BaseDetector):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
+    def process_passive(self, frame):
+        """Détection passive de panneau STOP optimisée pour le live feed.
+
+        Retourne le format standardisé (sans logs).
+        """
+        if frame is None:
+            return {'Object_detected': False, 'detections': [], 'timestamp': time.time()}
+
+        try:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            bbox = self.zumi_vision.find_stop_sign(
+                frame_rgb,
+                scale_factor=self.scaleFactor,
+                min_neighbors=self.minNeighbors,
+                min_size=self.minSize,
+            )
+
+            detections = []
+            if bbox is not None:
+                x, y, w, h = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+                detections.append({
+                    'object': 'Stop Sign',
+                    'detection_box': (x, y, w, h)
+                })
+
+            return {
+                'Object_detected': len(detections) > 0,
+                'detections': detections,
+                'timestamp': time.time()
+            }
+        except Exception as e:
+            return {'Object_detected': False, 'detections': [], 'timestamp': time.time()}
+
     def process(self, frame, filename=None):
         """Analyse une image pour détecter un panneau stop via la lib Zumi.
-
-        Supporte deux modes:
-        - Avec filename: charge l'image depuis le disque (mode UI)
-        - Sans filename: utilise le frame passé directement (mode legacy/pipeline)
+        Retourne un payload standardisé **sans annotation**.
 
         Args:
             frame: image BGR (numpy array).
             filename: nom du fichier image capturé (optionnel).
         Returns:
-            dict: payload standardisé conforme à BaseDetector.
+            dict: {Object_detected, detections, logs}.
         """
         self.logs = []
         self.steps = []
@@ -85,47 +119,27 @@ class StopDetectorZumi(BaseDetector):
 
             self.logs.append('Retour brut find_stop_sign: {}'.format(repr(bbox)))
 
-            # Cast numpy -> Python int pour serialisation JSON
-            stop_detected = bbox is not None
-            if stop_detected:
+            detections = []
+            if bbox is not None:
                 x, y, w, h = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
-                bbox = (x, y, w, h)
                 self.logs.append('Resultat: STOP DETECTE')
                 self.logs.append('  Position: x={}, y={}'.format(x, y))
                 self.logs.append('  Taille: {}x{}, aire={}'.format(w, h, w * h))
+                detections.append({
+                    'object': 'Stop Sign',
+                    'detection_box': (x, y, w, h),
+                    'confidence': 1.0,
+                })
             else:
                 self.logs.append('Resultat: Aucun panneau stop detecte')
 
             self.logs.append('=== FIN DETECTION ===')
 
-            # Construire l'URL source si filename disponible
-            source_url = None
-            if filename:
-                source_url = url_for('static', filename='captured_images/{}'.format(filename))
-
-            # Sauvegarder image annotée si détection
-            annotated_url = None
-            if stop_detected and filename and self.CAPTURE_DIR:
-                annotated = frame_bgr.copy()
-                cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(annotated, 'STOP', (x, max(0, y - 10)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                base, ext = os.path.splitext(filename)
-                ann_name = '{}_zumi_det{}'.format(base, ext or '.jpg')
-                ann_path = os.path.join(self.CAPTURE_DIR, ann_name)
-                cv2.imwrite(ann_path, annotated)
-                annotated_url = url_for('static', filename='captured_images/{}'.format(ann_name))
-
-            payload = {
-                'Object_detected': stop_detected,
-                'detection_box': bbox if stop_detected else None,
-                'confidence': 1.0 if stop_detected else 0.0,
-                'area': (bbox[2] * bbox[3]) if stop_detected else None,
+            return {
+                'Object_detected': len(detections) > 0,
+                'detections': detections,
                 'logs': self.logs,
-                'source_file_url': source_url,
-                'annotated_url': annotated_url,
             }
-            return payload
 
         except Exception as e:
             self.logs.append('ERREUR: {}'.format(str(e)))

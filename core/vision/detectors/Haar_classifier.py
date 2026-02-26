@@ -13,9 +13,13 @@
 
 import os, uuid, time
 from .detector_base import BaseDetector
-import cv2 
-from flask import url_for
+import cv2
 import numpy as np
+
+try:
+    from flask import url_for
+except ImportError:          # url_for n'est utilisé que par le diagnostic
+    url_for = None
 
 class HaarDetector(BaseDetector):
     def __init__(self):
@@ -34,8 +38,7 @@ class HaarDetector(BaseDetector):
         # Diagnostique et logs des messages
         self.logs = []
         self.steps = []
-
-
+        
     def add_classifier(self, name, cascade_path, scaleFactor=1.1, minNeighbors=5):
         """Ajoute un classifieur .xml à la liste.
         
@@ -93,60 +96,61 @@ class HaarDetector(BaseDetector):
             print("Erreur lors de l'attachement du dossier de capture: {}".format(str(e)))
 
 
+    # cette méthode est appelé pour faire la détection, elle lie une image enregistré
+    # pour de la détection single shot ces good, mais pour le pasive, on devrais lui passer une frame
+    # sa ferais réduire la latence en évitant de devoir charger une image du disque
     def process(self, frame, filename=None):
         """
         Analyse une image avec tous les classifieurs chargés.
-        Retourne un payload standardisé compatible avec l'UI.
-        Les logs contiennent le détail de chaque objet détecté par chaque classifieur.
-        
-        :param frame: Image à analyser (numpy array, non utilisé ici car on relit depuis le disque).
+        Retourne un payload standardisé **sans annotation** sur l'image.
+
+        :param frame: Image BGR (numpy array).
         :param filename: Nom du fichier image capturé.
-        :return: Dictionnaire standardisé (voir BaseDetector).
+        :return: dict standardisé {Object_detected, detections, logs}.
         """
         # Réinitialisation des logs
         self.steps = []
         self.logs = []
 
-        if not filename:
-            return {'error': 'no captured image available. Please capture an image first.'}
-
-        img_path = os.path.join(self.CAPTURE_DIR, filename)
-        if not os.path.exists(img_path):
-            return {'error': 'last captured image not found on server'}
-
-        # Crée le dossier de diagnostics s'il n'existe pas
-        self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
-        os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
-
-        try:
-            # Étape 1: Charger l'image capturée en BGR
+        # Déterminer l'image source
+        if filename and self.CAPTURE_DIR:
+            img_path = os.path.join(self.CAPTURE_DIR, filename)
+            if not os.path.exists(img_path):
+                return {'error': 'last captured image not found on server'}
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
+        else:
+            if frame is None:
+                return {'error': 'no frame provided'}
+            frame_bgr = frame
 
+        try:
             classifier_names = list(self.classifiers.keys())
             self.logs.append('=== DETECTION HAAR CASCADE ===')
             self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
             self.logs.append('Classifieurs charges: {}'.format(', '.join(classifier_names) if classifier_names else 'aucun'))
-            self.logs.append('Config: scaleFactor={}, minNeighbors={}'.format(self.classifiers[classifier_names[0]]['scaleFactor'], self.classifiers[classifier_names[0]]['minNeighbors']) if classifier_names else 'aucun')
+            if classifier_names:
+                self.logs.append('Config: scaleFactor={}, minNeighbors={}'.format(
+                    self.classifiers[classifier_names[0]]['scaleFactor'],
+                    self.classifiers[classifier_names[0]]['minNeighbors']))
 
             if not self.classifiers:
                 self.logs.append('ERREUR: aucun classifieur charge. Utilisez add_classifier().')
                 self.logs.append('=== FIN DETECTION ===')
                 return {
-                    'Object_detected': False, 'detection_box': None,
-                    'confidence': 0.0, 'area': None, 'logs': self.logs,
-                    'source_file_url': url_for('static', filename='captured_images/{}'.format(filename)),
-                    'annotated_url': None,
+                    'Object_detected': False,
+                    'detections': [],
+                    'logs': self.logs,
                 }
 
-            # Étape 2: Filtrage + conversion en niveaux de gris
+            # Filtrage + conversion en niveaux de gris
             gray = self._filter_image(frame_bgr)
 
-            # Étape 3: Appliquer tous les classifieurs et accumuler les détections
+            # Appliquer tous les classifieurs et accumuler les détections
             detections = self._detect_objects(gray, frame_bgr)
 
-            # Étape 4: Résumé dans les logs pour la console UI
+            # Résumé dans les logs
             self.logs.append('')
             self.logs.append('--- RESUME DES DETECTIONS ---')
             if detections:
@@ -163,43 +167,57 @@ class HaarDetector(BaseDetector):
 
             self.logs.append('=== FIN DETECTION ===')
 
-            # Étape 5: Sauvegarder l'image annotée (toutes les bbox dessinées)
-            annotated_url = None
-            if detections:
-                base, ext = os.path.splitext(filename)
-                ann_name = '{}_haar_det{}'.format(base, ext or '.jpg')
-                ann_path = os.path.join(self.CAPTURE_DIR, ann_name)
-                cv2.imwrite(ann_path, frame_bgr)
-                annotated_url = url_for('static', filename='captured_images/{}'.format(ann_name))
-
-            # Étape 6: Construire le payload standardisé
-            # On prend la plus grande bbox comme détection principale (pour l'indicateur UI)
-            best_box = None
-            best_area = 0
-            for det in detections:
-                bx, by, bw, bh = det['detection_box']
-                a = int(bw) * int(bh)
-                if a > best_area:
-                    best_area = a
-                    best_box = det['detection_box']
-
-            source_url = url_for('static', filename='captured_images/{}'.format(filename))
-            payload = {
+            return {
                 'Object_detected': len(detections) > 0,
-                'detection_box': best_box,
-                'confidence': 1.0 if detections else 0.0,
-                'area': best_area if best_area > 0 else None,
+                'detections': detections,
                 'logs': self.logs,
-                'source_file_url': source_url,
-                'annotated_url': annotated_url,
             }
-
-            return payload
 
         except Exception as e:
             self.logs.append('ERREUR: {}'.format(str(e)))
             return {'error': 'process failed', 'details': str(e), 'logs': self.logs}
 
+    def process_passive(self, frame_bgr):
+        """Détection passive optimisée pour le live feed.
+
+        Retourne le format standardisé (sans overlay ni logs).
+
+        :param frame_bgr: Image BGR (format OpenCV natif) à analyser.
+        :return: dict {Object_detected, detections, timestamp}.
+        """
+        if frame_bgr is None or not self.classifiers:
+            return {'Object_detected': False, 'detections': [], 'timestamp': time.time()}
+
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+
+        detections = []
+        for name, clf_entry in self.classifiers.items():
+            clf = clf_entry['classifier']
+            if clf.empty():
+                continue
+            try:
+                results = clf.detectMultiScale(
+                    gray,
+                    scaleFactor=clf_entry['scaleFactor'],
+                    minNeighbors=clf_entry['minNeighbors'],
+                    minSize=(20, 20)
+                )
+                if len(results) > 0:
+                    x, y, w_box, h_box = [int(v) for v in results[0]]  # on prend la première détection pour la réactivité
+                    detections.append({
+                        'object': name,
+                        'detection_box': (x, y, w_box, h_box)
+                    })
+            except Exception as e:
+                print("Erreur lors de la détection passive avec le classifieur '{}': {}".format(name, str(e)))
+                continue
+        return {
+            'Object_detected': len(detections) > 0,
+            'detections': detections,
+            'timestamp': time.time()
+        }
+
+# il faudrais revoir la méthode de diagnostique pour qu'elle soit mieux adapté aux modèles actuel. on veux pouvoir tester nos modèles déployer
     def diagnostique_detecteur(self, filename):
         """
         Diagnostic détaillé du classificateur Haar:
@@ -677,11 +695,6 @@ class HaarDetector(BaseDetector):
         Applique un filtrage à l'image pour réduire le bruit et améliorer la détection.
         Si diagnostic_mode est True, sauvegarde les étapes de filtrage pour l'affichage web.
         """
-        # # Appliquer un flou gaussien pour réduire le bruit
-        # img_filter = cv2.GaussianBlur(frame, (5, 5), 0)
-        # if diagnostic_mode:
-        #     self._save_step(img_filter, '1_gaussian_blur', 'bgr')
-
         # Convertir en niveaux de gris
         gray_filtered = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if diagnostic_mode:
@@ -693,12 +706,12 @@ class HaarDetector(BaseDetector):
     def _detect_objects(self, gray_filtered, frame_bgr, diagnostic_mode=False):
         """
         Parcourt tous les classifieurs chargés et accumule les détections.
-        Dessine les bbox + labels directement sur frame_bgr (pour l'annotation).
-        
+        Ne dessine plus sur l'image — l'annotation est centralisée.
+
         :param gray_filtered: Image en niveaux de gris filtrée.
-        :param frame_bgr: Image BGR originale (sera annotée en place).
+        :param frame_bgr:     Image BGR originale (PAS modifiée).
         :param diagnostic_mode: Si True, sauvegarde après chaque classifieur.
-        :return: Liste de dicts [{'object': nom, 'detected': True, 'detection_box': (x,y,w,h)}, ...]
+        :return: Liste de dicts [{'object': nom, 'detection_box': (x,y,w,h)}, ...]
         """
         detections = []
 
@@ -718,10 +731,9 @@ class HaarDetector(BaseDetector):
                 gray_filtered,
                 scaleFactor=classifier_params['scaleFactor'],
                 minNeighbors=classifier_params['minNeighbors'],
-                minSize=(5, 5)# Buffer de sécurité pour éviter les erreurs sur les petites images ou les modèles avec minSize élevé
+                minSize=(20, 20)
             )
 
-            # test de détection
             if len(results) == 0:
                 self.logs.append('  Aucune detection.')
                 continue
@@ -733,20 +745,10 @@ class HaarDetector(BaseDetector):
                 x, y, w, h = int(x), int(y), int(w), int(h)
                 self.logs.append('    #{}: pos=({},{}) taille={}x{} aire={}'.format(
                     i + 1, x, y, w, h, w * h))
-
-                # Dessiner le rectangle et le label sur l'image
-                cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(frame_bgr, "{}".format(name), (x, y - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
                 detections.append({
-                    "object": name,
-                    "detected": True,
-                    "detection_box": (x, y, w, h)
+                    'object': name,
+                    'detection_box': (x, y, w, h)
                 })
-
-            if diagnostic_mode:
-                self._save_step(frame_bgr, '3_detection_{}'.format(name), 'bgr')
 
         return detections
 
