@@ -503,6 +503,7 @@ class controller:
 
         Utilise VisionPipeline.annotate_frame() pour garder un seul
         point de dessin dans tout le projet.
+        Ajoute un petit badge indiquant le nombre de détections.
 
         :param frame: image BGR (copie) sur laquelle dessiner.
         :param result: dict retourné par process_passive() du détecteur,
@@ -513,7 +514,25 @@ class controller:
         detections = result.get('detections', [])
         if not detections:
             return frame
-        return VisionPipeline.annotate_frame(frame, detections)
+        annotated = VisionPipeline.annotate_frame(frame, detections)
+
+        # --- Badge compteur de détections (coin supérieur gauche) ---
+        count = len(detections)
+        badge_text = str(count)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.55
+        thickness = 2
+        (tw, th), baseline = cv2.getTextSize(badge_text, font, font_scale, thickness)
+        pad = 4
+        bx, by = 4, 4
+        # Fond du badge (vert)
+        cv2.rectangle(annotated, (bx, by), (bx + tw + pad * 2, by + th + pad * 2 + baseline),
+                      (0, 180, 0), cv2.FILLED)
+        # Texte du badge (blanc)
+        cv2.putText(annotated, badge_text, (bx + pad, by + th + pad),
+                    font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+
+        return annotated
 
     # Caméra: stop/start
     def close_camera(self):
@@ -529,7 +548,52 @@ class controller:
             return ("", 204)
         vp.start()
         return ("", 204)
-    
+
+    def set_resolution(self):
+        """Change la résolution de la caméra (QCIF / QVGA / VGA).
+
+        Le JS envoie un JSON {width, height}. On ferme la caméra,
+        on recrée l'instance à la nouvelle résolution, et on relance
+        le flux si celui-ci était actif.
+        """
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline not initialized'}), 400
+
+        data = request.get_json(silent=True) or {}
+        try:
+            w = int(data.get('width', 320))
+            h = int(data.get('height', 240))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'invalid width/height'}), 400
+
+        was_running = vp.is_running()
+        was_passive = vp._passive_running
+
+        # Arrêter la détection passive avant de toucher à la caméra
+        if was_passive:
+            vp.pause_passive_detection()
+
+        # Arrêter le flux vidéo
+        if was_running:
+            vp.stop()
+            time.sleep(0.2)
+
+        try:
+            vp.change_camera_resolution(w, h)
+        except Exception as e:
+            return jsonify({'error': 'resolution change failed', 'details': str(e)}), 500
+
+        # Relancer le flux si il était actif
+        if was_running:
+            vp.start()
+
+        # Reprendre la détection passive si elle était active
+        if was_passive:
+            vp.resume_passive_detection()
+
+        return jsonify({'ok': True, 'resolution': '{}x{}'.format(w, h)})
+
 # ----------------------------------------------------------------------------
 #          Fonctions de callback pour les actions moteur du robot
 # ----------------------------------------------------------------------------
@@ -581,6 +645,71 @@ class controller:
         if result is None:
             return jsonify({'Object_detected': False, 'detections': [], 'ready': False})
         return jsonify({**result, 'ready': True})
+
+# ----------------------------------------------------------------------------
+#          Hard Positive Mining
+# ----------------------------------------------------------------------------
+    def toggle_mining(self):
+        """Active ou désactive le hard positive mining."""
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline not initialized'}), 400
+
+        data = request.get_json(silent=True) or {}
+        enable = data.get('enable', True)
+
+        if enable:
+            vp.enable_mining()
+        else:
+            vp.disable_mining()
+
+        stats = vp.get_mining_stats()
+        return jsonify(stats)
+
+    def mining_stats(self):
+        """Retourne les statistiques courantes du mining."""
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline not initialized'}), 400
+        return jsonify(vp.get_mining_stats())
+
+    def download_mining_crops(self):
+        """
+        Crée un ZIP de tous les crops minés et l'envoie au client.
+        Après le téléchargement, supprime les crops du robot.
+        """
+        import zipfile
+        import io
+
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline not initialized'}), 400
+
+        files = vp.collect_mining_crops()
+        if not files:
+            return jsonify({'error': 'no crops to download'}), 404
+
+        # Construire le ZIP en mémoire
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for fpath in files:
+                arcname = os.path.basename(fpath)
+                zf.write(fpath, arcname)
+        buf.seek(0)
+
+        # Supprimer les crops du robot après création du ZIP
+        vp.clear_mining_crops()
+
+        ts = time.strftime('%Y%m%d_%H%M%S')
+        zip_name = 'mining_crops_{}.zip'.format(ts)
+
+        return Response(
+            buf.getvalue(),
+            mimetype='application/zip',
+            headers={
+                'Content-Disposition': 'attachment; filename={}'.format(zip_name)
+            }
+        )
 # ----------------------------------------------------------------------------
 #          Fonctions de callback pour les actions moteur du robot
 # ----------------------------------------------------------------------------

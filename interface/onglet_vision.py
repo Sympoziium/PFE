@@ -278,10 +278,18 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
 					<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
 					<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
-					<button class='remoteDL-toggle-btn off' id='toggleHighResCapturedBtn' aria-pressed='false'> Low Res</button>
+					<select id='resolutionSelect' class='select-detector' title='Résolution caméra'>
+						<option value='160x128' selected>QQVGA 160×128</option>
+						<option value='176x144'>QCIF 176×144</option>
+						<option value='320x240'>QVGA 320×240</option>
+						<option value='640x480'>VGA 640×480</option>
+					</select>
 				</div>
 				<div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center;'>
 					<button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
+					<button class='remoteDL-toggle-btn off' id='toggleMiningBtn' aria-pressed='false'>⛏️ Mining Off</button>
+					<span id='miningBadge' style='display:none; background:#8e44ad; color:#fff; padding:4px 10px; border-radius:8px; font-size:13px; font-weight:bold;'>0 crops</span>
+					<button class='primary-btn' id='downloadMiningBtn' style='display:none;'>📦 Download Crops</button>
 				</div>
 				<div id='zone-resultats'></div>
 				<!-- Conteneur unifié pour livefeed et image capturée -->
@@ -461,14 +469,40 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	function toggleHighResCaptured() {
-		console.log('toggleHighResCaptured() appelee'); // pour debug
-		var btn = document.getElementById('toggleHighResCapturedBtn');
-		var isActive = btn.getAttribute('aria-pressed') === 'true';
-		var nextActive = !isActive;
-		btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
-		btn.classList.toggle('on', nextActive);
-		btn.classList.toggle('off', !nextActive);
-		btn.textContent = nextActive ? 'High Res' : 'Low Res';
+		// DEPRECATED — résolution gérée via le dropdown resolutionSelect
+	}
+
+	function onResolutionChange() {
+		var sel = document.getElementById('resolutionSelect');
+		var parts = sel.value.split('x');
+		var w = parseInt(parts[0], 10);
+		var h = parseInt(parts[1], 10);
+		console.log('onResolutionChange:', w, 'x', h);
+
+		showToast('Changement de résolution: ' + w + '×' + h + '…', 'info', 2000);
+
+		fetch('/set_resolution', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ width: w, height: h })
+		})
+		.then(function(r) {
+			if (!r.ok) throw new Error('set_resolution failed: ' + r.status);
+			return r.json();
+		})
+		.then(function(data) {
+			showToast('Résolution appliquée: ' + data.resolution, 'success', 2000);
+			// Si la caméra tournait, le serveur l'a relancée.
+			// Rafraîchir le flux vidéo dans le navigateur.
+			if (CAMERA_ACTIVE && DISPLAY_MODE === 'livefeed') {
+				var mainImage = document.getElementById('mainImage');
+				mainImage.src = '/video?' + new Date().getTime();
+			}
+		})
+		.catch(function(err) {
+			logError('onResolutionChange', err);
+			showToast('Erreur résolution: ' + err.message, 'error');
+		});
 	}
 
 	function togglePassiveDetection() {
@@ -507,9 +541,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	function captureImage() {
 		console.log('captureImage() appelee');
 		var downloadEnabled = document.getElementById('toggleDownloadCapturedBtn').getAttribute('aria-pressed') === 'true';
-		var highResEnabled = document.getElementById('toggleHighResCapturedBtn').getAttribute('aria-pressed') === 'true';
 
-		fetch(highResEnabled ? '/capture_image_hires' : '/capture_image', { method: 'POST' })
+		fetch('/capture_image', { method: 'POST' })
 			.then(function(response) {
 				if (!response.ok) throw new Error('capture_image failed: ' + response.status + ' ' + response.statusText);
 				return response.json();
@@ -801,6 +834,96 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	}
 
 	// Charger la liste des détecteurs au chargement de la page et lier les événements
+	// --- Hard Positive Mining ---
+	var MINING_POLL_INTERVAL = null;
+
+	function toggleMining() {
+		var btn = document.getElementById('toggleMiningBtn');
+		var isActive = btn.getAttribute('aria-pressed') === 'true';
+		var nextActive = !isActive;
+
+		fetch('/toggle_mining', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enable: nextActive })
+		})
+		.then(function(r) { if (!r.ok) throw new Error('toggle_mining failed'); return r.json(); })
+		.then(function(stats) {
+			btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+			btn.classList.toggle('on', nextActive);
+			btn.classList.toggle('off', !nextActive);
+			btn.textContent = nextActive ? '⛏️ Mining On' : '⛏️ Mining Off';
+			showToast(nextActive ? 'Hard positive mining activé' : 'Mining désactivé', nextActive ? 'success' : 'info', 2000);
+
+			if (nextActive) {
+				startMiningPoll();
+			} else {
+				stopMiningPoll();
+				updateMiningBadge(stats);
+			}
+		})
+		.catch(function(err) {
+			logError('toggleMining', err);
+			showToast('Erreur mining: ' + err.message, 'error');
+		});
+	}
+
+	function startMiningPoll() {
+		if (MINING_POLL_INTERVAL) return;
+		pollMiningStats();
+		MINING_POLL_INTERVAL = setInterval(pollMiningStats, 3000);
+	}
+
+	function stopMiningPoll() {
+		if (MINING_POLL_INTERVAL) {
+			clearInterval(MINING_POLL_INTERVAL);
+			MINING_POLL_INTERVAL = null;
+		}
+	}
+
+	function pollMiningStats() {
+		fetch('/mining_stats')
+			.then(function(r) { if (!r.ok) throw new Error('stats failed'); return r.json(); })
+			.then(function(stats) { updateMiningBadge(stats); })
+			.catch(function() {});
+	}
+
+	function updateMiningBadge(stats) {
+		var badge = document.getElementById('miningBadge');
+		var dlBtn = document.getElementById('downloadMiningBtn');
+		var total = stats.total || 0;
+
+		if (total > 0) {
+			// Construire un résumé par objet
+			var parts = [];
+			var perObj = stats.per_object || {};
+			for (var key in perObj) {
+				if (perObj.hasOwnProperty(key)) {
+					parts.push(key + ': ' + perObj[key]);
+				}
+			}
+			badge.textContent = total + ' crops (' + parts.join(', ') + ')';
+			badge.style.display = 'inline';
+			dlBtn.style.display = 'inline';
+		} else {
+			badge.style.display = 'none';
+			dlBtn.style.display = 'none';
+		}
+	}
+
+	function downloadMiningCrops() {
+		showToast('Préparation du ZIP…', 'info', 2000);
+		// Déclencher le téléchargement via un lien caché
+		var link = document.createElement('a');
+		link.href = '/download_mining_crops';
+		link.download = '';
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		// Rafraîchir les stats après un court délai (le serveur supprime les crops)
+		setTimeout(function() { pollMiningStats(); }, 2000);
+	}
+
 	window.addEventListener('DOMContentLoaded', function() {
 		loadDetectors();
 		// Navigation buttons
@@ -826,9 +949,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		// Toggle download
 		var dlBtn = document.getElementById('toggleDownloadCapturedBtn');
 		if (dlBtn) dlBtn.addEventListener('click', toggleDownloadCaptured);
-		// Toggle high res
-		var hrBtn = document.getElementById('toggleHighResCapturedBtn');
-		if (hrBtn) hrBtn.addEventListener('click', toggleHighResCaptured);
+		// Resolution dropdown
+		var resSelect = document.getElementById('resolutionSelect');
+		if (resSelect) resSelect.addEventListener('change', onResolutionChange);
 		// Toggle passive detection
 		var pdBtn = document.getElementById('togglePassiveDetectionBtn');
 		if (pdBtn) pdBtn.addEventListener('click', togglePassiveDetection);
@@ -841,19 +964,26 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		// Detector select change
 		var sel = document.getElementById('detectorSelect');
 		if (sel) sel.addEventListener('change', onDetectorChange);
+		// Mining controls
+		var minBtn = document.getElementById('toggleMiningBtn');
+		if (minBtn) minBtn.addEventListener('click', toggleMining);
+		var minDlBtn = document.getElementById('downloadMiningBtn');
+		if (minDlBtn) minDlBtn.addEventListener('click', downloadMiningCrops);
 	});
 
 	// --- Exposer les fonctions au scope global pour les onclick inline ---
 	window.navigateTo = navigateTo;
 	window.toggleCamera = toggleCamera;
 	window.toggleDownloadCaptured = toggleDownloadCaptured;
-	window.toggleHighResCaptured = toggleHighResCaptured;
+	window.onResolutionChange = onResolutionChange;
 	window.togglePassiveDetection = togglePassiveDetection;
 	window.captureImage = captureImage;
 	window.returnToLivefeed = returnToLivefeed;
 	window.runDetection = runDetection;
 	window.runDiagnostics = runDiagnostics;
 	window.onDetectorChange = onDetectorChange;
+	window.toggleMining = toggleMining;
+	window.downloadMiningCrops = downloadMiningCrops;
 	</script>
 	</body></html>
 	"""

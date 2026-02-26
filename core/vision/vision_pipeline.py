@@ -45,6 +45,12 @@ class VisionPipeline:
         self._last_detection_result = None
         self._result_lock = threading.Lock()
 
+        # --- Hard Positive Mining ---
+        self._mining_enabled = False          # Flag pour activer/désactiver le mining
+        self._mining_dir = None               # Dossier temporaire pour stocker les crops (créé au besoin)
+        self._mining_counts = {}              # {object_name: int} — compteur de crops par objet
+        self._mining_lock = threading.Lock()  # Protection pour les compteurs
+
 
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
@@ -202,6 +208,30 @@ class VisionPipeline:
         """Vérifie si la capture haute résolution est disponible."""
         return self._hires_capture_fn is not None
 
+    def change_camera_resolution(self, width, height):
+        """
+        Remplace l'instance caméra par une nouvelle à la résolution demandée.
+
+        La caméra DOIT être arrêtée avant d'appeler cette méthode (le
+        contrôleur s'en charge). On ferme l'ancienne instance de caméra puis
+        on en crée une nouvelle avec les dimensions voulues.
+
+        :param width:  Largeur en pixels (ex: 176, 320, 640).
+        :param height: Hauteur en pixels (ex: 144, 240, 480).
+        """
+        # Fermer l'ancienne caméra proprement
+        if self.camera is not None:
+            try:
+                self.camera.close()
+            except Exception:
+                pass
+
+        # Créer une nouvelle instance de caméra à la résolution demandée
+        # On utilise le même type de caméra que l'instance originale
+        cam_class = type(self.camera)
+        self.camera = cam_class(image_w=width, image_h=height)
+        print("[VisionPipeline] Résolution caméra changée: {}x{}".format(width, height))
+
 # ----------------------------------------
 #        Annotation centralisée
 # ----------------------------------------
@@ -293,6 +323,7 @@ class VisionPipeline:
         """
         Boucle de détection passive. Tourne dans un thread daemon.
         S'endort entre chaque détection pour ne pas saturer le CPU.
+        Si le mining est activé, les crops des détections sont sauvegardés.
         """
         # fait la liste des détecteurs assigné à la détection passive
         nb_detectors = len(self._passive_detectors)
@@ -310,6 +341,11 @@ class VisionPipeline:
                     detection_result = detector.process_passive(frame)
                     with self._result_lock:
                         self._last_detection_result = detection_result
+
+                    # --- Hard Positive Mining: sauvegarder les crops ---
+                    if self._mining_enabled and detection_result.get('Object_detected'):
+                        self._harvest_crops(frame, detection_result.get('detections', []))
+
                 except Exception as e:
                     print("Erreur lors de la détection passive avec le détecteur {}: {}".format(detector, e))
 
@@ -357,3 +393,105 @@ class VisionPipeline:
         """Retourne le dernier résultat de détection passive (thread-safe)."""
         with self._result_lock:
             return self._last_detection_result
+
+# ----------------------------------------
+#        Hard Positive Mining
+# ----------------------------------------
+    def _ensure_mining_dir(self):
+        """Crée le dossier temporaire de mining si nécessaire."""
+        if self._mining_dir is None:
+            base = self.CAPTURE_DIR or '/tmp'
+            self._mining_dir = os.path.join(base, 'mining_crops')
+        os.makedirs(self._mining_dir, exist_ok=True)
+
+    def _harvest_crops(self, frame, detections):
+        """
+        Extrait les crops des détections et les sauvegarde sur disque.
+        Appelé depuis le thread de détection passive — doit être rapide.
+
+        :param frame:      Image BGR brute.
+        :param detections: Liste de dicts [{object, detection_box}, ...].
+        """
+        self._ensure_mining_dir()
+        h_img, w_img = frame.shape[:2]
+
+        for det in detections:
+            bbox = det.get('detection_box')
+            obj_name = det.get('object', 'unknown')
+            if not bbox or len(bbox) != 4:
+                continue
+
+            x, y, w, h = [int(v) for v in bbox]
+            # Clamp aux limites de l'image
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(w_img, x + w)
+            y2 = min(h_img, y + h)
+            if x2 <= x1 or y2 <= y1:
+                continue
+
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+
+            # Nom de fichier : <objet>_<timestamp>_<uuid>.jpg
+            safe_name = obj_name.replace(' ', '_').replace('/', '_')
+            ts = time.strftime('%Y%m%d_%H%M%S')
+            fname = '{}_{}_{}x{}_{}.jpg'.format(safe_name, ts, w, h, uuid.uuid4().hex[:6])
+            fpath = os.path.join(self._mining_dir, fname)
+
+            try:
+                cv2.imwrite(fpath, crop)
+                with self._mining_lock:
+                    self._mining_counts[obj_name] = self._mining_counts.get(obj_name, 0) + 1
+            except Exception as e:
+                print("[Mining] Erreur sauvegarde crop: {}".format(e))
+
+    def enable_mining(self):
+        """Active le mode hard positive mining."""
+        self._ensure_mining_dir()
+        self._mining_enabled = True
+        print("[Mining] Activé — dossier: {}".format(self._mining_dir))
+
+    def disable_mining(self):
+        """Désactive le mode hard positive mining."""
+        self._mining_enabled = False
+        print("[Mining] Désactivé")
+
+    def get_mining_stats(self):
+        """Retourne les statistiques de mining (thread-safe)."""
+        with self._mining_lock:
+            total = sum(self._mining_counts.values())
+            return {
+                'enabled': self._mining_enabled,
+                'total': total,
+                'per_object': dict(self._mining_counts),
+                'mining_dir': self._mining_dir,
+            }
+
+    def collect_mining_crops(self):
+        """
+        Liste tous les fichiers crop dans le dossier mining.
+
+        :return: Liste de chemins absolus.
+        """
+        if not self._mining_dir or not os.path.isdir(self._mining_dir):
+            return []
+        files = []
+        for f in sorted(os.listdir(self._mining_dir)):
+            fp = os.path.join(self._mining_dir, f)
+            if os.path.isfile(fp):
+                files.append(fp)
+        return files
+
+    def clear_mining_crops(self):
+        """Supprime tous les crops et remet les compteurs à zéro."""
+        files = self.collect_mining_crops()
+        for fp in files:
+            try:
+                os.remove(fp)
+            except Exception:
+                pass
+        with self._mining_lock:
+            self._mining_counts.clear()
+        print("[Mining] {} crops supprimés".format(len(files)))
