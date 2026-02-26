@@ -132,6 +132,13 @@ def train_cascade(nb_annotations, nb_negatives, sample_width, sample_height,
     num_pos = int(nb_annotations * 0.80)
     num_neg = min(nb_negatives, num_pos * 3)
     dedicated_RAM_MB = 8192
+
+    # Diagnostic du ratio effectif (utile pour le HNM itératif)
+    neg_usage_pct = num_neg / nb_negatives * 100 if nb_negatives > 0 else 0
+    if neg_usage_pct < 60 and nb_negatives > num_neg + 500:
+        print(f"  ⚠ Utilisation partielle des négatifs : {num_neg}/{nb_negatives} "
+              f"({neg_usage_pct:.0f}%) — plafonné par numPos×3")
+        print(f"    → Pour utiliser plus de négatifs, augmenter l'augmentation des positives")
     
     if config is None:
         config = {'name': 'Rapide', 'feature': 'LBP', 'stages': 14, 'min_hit_rate': 0.995}

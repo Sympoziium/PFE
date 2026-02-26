@@ -12,8 +12,13 @@ from tqdm import tqdm
 from cascade.config import WINDOW_SIZE
 
 
-def prepare_data(positive_images_dir, negative_images_dir, data_dir):
-    """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar"""
+def prepare_data(positive_images_dir, negative_images_dir, data_dir, num_augmented=5):
+    """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar.
+    
+    :param num_augmented: Nombre de variantes augmentées par image positive (défaut 5).
+                          En mode HNM itératif, ce paramètre est augmenté dynamiquement
+                          pour élever le plafond numPos → numNeg et compenser les HN.
+    """
 
     print("\n")
     print("Préparation des données d'entraînement...")
@@ -51,7 +56,7 @@ def prepare_data(positive_images_dir, negative_images_dir, data_dir):
             print(f"  {nb_hn_added} hard negatives ajoutés au train set.")
 
     # Étape 1.4 : Augmentation des positives du TRAIN set uniquement
-    augment_data(train_pos_dir, train_pos_dir, num_augmented=5)
+    augment_data(train_pos_dir, train_pos_dir, num_augmented=num_augmented)
 
     # Étape 1.2 : Génération des annotations
     #   Mode plein cadre : bbox = image entière pour chaque image positive
@@ -453,6 +458,8 @@ def generate_bg_file(negative_dir, output_file):
     Génère le fichier bg.txt listant les chemins des images négatives.
     
     Ce fichier est requis par opencv_traincascade pour le paramètre -bg.
+    Les hard negatives (préfixe 'hn_') sont intercalés uniformément parmi
+    les négatifs originaux pour une distribution équilibrée.
     
     :param negative_dir: Dossier contenant les images négatives (train/negative/)
     :param output_file: Chemin du fichier bg.txt à générer
@@ -460,17 +467,44 @@ def generate_bg_file(negative_dir, output_file):
     """
     print("Préparation du fichier bg.txt pour les négatifs...")
     
-    neg_files = sorted([
+    all_files = [
         f for f in os.listdir(negative_dir)
         if os.path.isfile(os.path.join(negative_dir, f))
-    ])
+    ]
     
-    if not neg_files:
+    if not all_files:
         print("Aucune image négative trouvée.")
         exit(1)
     
+    # Séparer HN et négatifs normaux, puis intercaler uniformément
+    hn_files = sorted([f for f in all_files if f.startswith('hn_')])
+    normal_files = sorted([f for f in all_files if not f.startswith('hn_')])
+    
+    # Intercalage uniforme (Bresenham) : les originaux dominent, les HN
+    # sont répartis régulièrement pour ne pas noyer les originaux
+    if hn_files and normal_files:
+        ordered_files = []
+        total = len(normal_files) + len(hn_files)
+        normal_idx = 0
+        hn_idx = 0
+        for i in range(total):
+            target_normals = (i + 1) * len(normal_files) / total
+            if normal_idx < target_normals and normal_idx < len(normal_files):
+                ordered_files.append(normal_files[normal_idx])
+                normal_idx += 1
+            elif hn_idx < len(hn_files):
+                ordered_files.append(hn_files[hn_idx])
+                hn_idx += 1
+            else:
+                ordered_files.append(normal_files[normal_idx])
+                normal_idx += 1
+        print(f"  Ordre bg.txt : {len(normal_files)} négatifs originaux avec "
+              f"{len(hn_files)} HN intercalés uniformément")
+    else:
+        ordered_files = normal_files + hn_files
+    
     paths = []
-    for f in tqdm(neg_files, unit="img", colour="green", ncols=80):
+    for f in tqdm(ordered_files, unit="img", colour="green", ncols=80):
         abs_path = os.path.abspath(os.path.join(negative_dir, f)).replace('\\', '/')
         paths.append(abs_path)
     

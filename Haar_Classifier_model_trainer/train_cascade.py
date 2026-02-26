@@ -444,7 +444,9 @@ if __name__ == "__main__":
             negative_images_dir=negative_images_dir,
             output_dir=negative_images_dir,
             data_dir=data_dir,
-            scaleFactor=sf, minNeighbors=mn
+            scaleFactor=sf, minNeighbors=mn,
+            min_crop_w=sample_width * 2,
+            min_crop_h=sample_height * 2
         )
 
         if nb_hn > 0:
@@ -551,7 +553,11 @@ if __name__ == "__main__":
                 break
             print("  Choix invalide.")
 
-        print(f"\n  Configuration : {num_rounds} rounds, SF={sf}, MN={mn}")
+        # Profil d'entraînement pour chaque round
+        config = choose_training_config()
+
+        print(f"\n  Configuration : {num_rounds} rounds, SF={sf}, MN={mn}, "
+              f"profil={config['name']}")
         confirm = input("  Lancer le HNM itératif ? (O/N) : ").strip().upper()
         if confirm != 'O':
             print("  Annulé.")
@@ -564,7 +570,10 @@ if __name__ == "__main__":
             output_dir=output_dir,
             num_rounds=num_rounds,
             scaleFactor=sf,
-            minNeighbors=mn
+            minNeighbors=mn,
+            config=config,
+            sample_width=config.get('w', sample_width),
+            sample_height=config.get('h', sample_height),
         )
 
     # ──────────────────────────────────────────────────────
