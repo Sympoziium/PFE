@@ -319,7 +319,7 @@ class VisionPipeline:
             # Interval de détection passive
             time.sleep(self._passive_interval)
 
-    def start_passive_detection(self, interval=4.0, detctor_index=0):
+    def start_passive_detection(self, interval=4.0, detector_index=0):
         """Démarre le thread de détection passive avec l'intervalle spécifié."""
         if self._passive_thread and self._passive_thread.is_alive():
             return  # déjà actif

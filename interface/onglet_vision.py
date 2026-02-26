@@ -119,7 +119,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		padding: 10px 18px; 
 		border-radius: 10px; 
 		cursor: pointer; 
-		margin-top: 15px; 
 		font-size: 15px;
 	}
 
@@ -137,7 +136,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         padding: 10px 18px; 
         border-radius: 10px; 
         cursor: pointer; 
-        margin-top: 15px; 
         font-size: 15px;
 	}
 
@@ -276,11 +274,15 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					<h3 class='tab-subtitle'>Capture image</h3>
 				</div>
 				<!-- AJOUT DES FONCTIONS DE CAPTURE -->
-				<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
-				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
-				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
-				<button class='remoteDL-toggle-btn off' id='toggleHighResCapturedBtn' aria-pressed='false'> Low Res</button>
-				<button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
+				<div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;'>
+					<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
+					<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
+					<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
+					<button class='remoteDL-toggle-btn off' id='toggleHighResCapturedBtn' aria-pressed='false'> Low Res</button>
+				</div>
+				<div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center;'>
+					<button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
+				</div>
 				<div id='zone-resultats'></div>
 				<!-- Conteneur unifié pour livefeed et image capturée -->
 				<div class='live-feed' id='mainImageDisplay' style='display:none;'>
@@ -474,10 +476,21 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var btn = document.getElementById('togglePassiveDetectionBtn');
 		var isActive = btn.getAttribute('aria-pressed') === 'true';
 		var nextActive = !isActive;
-		btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
-		btn.classList.toggle('on', nextActive);
-		btn.classList.toggle('off', !nextActive);
-		btn.textContent = nextActive ? 'Stop Passive Detection' : 'Start Passive Detection';
+		var endpoint = nextActive ? '/start_passive_detection' : '/stop_passive_detection';
+
+		fetch(endpoint, { method: 'POST' })
+			.then(function(response) {
+				if (!response.ok) throw new Error(endpoint + ' failed: ' + response.status);
+				btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+				btn.classList.toggle('on', nextActive);
+				btn.classList.toggle('off', !nextActive);
+				btn.textContent = nextActive ? 'Stop Passive Detection' : 'Start Passive Detection';
+				showToast(nextActive ? 'Détection passive démarrée' : 'Détection passive arrêtée', nextActive ? 'success' : 'info', 2000);
+			})
+			.catch(function(err) {
+				logError('togglePassiveDetection: ' + endpoint, err);
+				showToast('Erreur: ' + err.message, 'error');
+			});
 	}
 
 	function toggleDownloadCaptured() {
@@ -688,6 +701,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					imageCapturedCallback(res.source_file_url);
 				}
 
+				indicator.classList.remove('on', 'off');
 				if (res.Object_detected) {
 					indicator.classList.add('on');
 					indicator.textContent = 'Objet detecte';
@@ -747,6 +761,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 
 				// Mettre à jour l'indicateur de détection
+				indicator.classList.remove('on', 'off');
 				if (payload.Object_detected) {
 					indicator.classList.add('on');
 					indicator.textContent = 'Objet detecte';
