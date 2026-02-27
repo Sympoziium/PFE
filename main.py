@@ -57,10 +57,10 @@ MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detector
 
 # config du classificateur de Haar pour l'ajout de détecteurs
 haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_classifier_2.xml'), scaleFactor=1.05, minNeighbors=5)
-# haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'pedestrian_classifier.xml'))
+
 haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Beta_Prime.xml'), scaleFactor=1.03, minNeighbors=2)
-# haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion2.xml'), scaleFactor=1.08, minNeighbors=7)
-haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion_Alpha.xml'), scaleFactor=1.05, minNeighbors=4)
+
+haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion_Beta.xml'), scaleFactor=1.05, minNeighbors=12)
 
 
 

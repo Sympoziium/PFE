@@ -38,7 +38,7 @@ def prepare_data(positive_images_dir, negative_images_dir, data_dir, num_augment
     validate_images(negative_images_dir)
 
     # Étape 1.2 : Filtrer les images trop petites (< 2× fenêtre de détection)
-    filtered_log = filter_small_images(positive_images_dir, data_dir, w = w, h = h)
+    filtered_log = filter_small_images(positive_images_dir, data_dir, w_main=w, h_main=h)
 
     # Étape 1.3 : Séparation train / test AVANT l'augmentation (évite le data leakage)
     train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir = split_data(positive_images_dir, negative_images_dir, data_dir)
