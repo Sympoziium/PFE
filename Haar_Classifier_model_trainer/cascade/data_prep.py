@@ -12,7 +12,7 @@ from tqdm import tqdm
 from cascade.config import WINDOW_SIZE
 
 
-def prepare_data(positive_images_dir, negative_images_dir, data_dir, num_augmented=5):
+def prepare_data(positive_images_dir, negative_images_dir, data_dir, num_augmented=5, w = WINDOW_SIZE['recommended'][0], h = WINDOW_SIZE['recommended'][1]):
     """Préparation des données pour l'entraînement du modèle de cascade de classifieurs Haar.
     
     :param num_augmented: Nombre de variantes augmentées par image positive (défaut 5).
@@ -38,7 +38,7 @@ def prepare_data(positive_images_dir, negative_images_dir, data_dir, num_augment
     validate_images(negative_images_dir)
 
     # Étape 1.2 : Filtrer les images trop petites (< 2× fenêtre de détection)
-    filtered_log = filter_small_images(positive_images_dir, data_dir)
+    filtered_log = filter_small_images(positive_images_dir, data_dir, w = w, h = h)
 
     # Étape 1.3 : Séparation train / test AVANT l'augmentation (évite le data leakage)
     train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir = split_data(positive_images_dir, negative_images_dir, data_dir)
@@ -134,7 +134,7 @@ def validate_images(images_dir):
     print(f"Images validées.\n")
 
 
-def filter_small_images(positive_dir, data_dir, min_factor=2.0):
+def filter_small_images(positive_dir, data_dir, min_factor=2.0, w_main=None, h_main=None):
     """
     Filtre les images positives trop petites pour être apprenables par le cascade.
     
@@ -145,9 +145,11 @@ def filter_small_images(positive_dir, data_dir, min_factor=2.0):
     :param positive_dir: Dossier des images positives originales
     :param data_dir: Dossier data/ racine
     :param min_factor: Facteur minimum (default 2.0 → image ≥ 2× la fenêtre)
+    :param w: Largeur de la fenêtre de détection
+    :param h: Hauteur de la fenêtre de détection
     :return: Chemin vers le fichier log des images filtrées (ou None si aucune)
     """
-    win_w, win_h = WINDOW_SIZE['recommended']
+    win_w, win_h = w_main, h_main
     min_w = int(win_w * min_factor)
     min_h = int(win_h * min_factor)
     

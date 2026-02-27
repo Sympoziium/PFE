@@ -56,11 +56,11 @@ if hasattr(zumi.camera, 'capture_hires'):
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detectors', 'models')
 
 # config du classificateur de Haar pour l'ajout de détecteurs
-haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_classifier_2.xml'), scaleFactor=1.1, minNeighbors=5)
+haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_classifier_2.xml'), scaleFactor=1.05, minNeighbors=5)
 # haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'pedestrian_classifier.xml'))
 haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Beta_Prime.xml'), scaleFactor=1.03, minNeighbors=2)
 # haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion2.xml'), scaleFactor=1.08, minNeighbors=7)
-haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion3.xml'), scaleFactor=1.15, minNeighbors=8)
+haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion_Alpha.xml'), scaleFactor=1.05, minNeighbors=4)
 
 
 
@@ -72,7 +72,7 @@ vision_pipeline.add_detectors(stop_detector_matt)
 vision_pipeline.add_detectors(haar_classifier)
 
 # Ajout des détecteurs pour la détection passive (live feed)
-vision_pipeline.add_passive_detectors(stop_detector_cv)
+# vision_pipeline.add_passive_detectors(stop_detector_cv)
 vision_pipeline.add_passive_detectors(haar_classifier)
 
 # Initialisation du contrôleur (serveur Flask)

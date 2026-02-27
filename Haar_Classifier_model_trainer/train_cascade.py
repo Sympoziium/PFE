@@ -302,7 +302,7 @@ if __name__ == "__main__":
 
         train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir, \
             nb_annotations, nb_negatives, annotations_file, bg_file = \
-            prepare_data(positive_images_dir, negative_images_dir, data_dir)
+            prepare_data(positive_images_dir, negative_images_dir, data_dir, w = config.get('w', sample_width), h = config.get('h', sample_height))
 
         create_samples(
             annotations_file=annotations_file,
@@ -337,10 +337,11 @@ if __name__ == "__main__":
     #  [2] Préparer les données seulement
     # ──────────────────────────────────────────────────────
     elif choice == '2':
+        config = choose_training_config()
         train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir, \
             nb_annotations, nb_negatives, annotations_file, bg_file = \
-            prepare_data(positive_images_dir, negative_images_dir, data_dir)
-        config = choose_training_config()
+            prepare_data(positive_images_dir, negative_images_dir, data_dir, w = config.get('w', sample_width), h = config.get('h', sample_height))
+        
         create_samples(
             annotations_file=annotations_file,
             vec_file=os.path.join(data_dir, 'samples.vec'),
