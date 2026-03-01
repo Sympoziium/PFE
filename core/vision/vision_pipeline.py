@@ -18,6 +18,7 @@ import time
 import cv2
 import os
 import uuid
+import gc
 
 
 class VisionPipeline:
@@ -231,7 +232,6 @@ class VisionPipeline:
         time.sleep(0.3)
         
         # Garbage collection explicite pour forcer la libération des ressources
-        import gc
         gc.collect()
         time.sleep(0.1)
 
@@ -279,7 +279,9 @@ class VisionPipeline:
             cv2.putText(annotated, label, (x, label_y), font, font_scale,
                         text_color, 1, cv2.LINE_AA)
             # distance approximative
-            distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label)
+            # Attention: l'implémentation ne devrais pas être faite ici si on souhaite utiliser la distance calculé dans le contrôle du robot.
+            # on l'a fait ici pour tester vite fais, mais cette fonction ne sert qu'â annoter l'image, pas à faire des calculs de détection ou de contrôle.
+            distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label) 
             cv2.putText(annotated, "{:.1f} cm".format(distance_cm) if distance_cm else "N/A", (x, y + h + 15), font, font_scale,
                         text_color, 1, cv2.LINE_AA)
         return annotated
@@ -301,7 +303,7 @@ class VisionPipeline:
 
         hauteur_reelle_cm = {
             'pieton': 4.5,
-            'camion': 7.0,
+            'camion_pompier': 7.0,
             'stop':   4.5
         }
 
