@@ -186,7 +186,7 @@ def evaluate_model(model_path, test_pos_dir, test_neg_dir):
     print(f"\n  Diagnostic :")
     diagnostics = []
 
-    if r['recall'] < 80:
+    if r['recall'] < 55:
         diagnostics.append((
             f"⚠ Recall faible ({r['recall']:.1f}%) — ~{r['miss_rate']:.0f}% des objets manqués.",
             ["Augmenter le nombre d'images positives originales",
@@ -212,15 +212,14 @@ def evaluate_model(model_path, test_pos_dir, test_neg_dir):
     if r['multi_pct'] > 30:
         diagnostics.append((
             f"ℹ Multi-détections fréquentes ({r['multi_pct']:.0f}% des TP) — normal pour Haar/LBP.",
-            ["minNeighbors plus élevé réduit les doublons",
-             "groupRectangles ou NMS en post-traitement sur le robot"]
+            ["Réduire le FA a 0.45 aide beaucoup, mais le meilleur moyen ces de faire du hard negative mining option [8] du menu"]
         ))
 
     if r['avg_det_neg'] > 0.1:
         diagnostics.append((
             f"⚠ Détections parasites sur négatifs ({r['avg_det_neg']:.2f} détections/img).",
-            ["Hard negative mining : récolter les FP, les ajouter comme négatifs, ré-entraîner",
-             "Augmenter le nombre de stages (profil Équilibré ou Précis)"]
+            ["Hard negative mining [8] : récolter les FP, les ajouter comme négatifs, ré-entraîner",
+             "Augmenter le nombre de stages ou réduire le FA (False Alarm Rate) pour un entraînement plus strict"]
         ))
 
     if r['f1'] >= 0.7:

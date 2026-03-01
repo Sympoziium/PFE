@@ -6,6 +6,19 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 
 ---
 
+## [Non publié] — Resources Monitoring (2026-02-27)
+
+### Objectif : 
+1. Implémenter un système de monitoring des ressources (CPU, RAM) pour la détection passive en temps réel, avec affichage dans le terminal.
+2. voir si ya moyen de faire du calcul de distance approximative à partir de la taille de la bounding box (pour future estimation de distance à l'objet)
+### Contraintes :
+- Doit être très léger, on refresh les stats toutes les 5 secondes seulement
+- Affichage clair et lisible dans le terminal (pas de logs redondants)
+- Utilisation de `psutil` pour les stats système (CPU, RAM)
+- Calcul de distance approximative basé sur la taille de la bounding box (en pixels) et une estimation de la taille réelle de l'objet. On va se baser sur la formule de la distance focale : `distance = (taille_reelle * focale) / taille_image`
+- La focale peut être estimée à partir de tests préliminaires (ex: mesurer la taille de la bounding box pour un objet à une distance connue)
+
+
 ## [Non publié] — Révision majeure de la détection passive et hard positive mining (2026-02-26)
 
 ### Ajouté

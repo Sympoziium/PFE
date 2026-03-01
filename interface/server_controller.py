@@ -163,29 +163,32 @@ class controller:
         Thread qui s'exécute en arrière-plan.
         Arrête les moteurs si la dernière commande de mouvement
         est trop ancienne (ex: le client s'est déconnecté).
+        
+        *** AUSSI: Log les ressources du Pi toutes les 5 secondes ***
+        (10 itérations * 0.5s = 5s) sans thread additionnel.
         """
         print("[Watchdog] Démarré (en attente d'activation).")
+        iteration_count = 0
         
         while True:
-            # Ne pas s'activer avant la première commande de mouvement
-            if not self.watchdog_active:
-                time.sleep(0.5)
-                continue
+            iteration_count += 1
             
-            # Calculer le temps écoulé
-            time_since_last_move = time.time() - self.last_move_time
+            # --- Watchdog moteur ---
+            if self.watchdog_active:
+                time_since_last_move = time.time() - self.last_move_time
+                if time_since_last_move > WATCHDOG_TIMEOUT_SECONDS:
+                    try:
+                        if self.robot: 
+                            self.robot.stop()
+                        self.last_move_time = time.time() 
+                    except Exception as e:
+                        pass
             
-            if time_since_last_move > WATCHDOG_TIMEOUT_SECONDS:
-                try:
-                    # S'assurer que zumi existe avant de l'appeler
-                    if self.robot: 
-                        self.robot.stop()
-                    # Réinitialiser pour ne pas 'spammer' la commande stop
-                    self.last_move_time = time.time() 
-                except Exception as e:
-                    pass # Erreur silencieuse (ex: zumi déconnecté)
+            # --- Log ressources toutes les 5s (10 itérations * 0.5s) ---
+            if iteration_count % 10 == 0:
+                self._log_resource_usage_internal()
             
-            time.sleep(0.5) # Vérifier 2x par seconde
+            time.sleep(0.5)
 
 
 # ----------------------------------------------------------------------------
@@ -517,22 +520,70 @@ class controller:
         annotated = VisionPipeline.annotate_frame(frame, detections)
 
         # --- Badge compteur de détections (coin supérieur gauche) ---
-        count = len(detections)
-        badge_text = str(count)
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.55
-        thickness = 2
-        (tw, th), baseline = cv2.getTextSize(badge_text, font, font_scale, thickness)
-        pad = 4
-        bx, by = 4, 4
-        # Fond du badge (vert)
-        cv2.rectangle(annotated, (bx, by), (bx + tw + pad * 2, by + th + pad * 2 + baseline),
-                      (0, 180, 0), cv2.FILLED)
-        # Texte du badge (blanc)
-        cv2.putText(annotated, badge_text, (bx + pad, by + th + pad),
-                    font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+        # count = len(detections)
+        # badge_text = str(count)
+        # font = cv2.FONT_HERSHEY_SIMPLEX
+        # font_scale = 0.55
+        # thickness = 2
+        # (tw, th), baseline = cv2.getTextSize(badge_text, font, font_scale, thickness)
+        # pad = 4
+        # bx, by = 4, 4
+        # # Fond du badge (vert)
+        # cv2.rectangle(annotated, (bx, by), (bx + tw + pad * 2, by + th + pad * 2 + baseline),
+        #               (0, 180, 0), cv2.FILLED)
+        # # Texte du badge (blanc)
+        # cv2.putText(annotated, badge_text, (bx + pad, by + th + pad),
+        #             font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
         return annotated
+    
+    def approximate_object_distance(self):
+        """
+        Fonction servant a approximer la distance du robot à l'objet détecté en utilisant la taille de la bounding box.
+        """
+
+    def _log_resource_usage_internal(self):
+        """
+        Helper interne: Log LÉGER des ressources du Pi (appelé par motor_watchdog toutes les 5s).
+        Optimisé pour Pi Zero V1 - zéro overhead, directement dans stdout du serveur.
+        """
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=None)  # Non-blocking
+            ram = psutil.virtual_memory()
+            num_threads = psutil.Process().num_threads()
+            ram_used_mb = round(ram.used / (1024 * 1024), 1)
+            ram_available_mb = round(ram.available / (1024 * 1024), 1)
+            io_wait = psutil.Process().cpu_times().iowait if hasattr(psutil.Process().cpu_times(), 'iowait') else 0
+            # Format compact pour vision rapide dans le terminal
+            print("[Zumi] CPU: {:.1f}% | RAM: {:.1f}% | Threads: {}".format(
+                cpu_percent, ram.percent, num_threads))
+            print("[Other] RAM Usage: {}/{} MB | IO Wait: {:.2f}s".format(ram_used_mb, ram_available_mb, io_wait))
+            print("[Timestamp] {}".format(time.strftime('%H:%M:%S')))
+        except Exception as e:
+            pass  # Silencieux si psutil indisponible
+
+    def get_resource_usage(self):
+        """
+        Route HTTP GET pour obtenir les stats ressources à la demande (JSON).
+        Peut être appelée avec: curl http://localhost:5000/resource_usage
+        ou en polling continu: watch -n 5 'curl http://localhost:5000/resource_usage'
+        """
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=None)
+            ram = psutil.virtual_memory()
+            num_threads = psutil.Process().num_threads()
+            return jsonify({
+                'cpu_percent': round(cpu_percent, 1),
+                'ram_percent': round(ram.percent, 1),
+                'ram_used_mb': round(ram.used / (1024 * 1024), 1),
+                'ram_available_mb': round(ram.available / (1024 * 1024), 1),
+                'num_threads': num_threads,
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
     # Caméra: stop/start
     def close_camera(self):

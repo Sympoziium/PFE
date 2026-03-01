@@ -17,6 +17,7 @@ def register_routes(ctrl):
 
     # MISC actions
     app.add_url_rule('/exit', 'exit_server', lambda: ctrl.exit_server(), methods=['POST'])
+    app.add_url_rule('/resource_usage', 'resource_usage', lambda: ctrl.get_resource_usage())
 
     # Vision actions
     app.add_url_rule('/download_image/<filename>', 'download_image', lambda filename: ctrl.download_image(filename))

@@ -223,14 +223,27 @@ class VisionPipeline:
         if self.camera is not None:
             try:
                 self.camera.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print("[VisionPipeline] Erreur fermeture caméra: {}".format(e))
+        
+        # Laisser du temps pour que la caméra se libère complètement
+        # (surtout important sur Pi Zero avec peu de ressources GPU)
+        time.sleep(0.3)
+        
+        # Garbage collection explicite pour forcer la libération des ressources
+        import gc
+        gc.collect()
+        time.sleep(0.1)
 
         # Créer une nouvelle instance de caméra à la résolution demandée
         # On utilise le même type de caméra que l'instance originale
-        cam_class = type(self.camera)
-        self.camera = cam_class(image_w=width, image_h=height)
-        print("[VisionPipeline] Résolution caméra changée: {}x{}".format(width, height))
+        try:
+            cam_class = type(self.camera)
+            self.camera = cam_class(image_w=width, image_h=height)
+            print("[VisionPipeline] Résolution caméra changée: {}x{}".format(width, height))
+        except Exception as e:
+            print("[VisionPipeline] ERREUR création caméra: {}".format(e))
+            raise
 
 # ----------------------------------------
 #        Annotation centralisée
@@ -251,6 +264,7 @@ class VisionPipeline:
         """
         annotated = frame.copy()
         font = cv2.FONT_HERSHEY_SIMPLEX
+        frame_h, frame_w = frame.shape[:2]
 
         for det in detections:
             bbox = det.get('detection_box')
@@ -258,11 +272,66 @@ class VisionPipeline:
                 continue
             x, y, w, h = [int(v) for v in bbox]
             label = det.get('object', 'Objet')
+            # detection box de l'objet
             cv2.rectangle(annotated, (x, y), (x + w, y + h), box_color, thickness)
             label_y = max(y - 6, 14)
+            # nom de l'objet
             cv2.putText(annotated, label, (x, label_y), font, font_scale,
                         text_color, 1, cv2.LINE_AA)
+            # distance approximative
+            distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label)
+            cv2.putText(annotated, "{:.1f} cm".format(distance_cm) if distance_cm else "N/A", (x, y + h + 15), font, font_scale,
+                        text_color, 1, cv2.LINE_AA)
         return annotated
+    
+    @staticmethod
+    def approximate_object_distance(detection_box, frame_h, label):
+        """
+        calculer une estimation de la distance d'un objet à partir de sa taille apparente dans l'image
+        en utilisant une formule de type : D = (H * f) / h
+        où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée pour différentes résolutions)
+        retourne la distance estimée en cm ou None si le calcul est impossible
+        """
+        facteur_M = {
+        '160x128': 3.679,
+        '176x144': 3.278,
+        '320x240': 1.998,
+        '640x480': 1.0
+        }
+
+        hauteur_reelle_cm = {
+            'pieton': 4.5,
+            'camion': 7.0,
+            'stop':   4.5
+        }
+
+        f_pixels = 594.0674603  # focale en pixels calculé depuis excel par essai sur des captures a distances fixes de 15 et 30 cm
+        object_name = label.lower()
+        object_height_pixels = detection_box[3]  # hauteur de la bbox en pixels
+
+        # normalisation de la hauteur en pixels pour 480p
+        if frame_h == 128:
+            normalized_height = object_height_pixels * facteur_M['160x128']
+        elif frame_h == 144:
+            normalized_height = object_height_pixels * facteur_M['176x144']
+        elif frame_h == 240:
+            normalized_height = object_height_pixels * facteur_M['320x240']
+        elif frame_h == 480:
+            normalized_height = object_height_pixels * facteur_M['640x480']
+        else:
+            print("Résolution non reconnue pour la normalisation: hauteur image = {}".format(frame_h))
+            normalized_height = object_height_pixels  # pas de normalisation
+        
+        hauteur_réelle_obj_cm = hauteur_reelle_cm[object_name] if object_name in hauteur_reelle_cm else print("Objet inconnu pour la distance: {}, utiliser une hauteur par défaut de 5 cm".format(object_name)) or 5.0
+
+        # formule de distance : D = (H * f) / h
+        # où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée)
+        if normalized_height > 0:
+            distance_cm = (hauteur_réelle_obj_cm * f_pixels) / normalized_height
+            return distance_cm
+        else:
+            print("Hauteur de l'objet en pixels est nulle, impossible de calculer la distance.")
+            return None
 
     def save_annotated_image(self, frame, detections, filename):
         """
