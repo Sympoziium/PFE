@@ -345,7 +345,7 @@ class StepByStepStateMachine:
         self.step_duration = 0.5  # Durée d'un pas en secondes
         self.search_rotation_angle = 10  # Angle de rotation pour chercher (degrés)
         self.max_search_attempts = 36  # 36 * 10° = 360° (un tour complet)
-        self.line_lost_threshold = 10  # Nombre de frames sans ligne avant de chercher
+        self.line_lost_threshold = 25  # Nombre de frames sans ligne avant de chercher (augmenté pour tolérance)
         self.approach_distance_cm = 10  # Distance fixe d'approche en cm
         self.approach_duration = 0.5  # Durée d'avance pour 10 cm (à ajuster selon robot)
         self.low_error_threshold = 10  # Seuil d'erreur faible pour avancer avec PID (pixels)
@@ -358,7 +358,7 @@ class StepByStepStateMachine:
         self.last_line_offset = None
         self.movement_start_time = None
         self.frames_to_skip_after_rotation = 0  # Compteur pour skip des frames après rotation
-        self.startup_grace_period = 10  # Frames à ignorer au démarrage pour stabilisation caméra
+        self.startup_grace_period = 15  # Frames à ignorer au démarrage pour stabilisation caméra (augmenté)
         self.current_action_message = ""  # Message d'action en cours pour l'utilisateur
         self.recenter_attempts = 0  # Compteur de tentatives de recentrage
         self.max_recenter_attempts = 3  # Maximum de tentatives de recentrage
@@ -381,8 +381,8 @@ class StepByStepStateMachine:
         self.line_lost_count = 0
         self.search_attempts = 0
         self.recenter_attempts = 0
-        self.startup_grace_period = 10  # Réinitialiser la période de grâce au démarrage
-        print("[STEP_MACHINE] Période de grâce: 10 frames (~0.5s) pour stabilisation caméra")
+        self.startup_grace_period = 15  # Réinitialiser la période de grâce au démarrage
+        print("[STEP_MACHINE] Période de grâce: 15 frames (~0.75s) pour stabilisation caméra")
         
     def stop(self):
         """Arrête la machine à états."""
@@ -403,7 +403,7 @@ class StepByStepStateMachine:
         self.recenter_attempts = 0
         self.last_line_offset = None
         self.frames_to_skip_after_rotation = 0
-        self.startup_grace_period = 10
+        self.startup_grace_period = 15
         self.state = StepState.IDLE
         self._display_message("Reset OK")
         

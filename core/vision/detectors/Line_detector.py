@@ -22,7 +22,7 @@ class LineDetector(BaseDetector):
         self.min_area = min_area
         self.offset_ratio = offset_ratio
         self.CAPTURE_DIR = None
-        self.debug_mode = True  # NOUVEAU: mode debug activé
+        self.debug_mode = False  # Mode debug désactivé pour éviter spam de logs
         
     def update_params(self, white_threshold=None, min_area=None, offset_ratio=None):
         """Met à jour les paramètres du détecteur."""
