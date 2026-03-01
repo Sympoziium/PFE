@@ -22,7 +22,7 @@ class LineDetector(BaseDetector):
         self.min_area = min_area
         self.offset_ratio = offset_ratio
         self.CAPTURE_DIR = None
-        self.debug_mode = False  # Mode debug désactivé pour éviter spam de logs
+        self.debug_mode = True  # Mode debug activé pour diagnostiquer le problème
         
     def update_params(self, white_threshold=None, min_area=None, offset_ratio=None):
         """Met à jour les paramètres du détecteur."""
@@ -68,8 +68,10 @@ class LineDetector(BaseDetector):
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # Utiliser le seuil configurable
-        _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        # CORRECTION: Utiliser THRESH_BINARY_INV pour détecter les lignes NOIRES (plus courant)
+        # Les pixels < seuil deviennent BLANCS (255), les pixels > seuil deviennent NOIRS (0)
+        # Cela permet de détecter des lignes noires sur fond clair
+        _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY_INV)
         
         # Morphologie légère
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
@@ -86,6 +88,7 @@ class LineDetector(BaseDetector):
         if len(contours) == 0:
             cv2.putText(frame, "Aucune ligne detectee", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            print("[LINE_DETECTOR] Aucun contour trouvé -> retourne None")
             return None
         
         # 4. Filtrer les contours pour trouver les POINTILLÉS
@@ -135,6 +138,7 @@ class LineDetector(BaseDetector):
         if len(valid_dashes) == 0:
             cv2.putText(frame, "Pas de ligne valide apres filtrage", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
+            print("[LINE_DETECTOR] Aucun pointillé valide après filtrage -> retourne None")
             return None
         
         # 5. Grouper les pointillés alignés verticalement
@@ -164,6 +168,7 @@ class LineDetector(BaseDetector):
         if len(best_group) < 1:
             cv2.putText(frame, "Aucun pointille trouve", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
+            print("[LINE_DETECTOR] Aucun groupe de pointillés valide -> retourne None")
             return None
         
         # 6. Calculer le centre moyen
@@ -205,4 +210,5 @@ class LineDetector(BaseDetector):
         cv2.putText(frame, threshold_text, (20, 70), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
+        print("[LINE_DETECTOR] Ligne détectée! offset={:.1f}, {} pointillés dans le groupe".format(offset, len(best_group)))
         return offset

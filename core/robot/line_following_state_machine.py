@@ -491,6 +491,11 @@ class StepByStepStateMachine:
         line_result = self.line_detector.process(frame.copy())
         line_offset = line_result.get('value')
         
+        # LOG DÉTAILLÉ pour diagnostic
+        print("[STEP_MACHINE DEBUG] line_result complet: {}".format(line_result))
+        print("[STEP_MACHINE DEBUG] line_offset = {} (type: {})".format(
+            line_offset, type(line_offset).__name__ if line_offset is not None else "NoneType"))
+        
         # Période de grâce au démarrage - ne pas compter les frames perdues
         if self.startup_grace_period > 0:
             self.startup_grace_period -= 1
