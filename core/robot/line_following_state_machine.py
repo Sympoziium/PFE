@@ -432,7 +432,10 @@ class StepByStepStateMachine:
         Returns:
             bool: True si l'erreur est faible et qu'on peut avancer avec PID
         """
-        return abs(error) < self.low_error_threshold
+        result = abs(error) <= self.low_error_threshold
+        print("[STEP_MACHINE] _should_use_pid_advance: error={}, seuil={}, résultat={}".format(
+            error, self.low_error_threshold, result))
+        return result
         
     def step(self, frame):
         """
@@ -753,7 +756,10 @@ class StepByStepStateMachine:
         
         self.last_line_offset = line_offset
         
-        # Vérifier si l'erreur est faible (< 10 pixels)
+        print("[STEP_MACHINE] APPROACH_LINE - offset={}, approbation={}".format(
+            line_offset, self.approved_to_move))
+        
+        # Vérifier si l'erreur est faible (<= 10 pixels)
         if self._should_use_pid_advance(line_offset):
             # Erreur faible: avancer avec régulation PID (mode Rotation/Tuning)
             # Attendre l'approbation de l'utilisateur
