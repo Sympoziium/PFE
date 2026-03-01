@@ -532,12 +532,15 @@ class StepByStepStateMachine:
             }
         
         # Détecter si la ligne est visible
+        print("[STEP_MACHINE] Appel du détecteur de ligne...")
         line_result = self.line_detector.process(frame.copy())
+        print("[STEP_MACHINE] Résultat du détecteur: {}".format(line_result))
+        
         line_offset = line_result.get('value')
+        print("[STEP_MACHINE] line_offset extrait: {} (type: {})".format(
+            line_offset, type(line_offset).__name__))
         
-        # DEBUG: Log de la valeur détectée
-        print("[STEP_MACHINE] Recherche - line_offset détecté: {}".format(line_offset))
-        
+        # Vérification explicite si la valeur n'est pas None
         if line_offset is not None:
             # Ligne retrouvée !
             print("[STEP_MACHINE] *** LIGNE RETROUVÉE *** après {} tentatives, offset={}".format(
@@ -553,6 +556,8 @@ class StepByStepStateMachine:
                 'line_found': True,
                 'search_attempts': self.search_attempts
             }
+        else:
+            print("[STEP_MACHINE] line_offset est None - ligne non détectée")
         
         # Ligne non trouvée, continuer à chercher
         self.search_attempts += 1

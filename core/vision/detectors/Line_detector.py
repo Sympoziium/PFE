@@ -44,7 +44,12 @@ class LineDetector(BaseDetector):
     def process(self, frame):
         # Appel de la méthode interne
         line_center = self.detect_lines(frame)
-        return {"detector": "line", "value": line_center}
+        result = {"detector": "line", "value": line_center}
+        # LOG DEBUG pour diagnostiquer
+        if self.debug_mode:
+            print("[LINE_DETECTOR] process() retourne: value={} (type: {})".format(
+                line_center, type(line_center).__name__ if line_center is not None else "NoneType"))
+        return result
     
     def attach_capture_dir(self, capture_dir):
         self.CAPTURE_DIR = capture_dir
