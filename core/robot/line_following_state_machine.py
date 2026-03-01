@@ -362,6 +362,7 @@ class StepByStepStateMachine:
         self.current_action_message = ""  # Message d'action en cours pour l'utilisateur
         self.recenter_attempts = 0  # Compteur de tentatives de recentrage
         self.max_recenter_attempts = 3  # Maximum de tentatives de recentrage
+        self.auto_recenter = False  # Flag pour recentrage automatique sans attente d'approbation
         
     def start(self):
         """Démarre la machine à états."""
@@ -381,6 +382,7 @@ class StepByStepStateMachine:
         self.line_lost_count = 0
         self.search_attempts = 0
         self.recenter_attempts = 0
+        self.auto_recenter = False
         self.startup_grace_period = 15  # Réinitialiser la période de grâce au démarrage
         print("[STEP_MACHINE] Période de grâce: 15 frames (~0.75s) pour stabilisation caméra")
         
@@ -404,6 +406,7 @@ class StepByStepStateMachine:
         self.last_line_offset = None
         self.frames_to_skip_after_rotation = 0
         self.startup_grace_period = 15
+        self.auto_recenter = False
         self.state = StepState.IDLE
         self._display_message("Reset OK")
         
@@ -539,6 +542,22 @@ class StepByStepStateMachine:
         if self.approved_to_move:
             print("[STEP_MACHINE] Début du mouvement (étape {})".format(self.step_count + 1))
             self.approved_to_move = False
+            
+            # DÉCISION: Si l'offset est trop grand, aller à RECENTER pour s'aligner d'abord
+            if abs(line_offset) > self.low_error_threshold:
+                print("[STEP_MACHINE] Offset {} > seuil {} - Passage à RECENTER pour alignement".format(
+                    abs(line_offset), self.low_error_threshold))
+                self._display_message("Alignement...")
+                self.state = StepState.RECENTER
+                self.recenter_attempts = 0
+                return {
+                    'state': self.state.name,
+                    'line_offset': line_offset,
+                    'needs_recenter': True,
+                    'step': self.step_count
+                }
+            
+            # Sinon, avancer normalement avec PID (via MOVING ou directement APPROACH_LINE)
             self.state = StepState.MOVING
             self.movement_start_time = time.time()
             self.step_count += 1
@@ -709,18 +728,34 @@ class StepByStepStateMachine:
             self.line_lost_count = 0
             self.last_line_offset = line_offset
             
-            # Passer à l'état APPROACH_LINE pour s'approcher de la ligne
-            print("[STEP_MACHINE] Transition vers APPROACH_LINE")
-            self._display_message("Ligne trouvee!")
-            time.sleep(0.5)  # Pause pour que l'utilisateur voie le message
-            self.state = StepState.APPROACH_LINE
-            
-            return {
-                'state': self.state.name,
-                'line_found': True,
-                'line_offset': line_offset,
-                'search_attempts': self.search_attempts
-            }
+            # CORRECTION: Décider automatiquement de l'action selon l'offset
+            # Si offset trop grand → RECENTER automatiquement (pas d'attente d'approbation)
+            # Si offset OK → WAITING_APPROVAL pour que l'utilisateur puisse avancer
+            if abs(line_offset) > self.low_error_threshold:
+                print("[STEP_MACHINE] Offset {} > seuil {} - Passage à RECENTER automatique".format(
+                    abs(line_offset), self.low_error_threshold))
+                self._display_message("Alignement auto...")
+                self.state = StepState.RECENTER
+                self.recenter_attempts = 0
+                # Marquer que c'est un recentrage automatique
+                self.auto_recenter = True
+                return {
+                    'state': self.state.name,
+                    'line_found': True,
+                    'line_offset': line_offset,
+                    'auto_recenter': True
+                }
+            else:
+                print("[STEP_MACHINE] Offset {} OK - Transition vers WAITING_APPROVAL".format(line_offset))
+                self._display_message("Ligne trouvee!")
+                time.sleep(0.5)
+                self.state = StepState.WAITING_APPROVAL
+                return {
+                    'state': self.state.name,
+                    'line_found': True,
+                    'line_offset': line_offset,
+                    'search_attempts': self.search_attempts
+                }
         else:
             # Ligne non trouvée, retourner à SEARCH_SPIN pour tourner encore
             print("[STEP_MACHINE] Ligne non trouvée - Retour à SEARCH_SPIN")
@@ -876,6 +911,7 @@ class StepByStepStateMachine:
             time.sleep(0.3)
             self.state = StepState.WAITING_APPROVAL
             self.recenter_attempts = 0
+            self.auto_recenter = False  # Reset du flag auto
             return {
                 'state': self.state.name,
                 'centered': True,
@@ -890,14 +926,15 @@ class StepByStepStateMachine:
             time.sleep(0.3)
             self.state = StepState.WAITING_APPROVAL
             self.recenter_attempts = 0
+            self.auto_recenter = False  # Reset du flag auto
             return {
                 'state': self.state.name,
                 'recenter_max_attempts': True,
                 'line_offset': line_offset
             }
         
-        # Attendre l'approbation de l'utilisateur
-        if not self.approved_to_move:
+        # Attendre l'approbation de l'utilisateur (sauf si recentrage automatique)
+        if not self.approved_to_move and not self.auto_recenter:
             # Calculer l'angle de correction basé sur l'offset
             # Heuristique: 1 pixel = ~0.1 degré (à ajuster selon votre configuration)
             correction_angle = int(line_offset * 0.15)  # Plus agressif: 0.15 deg/px
