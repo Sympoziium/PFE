@@ -515,12 +515,20 @@ class controller:
             kd = float(data.get('kd', self.pid_controller.kd))
             base_speed = int(data.get('base_speed', self.pid_controller.base_speed))
             max_correction = int(data.get('max_correction', self.pid_controller.max_correction))
-            rotation_mode = bool(data.get('rotation_mode', self.pid_controller.rotation_mode))  # NOUVEAU
+            rotation_mode = bool(data.get('rotation_mode', self.pid_controller.rotation_mode))
+            
+            # Nouveaux paramètres pour le calcul d'angle
+            angle_scale = float(data.get('angle_scale', self.pid_controller.angle_scale))
+            max_angle = float(data.get('max_angle', self.pid_controller.max_angle))
+            min_angle_threshold = float(data.get('min_angle_threshold', self.pid_controller.min_angle_threshold))
             
             self.pid_controller.update_params(kp=kp, ki=ki, kd=kd, 
                                             base_speed=base_speed, 
                                             max_correction=max_correction,
-                                            rotation_mode=rotation_mode)  # NOUVEAU
+                                            rotation_mode=rotation_mode,
+                                            angle_scale=angle_scale,
+                                            max_angle=max_angle,
+                                            min_angle_threshold=min_angle_threshold)
             
             return jsonify({'status': 'ok', 'params': self.pid_controller.get_params()})
         except Exception as e:
@@ -587,21 +595,55 @@ class controller:
                         
                         # Debug tous les 20 cycles
                         if loop_count % 20 == 0:
-                            print("[PID_LOOP] Offset: {}, PID actif: {}".format(line_offset, self.pid_active))
+                            print("[PID_LOOP] Offset: {}, PID actif: {}, Mode: {}".format(
+                                line_offset, self.pid_active, 
+                                "ROTATION" if self.pid_controller.rotation_mode else "AVANCE"))
                         
-                        # Calculer la correction PID
-                        left_speed, right_speed = self.pid_controller.compute(line_offset)
-                        
-                        # Appliquer aux moteurs
-                        self.robot.control_motors(left_speed, right_speed)
-                        
-                        # Sauvegarder pour l'affichage
-                        self.last_line_offset = line_offset
-                        self.last_correction = self.pid_controller.correction_history[-1] if self.pid_controller.correction_history else 0
-                        self.last_left_speed = left_speed
-                        self.last_right_speed = right_speed
-                        
-                        time.sleep(0.05)  # 20 Hz
+                        # Choix du mode selon rotation_mode
+                        if self.pid_controller.rotation_mode:
+                            # MODE ROTATION: Calculer l'angle et utiliser turn()
+                            angle = self.pid_controller.compute_rotation_angle(line_offset)
+                            
+                            if angle is not None:
+                                # Angle suffisamment grand pour tourner
+                                if loop_count % 20 == 0:
+                                    print("[PID_LOOP] Rotation de {:.1f}° (erreur: {:.1f})".format(angle, line_offset))
+                                
+                                self.robot.turn(angle)
+                                
+                                # Sauvegarder pour l'affichage
+                                self.last_line_offset = line_offset
+                                self.last_correction = angle  # En mode rotation, la correction est l'angle
+                                self.last_left_speed = 0
+                                self.last_right_speed = 0
+                            else:
+                                # Angle trop petit, ligne centrée
+                                if loop_count % 20 == 0:
+                                    print("[PID_LOOP] Ligne centrée (erreur: {:.1f})".format(line_offset))
+                                
+                                self.robot.stop()
+                                
+                                self.last_line_offset = line_offset
+                                self.last_correction = 0
+                                self.last_left_speed = 0
+                                self.last_right_speed = 0
+                            
+                            # Délai plus long en mode rotation (pour laisser le temps de tourner)
+                            time.sleep(0.2)
+                        else:
+                            # MODE AVANCE: Calculer les vitesses et utiliser control_motors()
+                            left_speed, right_speed = self.pid_controller.compute(line_offset)
+                            
+                            # Appliquer aux moteurs
+                            self.robot.control_motors(left_speed, right_speed)
+                            
+                            # Sauvegarder pour l'affichage
+                            self.last_line_offset = line_offset
+                            self.last_correction = self.pid_controller.correction_history[-1] if self.pid_controller.correction_history else 0
+                            self.last_left_speed = left_speed
+                            self.last_right_speed = right_speed
+                            
+                            time.sleep(0.05)  # 20 Hz
                         
                     except Exception as e:
                         print("[ERROR] Erreur dans pid_loop: {}".format(e))

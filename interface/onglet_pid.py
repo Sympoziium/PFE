@@ -278,6 +278,32 @@ def render_pid_tab(title="Asservissement PID"):
                         <input type='number' step='1' class='param-input' id='maxCorrectionInput' value='30'>
                     </div>
                 </div>
+                
+                <!-- Paramètres de calcul d'angle pour le mode rotation -->
+                <div style='margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 10px; border: 2px solid #ffc107;'>
+                    <h4 style='margin: 0 0 10px 0; color: #856404;'>⚙️ Paramètres de rotation (Mode Rotation uniquement)</h4>
+                    <p style='font-size: 13px; color: #856404; margin-bottom: 15px;'>
+                        Ces paramètres contrôlent le calcul de l'angle lorsque le mode rotation est activé.
+                    </p>
+                    <div class='param-grid'>
+                        <div class='param-item'>
+                            <label class='param-label'>Échelle d'angle (angle_scale)</label>
+                            <input type='number' step='0.01' class='param-input' id='angleScaleInput' value='0.3'>
+                            <small style='color: #666;'>Conversion erreur → angle (0.3 = 100px → 30°)</small>
+                        </div>
+                        <div class='param-item'>
+                            <label class='param-label'>Angle maximal (degrés)</label>
+                            <input type='number' step='1' class='param-input' id='maxAngleInput' value='45'>
+                            <small style='color: #666;'>Limite les rotations brusques</small>
+                        </div>
+                        <div class='param-item'>
+                            <label class='param-label'>Seuil minimal (degrés)</label>
+                            <input type='number' step='0.5' class='param-input' id='minAngleThresholdInput' value='2'>
+                            <small style='color: #666;'>Angle minimum pour déclencher une rotation</small>
+                        </div>
+                    </div>
+                </div>
+                
                 <button class='primary-btn' id='updateParamsBtn'>📝 Mettre à jour les paramètres</button>
             </div>
 
@@ -459,7 +485,10 @@ def render_pid_tab(title="Asservissement PID"):
             kd: parseFloat(document.getElementById('kdInput').value),
             base_speed: parseInt(document.getElementById('baseSpeedInput').value),
             max_correction: parseInt(document.getElementById('maxCorrectionInput').value),
-            rotation_mode: rotationMode
+            rotation_mode: rotationMode,
+            angle_scale: parseFloat(document.getElementById('angleScaleInput').value),
+            max_angle: parseFloat(document.getElementById('maxAngleInput').value),
+            min_angle_threshold: parseFloat(document.getElementById('minAngleThresholdInput').value)
         }};
 
         fetch('/pid/update_params', {{
@@ -471,6 +500,9 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(data) {{
             var mode = rotationMode? 'ROTATION' : 'AVANCE';
             appendLog('Paramètres mis à jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
+            if (rotationMode) {{
+                appendLog('  Angle: scale=' + params.angle_scale + ', max=' + params.max_angle + '°, min=' + params.min_angle_threshold + '°');
+            }}
             showToast('Paramètres PID mis à jour!', 'success');
         }})
         .catch(function(err) {{
@@ -681,6 +713,11 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('kdInput').value = data.kd || 0.05;
             document.getElementById('baseSpeedInput').value = data.base_speed || 20;
             document.getElementById('maxCorrectionInput').value = data.max_correction || 30;
+            
+            // Charger les paramètres d'angle
+            document.getElementById('angleScaleInput').value = data.angle_scale || 0.3;
+            document.getElementById('maxAngleInput').value = data.max_angle || 45;
+            document.getElementById('minAngleThresholdInput').value = data.min_angle_threshold || 2;
             
             rotationMode = data.rotation_mode !== undefined ? data.rotation_mode : true;
             if (rotationMode) {{

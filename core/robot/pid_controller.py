@@ -12,7 +12,8 @@ import time
 
 class PIDController:
     def __init__(self, kp=0.1, ki=0.0, kd=0.05, base_speed=20, max_correction=30, 
-             rotation_mode=True, deadband=1, rotation_scale=0.3, auto_reset_threshold=100):
+             rotation_mode=True, deadband=1, rotation_scale=0.3, auto_reset_threshold=100,
+             angle_scale=0.3, max_angle=45, min_angle_threshold=2):
         """
         Initialise le contrôleur PID.
         
@@ -22,7 +23,10 @@ class PIDController:
             kd (float): Gain dérivé
             base_speed (int): Vitesse de base des moteurs (0-100)
             max_correction (int): Correction maximale applicable
-            rotation_mode (bool): Si True, tourne sur place. Si False, avance en suivant la ligne.
+            rotation_mode (bool): Si True, utilise turn() pour rotation précise. Si False, avance en suivant la ligne.
+            angle_scale (float): Facteur de conversion erreur -> angle (ex: 0.3 = 100 pixels erreur -> 30 degrés)
+            max_angle (float): Angle maximal de rotation en degrés (limite les rotations brusques)
+            min_angle_threshold (float): Seuil minimal d'angle en degrés (en dessous, pas de rotation)
         """
         self.kp = kp
         self.ki = ki
@@ -32,12 +36,18 @@ class PIDController:
         self.rotation_mode = rotation_mode
         self.deadband = deadband
         self.rotation_scale = rotation_scale
-        self.auto_reset_threshold = auto_reset_threshold 
+        self.auto_reset_threshold = auto_reset_threshold
+        
+        # Paramètres pour le calcul d'angle en mode rotation
+        self.angle_scale = angle_scale
+        self.max_angle = max_angle
+        self.min_angle_threshold = min_angle_threshold
         
         # Variables internes
         self.previous_error = 0
         self.integral = 0
         self.last_time = None
+        self.last_angle = 0  # Dernier angle calculé
         
         # Historique pour debug
         self.error_history = []
@@ -51,7 +61,8 @@ class PIDController:
         self.error_history = []
         self.correction_history = []
         
-    def update_params(self, kp=None, ki=None, kd=None, base_speed=None, max_correction=None, rotation_mode=None):
+    def update_params(self, kp=None, ki=None, kd=None, base_speed=None, max_correction=None, 
+                      rotation_mode=None, angle_scale=None, max_angle=None, min_angle_threshold=None):
         """Met à jour les paramètres du PID."""
         if kp is not None:
             self.kp = kp
@@ -65,6 +76,12 @@ class PIDController:
             self.max_correction = max_correction
         if rotation_mode is not None:  
             self.rotation_mode = rotation_mode
+        if angle_scale is not None:
+            self.angle_scale = angle_scale
+        if max_angle is not None:
+            self.max_angle = max_angle
+        if min_angle_threshold is not None:
+            self.min_angle_threshold = min_angle_threshold
             
     def get_params(self):
         """Retourne les paramètres actuels du PID."""
@@ -74,9 +91,11 @@ class PIDController:
             'kd': self.kd,
             'base_speed': self.base_speed,
             'max_correction': self.max_correction,
-            'rotation_mode': self.rotation_mode,  
-            'auto_reset_threshold': self.auto_reset_threshold
-
+            'rotation_mode': self.rotation_mode,
+            'auto_reset_threshold': self.auto_reset_threshold,
+            'angle_scale': self.angle_scale,
+            'max_angle': self.max_angle,
+            'min_angle_threshold': self.min_angle_threshold
         }
         
     def compute(self, error):
@@ -190,11 +209,82 @@ class PIDController:
             
             return (int(left_speed), int(right_speed))
     
+    def compute_rotation_angle(self, error):
+        """
+        Calcule l'angle de rotation nécessaire pour corriger l'erreur.
+        Utilisé en mode rotation avec la fonction turn().
+        
+        Args:
+            error (float): Erreur de position (offset de la ligne)
+                          Négatif = ligne à gauche, Positif = ligne à droite
+        
+        Returns:
+            float: Angle de rotation en degrés (positif = gauche, négatif = droite)
+                   Retourne None si l'angle est en dessous du seuil minimal
+        """
+        # Calculer l'angle brut basé sur l'erreur
+        # Erreur négative (ligne à gauche) -> angle positif (tourner à gauche)
+        # Erreur positive (ligne à droite) -> angle négatif (tourner à droite)
+        raw_angle = -error * self.angle_scale
+        
+        # Appliquer le PID pour affiner l'angle
+        current_time = time.time()
+        
+        # Calculer dt (delta time)
+        if self.last_time is None:
+            dt = 0.05
+        else:
+            dt = current_time - self.last_time
+            if dt <= 0:
+                dt = 0.05
+        
+        self.last_time = current_time
+        
+        # Terme proportionnel sur l'erreur
+        P = self.kp * error
+        
+        # Terme intégral (avec limites)
+        self.integral += error * dt
+        max_integral = 100  # Limite arbitraire pour l'intégrale
+        self.integral = max(-max_integral, min(max_integral, self.integral))
+        I = self.ki * self.integral
+        
+        # Terme dérivé
+        derivative = (error - self.previous_error) / dt if dt > 0 else 0
+        D = self.kd * derivative
+        
+        # Correction PID
+        pid_correction = P + I + D
+        
+        # Appliquer la correction à l'angle (conversion avec angle_scale)
+        angle = -pid_correction * self.angle_scale
+        
+        # Limiter l'angle
+        angle = max(-self.max_angle, min(self.max_angle, angle))
+        
+        # Sauvegarder pour la prochaine itération
+        self.previous_error = error
+        self.last_angle = angle
+        
+        # Historique
+        self.error_history.append(error)
+        self.correction_history.append(angle)
+        if len(self.error_history) > 100:
+            self.error_history.pop(0)
+            self.correction_history.pop(0)
+        
+        # Si l'angle est trop petit, ne pas tourner
+        if abs(angle) < self.min_angle_threshold:
+            return None
+        
+        return angle
+    
     def get_debug_info(self):
         """Retourne les informations de debug."""
         return {
             'previous_error': self.previous_error,
             'integral': self.integral,
             'error_history': self.error_history[-10:],  # 10 dernières valeurs
-            'correction_history': self.correction_history[-10:]
+            'correction_history': self.correction_history[-10:],
+            'last_angle': self.last_angle if hasattr(self, 'last_angle') else 0
         }
