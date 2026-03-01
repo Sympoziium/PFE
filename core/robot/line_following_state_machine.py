@@ -543,6 +543,9 @@ class StepByStepStateMachine:
             print("[STEP_MACHINE] Début du mouvement (étape {})".format(self.step_count + 1))
             self.approved_to_move = False
             
+            # Reset des compteurs de ligne perdue pour éviter une détection prématurée
+            self.line_lost_count = 0
+            
             # DÉCISION: Si l'offset est trop grand, aller à RECENTER pour s'aligner d'abord
             if abs(line_offset) > self.low_error_threshold:
                 print("[STEP_MACHINE] Offset {} > seuil {} - Passage à RECENTER pour alignement".format(
@@ -557,7 +560,8 @@ class StepByStepStateMachine:
                     'step': self.step_count
                 }
             
-            # Sinon, avancer normalement avec PID (via MOVING ou directement APPROACH_LINE)
+            # Sinon, avancer normalement avec PID
+            print("[STEP_MACHINE] Passage à MOVING - Avance avec ligne_offset={}".format(line_offset))
             self.state = StepState.MOVING
             self.movement_start_time = time.time()
             self.step_count += 1
@@ -992,6 +996,8 @@ class StepByStepStateMachine:
         self.state = StepState.SEARCH_SPIN
         self.search_attempts = 0
         return self._handle_search_spin(frame)
+    
+    def _handle_line_lost(self, frame):
         """Gère l'état de ligne perdue définitivement."""
         print("[STEP_MACHINE] Ligne perdue - En attente d'intervention manuelle")
         self.robot.stop()
