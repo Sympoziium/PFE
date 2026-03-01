@@ -225,10 +225,10 @@ def render_pid_tab(title="Asservissement PID"):
             <div class='tab-header'>
                 <h2 class='tab-title'>{title}</h2>
                 <div class='tab-nav'>
-                    <button class='primary-btn' data-path="/">Accueil</button>
-                    <button class='primary-btn' data-path="/vision">Vision</button>
-                    <button class='primary-btn' data-path="/pid">PID</button>
-                    <button class='primary-btn' data-path="/onglet_template">Template</button>
+                    <button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
+                    <button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
+                    <button class='primary-btn' data-path="/pid" onclick="navigateTo('/pid')">PID</button>
+                    <button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
                 </div>
             </div>
 
