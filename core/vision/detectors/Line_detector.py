@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 class LineDetector(BaseDetector):
-    def __init__(self, white_threshold=200, min_area=50, offset_ratio=0.3):
+    def __init__(self, white_threshold=150, min_area=20, offset_ratio=0.7):
         """
         Initialise le détecteur de ligne.
         
