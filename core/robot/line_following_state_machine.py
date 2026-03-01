@@ -523,7 +523,7 @@ class StepByStepStateMachine:
         
         if line_offset is None:
             self.line_lost_count += 1
-            print("[STEP_MACHINE] Ligne non détectée ({}/{} avant recherche)".format(
+            print("[STEP_MACHINE WARNING] Ligne non détectée en WAITING_APPROVAL ({}/{} avant recherche)".format(
                 self.line_lost_count, self.line_lost_threshold))
             if self.line_lost_count >= self.line_lost_threshold:
                 print("[STEP_MACHINE] Ligne perdue - Passage en mode recherche (SEARCH_SPIN)")
@@ -534,34 +534,48 @@ class StepByStepStateMachine:
                 # Afficher l'action à venir
                 self._display_message("Tournera 10deg")
                 return {'state': self.state.name, 'line_offset': None}
+            # Si on n'a pas encore dépassé le seuil, rester en attente avec un message
+            self._display_message("Ligne faible...")
+            return {
+                'state': self.state.name,
+                'line_offset': None,
+                'waiting_approval': True,
+                'line_lost_count': self.line_lost_count,
+                'step': self.step_count
+            }
         else:
             self.line_lost_count = 0
             self.last_line_offset = line_offset
+            print("[STEP_MACHINE] Ligne détectée avec offset={} en WAITING_APPROVAL".format(line_offset))
         
         # Attendre l'approbation
         if self.approved_to_move:
             print("[STEP_MACHINE] Début du mouvement (étape {})".format(self.step_count + 1))
-            self.approved_to_move = False
             
             # Reset des compteurs de ligne perdue pour éviter une détection prématurée
             self.line_lost_count = 0
             
             # DÉCISION: Si l'offset est trop grand, aller à RECENTER pour s'aligner d'abord
             if abs(line_offset) > self.low_error_threshold:
-                print("[STEP_MACHINE] Offset {} > seuil {} - Passage à RECENTER pour alignement".format(
+                print("[STEP_MACHINE] Offset {} > seuil {} - Passage à RECENTER automatique pour alignement".format(
                     abs(line_offset), self.low_error_threshold))
-                self._display_message("Alignement...")
+                self._display_message("Alignement auto...")
+                # NE PAS reset approved_to_move ici, on le passe à auto_recenter
+                self.approved_to_move = False
+                self.auto_recenter = True  # Activer le recentrage automatique
                 self.state = StepState.RECENTER
                 self.recenter_attempts = 0
                 return {
                     'state': self.state.name,
                     'line_offset': line_offset,
                     'needs_recenter': True,
+                    'auto_recenter': True,
                     'step': self.step_count
                 }
             
             # Sinon, avancer normalement avec PID
             print("[STEP_MACHINE] Passage à MOVING - Avance avec ligne_offset={}".format(line_offset))
+            self.approved_to_move = False  # Reset pour la prochaine fois
             self.state = StepState.MOVING
             self.movement_start_time = time.time()
             self.step_count += 1
