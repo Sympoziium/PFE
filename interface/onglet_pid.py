@@ -304,6 +304,44 @@ def render_pid_tab(title="Asservissement PID"):
                 <button class='primary-btn' id='updateLineDetectorBtn'>📝 Mettre à jour le détecteur</button>
             </div>
 
+            <!-- Contrôle Manuel de Rotation -->
+            <div class='tab-content'>
+                <h3 class='tab-subtitle'>🎮 Contrôle Manuel de Rotation</h3>
+                <p class='tab-text' style='margin-bottom: 15px; color: #666;'>
+                    Utilisez la fonction turn() du Zumi pour effectuer des rotations précises avec le gyroscope.
+                </p>
+                
+                <div style='background: #e8f4f8; padding: 15px; border-radius: 10px; margin-bottom: 15px;'>
+                    <div style='display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;'>
+                        <div style='flex: 1; min-width: 200px;'>
+                            <label class='param-label'>Angle de rotation (degrés)</label>
+                            <input type='number' step='1' class='param-input' id='manualAngleInput' value='90' 
+                                   style='font-size: 18px; font-weight: bold;'>
+                            <small style='color: #666;'>Positif = gauche, Négatif = droite</small>
+                        </div>
+                        <div style='display: flex; gap: 10px;'>
+                            <button class='control-btn' id='turnLeftBtn' style='background: #17a2b8;'>
+                                ↺ Tourner à gauche
+                            </button>
+                            <button class='control-btn' id='turnRightBtn' style='background: #17a2b8;'>
+                                ↻ Tourner à droite
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style='margin-top: 15px;'>
+                    <p class='param-label' style='margin-bottom: 8px;'>Rotations rapides :</p>
+                    <div style='display: flex; gap: 8px; flex-wrap: wrap;'>
+                        <button class='primary-btn' onclick='quickTurn(45)'>↺ 45° G</button>
+                        <button class='primary-btn' onclick='quickTurn(90)'>↺ 90° G</button>
+                        <button class='primary-btn' onclick='quickTurn(180)'>↺ 180°</button>
+                        <button class='primary-btn' onclick='quickTurn(-90)'>↻ 90° D</button>
+                        <button class='primary-btn' onclick='quickTurn(-45)'>↻ 45° D</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Contrôles -->
             <div class='tab-content'>
                 <h3 class='tab-subtitle'>Contrôle</h3>
@@ -546,6 +584,44 @@ def render_pid_tab(title="Asservissement PID"):
         }}
     }}
 
+    // Contrôle manuel de rotation
+    function manualTurn(angle) {{
+        appendLog('Rotation manuelle: ' + angle + '° demandée...');
+        
+        fetch('/zumi/turn', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ angle: angle }})
+        }})
+        .then(function(r) {{ 
+            if (!r.ok) throw new Error('Erreur ' + r.status); 
+            return r.json(); 
+        }})
+        .then(function(data) {{
+            var msg = data.message || 'Rotation complétée';
+            appendLog('✓ ' + msg);
+            showToast(msg, 'success');
+        }})
+        .catch(function(err) {{
+            appendLog('ERREUR: ' + err.message);
+            showToast('Erreur lors de la rotation', 'error');
+        }});
+    }}
+
+    function quickTurn(angle) {{
+        manualTurn(angle);
+    }}
+
+    function turnLeft() {{
+        var angle = parseFloat(document.getElementById('manualAngleInput').value) || 90;
+        manualTurn(Math.abs(angle));  // Positif = gauche
+    }}
+
+    function turnRight() {{
+        var angle = parseFloat(document.getElementById('manualAngleInput').value) || 90;
+        manualTurn(-Math.abs(angle));  // Négatif = droite
+    }}
+
     // Navigation
     function navigateTo(path) {{
         stopStatusPolling();
@@ -591,6 +667,10 @@ def render_pid_tab(title="Asservissement PID"):
         
         // Bouton détecteur de ligne
         document.getElementById('updateLineDetectorBtn').addEventListener('click', updateLineDetectorParams);
+
+        // Boutons de rotation manuelle
+        document.getElementById('turnLeftBtn').addEventListener('click', turnLeft);
+        document.getElementById('turnRightBtn').addEventListener('click', turnRight);
 
         // Charger les paramètres initiaux
         fetch('/pid/get_params')

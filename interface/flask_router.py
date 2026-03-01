@@ -38,6 +38,7 @@ def register_routes(ctrl):
     app.add_url_rule('/zumi/left', 'left', lambda: ctrl.left())
     app.add_url_rule('/zumi/right', 'right', lambda: ctrl.right())
     app.add_url_rule('/zumi/stop', 'stop', lambda: ctrl.stop())
+    app.add_url_rule('/zumi/turn', 'manual_turn', lambda: ctrl.manual_turn(), methods=['POST'])
 
     # Page PID
     app.add_url_rule('/pid', 'pid_page', lambda: ctrl.pid_page())

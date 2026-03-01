@@ -460,6 +460,44 @@ class controller:
             print("[ERREUR] zumi.stop():", e) 
             return "error", 500
 
+    def manual_turn(self):
+        """
+        Fait tourner le Zumi d'un angle spécifié (rotation précise avec gyroscope).
+        Attend un JSON avec la clé 'angle' (en degrés).
+        Angle positif = rotation à gauche, angle négatif = rotation à droite.
+        """
+        data = request.get_json(silent=True) or {}
+        angle = data.get('angle', 0)
+        
+        print("[HTTP] /zumi/turn reçu - angle: {}°".format(angle))
+        
+        try:
+            angle_float = float(angle)
+            
+            if angle_float == 0:
+                return jsonify({'status': 'ok', 'message': 'Angle nul, aucune rotation'}), 200
+            
+            if not hasattr(self.robot, 'turn'):
+                return jsonify({'error': 'La méthode turn() n\'est pas disponible sur ce robot'}), 400
+            
+            self.robot.turn(angle_float)
+            direction = "gauche" if angle_float > 0 else "droite"
+            print("[ACTION] zumi.turn({}) exécuté - Rotation de {} degrés vers la {}".format(angle_float, abs(angle_float), direction))
+            
+            return jsonify({
+                'status': 'ok', 
+                'angle': angle_float, 
+                'direction': direction,
+                'message': 'Rotation de {} degrés vers la {} complétée'.format(abs(angle_float), direction)
+            }), 200
+            
+        except ValueError:
+            print("[ERREUR] Angle invalide: {}".format(angle))
+            return jsonify({'error': 'Angle invalide: doit être un nombre'}), 400
+        except Exception as e:
+            print("[ERREUR] zumi.turn({}):", angle, e)
+            return jsonify({'error': str(e)}), 500
+
 # ----------------------------------------------------------------------------
 #          Fonctions pour le contrôle PID du suivi de ligne
 # ----------------------------------------------------------------------------
