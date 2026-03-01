@@ -519,19 +519,7 @@ class StepByStepStateMachine:
     def _handle_searching_line(self, frame):
         """Gère la recherche de ligne en tournant par petits incréments."""
         
-        # Si on vient de tourner, attendre quelques frames pour stabilisation de l'image
-        if self.frames_to_skip_after_rotation > 0:
-            print("[STEP_MACHINE] Attente de stabilisation... (frames restantes: {})".format(
-                self.frames_to_skip_after_rotation))
-            self.frames_to_skip_after_rotation -= 1
-            return {
-                'state': self.state.name,
-                'line_offset': None,
-                'waiting_stabilization': True,
-                'search_attempts': self.search_attempts
-            }
-        
-        # Détecter si la ligne est visible
+        # Détecter si la ligne est visible (TOUJOURS, même en stabilisation)
         print("[STEP_MACHINE] Appel du détecteur de ligne...")
         line_result = self.line_detector.process(frame.copy())
         print("[STEP_MACHINE] Résultat du détecteur: {}".format(line_result))
@@ -548,6 +536,7 @@ class StepByStepStateMachine:
             self.robot.stop()
             self.line_lost_count = 0
             self.last_line_offset = line_offset
+            self.frames_to_skip_after_rotation = 0  # Reset du compteur
             self.state = StepState.WAITING_APPROVAL
             time.sleep(0.3)  # Stabilisation
             return {
@@ -558,6 +547,18 @@ class StepByStepStateMachine:
             }
         else:
             print("[STEP_MACHINE] line_offset est None - ligne non détectée")
+        
+        # Si on est encore en période de stabilisation, attendre
+        if self.frames_to_skip_after_rotation > 0:
+            print("[STEP_MACHINE] Attente de stabilisation... (frames restantes: {})".format(
+                self.frames_to_skip_after_rotation))
+            self.frames_to_skip_after_rotation -= 1
+            return {
+                'state': self.state.name,
+                'line_offset': None,
+                'waiting_stabilization': True,
+                'search_attempts': self.search_attempts
+            }
         
         # Ligne non trouvée, continuer à chercher
         self.search_attempts += 1
