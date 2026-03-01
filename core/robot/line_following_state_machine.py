@@ -341,6 +341,7 @@ class StepByStepStateMachine:
         self.step_count = 0
         self.last_line_offset = None
         self.movement_start_time = None
+        self.frames_to_skip_after_rotation = 0  # Compteur pour skip des frames après rotation
         
     def start(self):
         """Démarre la machine à états."""
@@ -375,6 +376,7 @@ class StepByStepStateMachine:
         self.line_lost_count = 0
         self.search_attempts = 0
         self.last_line_offset = None
+        self.frames_to_skip_after_rotation = 0
         self.state = StepState.IDLE
         
     def approve_next_step(self):
@@ -433,6 +435,7 @@ class StepByStepStateMachine:
                 print("[STEP_MACHINE] Ligne perdue - Passage en mode recherche")
                 self.state = StepState.SEARCHING_LINE
                 self.search_attempts = 0
+                self.frames_to_skip_after_rotation = 0  # Reset du compteur
                 return {'state': self.state.name, 'line_offset': None}
         else:
             self.line_lost_count = 0
@@ -470,6 +473,7 @@ class StepByStepStateMachine:
                 print("[STEP_MACHINE] Ligne perdue pendant le mouvement")
                 self.state = StepState.SEARCHING_LINE
                 self.search_attempts = 0
+                self.frames_to_skip_after_rotation = 0  # Reset du compteur
                 return {'state': self.state.name, 'line_offset': None}
             
             # Continuer avec la dernière valeur connue si disponible
@@ -514,6 +518,19 @@ class StepByStepStateMachine:
     
     def _handle_searching_line(self, frame):
         """Gère la recherche de ligne en tournant par petits incréments."""
+        
+        # Si on vient de tourner, attendre quelques frames pour stabilisation de l'image
+        if self.frames_to_skip_after_rotation > 0:
+            print("[STEP_MACHINE] Attente de stabilisation... (frames restantes: {})".format(
+                self.frames_to_skip_after_rotation))
+            self.frames_to_skip_after_rotation -= 1
+            return {
+                'state': self.state.name,
+                'line_offset': None,
+                'waiting_stabilization': True,
+                'search_attempts': self.search_attempts
+            }
+        
         # Détecter si la ligne est visible
         line_result = self.line_detector.process(frame.copy())
         line_offset = line_result.get('value')
@@ -568,7 +585,8 @@ class StepByStepStateMachine:
             time.sleep(duration)
             self.robot.stop()
         
-        time.sleep(0.3)  # Pause plus longue pour stabilisation et capture de l'image
+        # Après la rotation, attendre 6 frames (~0.3s à 20Hz) avant de vérifier la ligne
+        self.frames_to_skip_after_rotation = 6
         
         return {
             'state': self.state.name,
