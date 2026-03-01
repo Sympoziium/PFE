@@ -518,9 +518,13 @@ class StepByStepStateMachine:
         line_result = self.line_detector.process(frame.copy())
         line_offset = line_result.get('value')
         
+        # DEBUG: Log de la valeur détectée
+        print("[STEP_MACHINE] Recherche - line_offset détecté: {}".format(line_offset))
+        
         if line_offset is not None:
             # Ligne retrouvée !
-            print("[STEP_MACHINE] Ligne retrouvée après {} tentatives".format(self.search_attempts))
+            print("[STEP_MACHINE] *** LIGNE RETROUVÉE *** après {} tentatives, offset={}".format(
+                self.search_attempts, line_offset))
             self.robot.stop()
             self.line_lost_count = 0
             self.last_line_offset = line_offset
@@ -564,7 +568,7 @@ class StepByStepStateMachine:
             time.sleep(duration)
             self.robot.stop()
         
-        time.sleep(0.2)  # Pause pour stabilisation et capture de l'image
+        time.sleep(0.3)  # Pause plus longue pour stabilisation et capture de l'image
         
         return {
             'state': self.state.name,
