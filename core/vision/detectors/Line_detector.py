@@ -68,10 +68,8 @@ class LineDetector(BaseDetector):
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # CORRECTION: Utiliser THRESH_BINARY_INV pour détecter les lignes NOIRES (plus courant)
-        # Les pixels < seuil deviennent BLANCS (255), les pixels > seuil deviennent NOIRS (0)
-        # Cela permet de détecter des lignes noires sur fond clair
-        _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY_INV)
+        # Utiliser le seuil configurable pour détecter les lignes BLANCHES sur fond noir
+        _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
         
         # Morphologie légère
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))

@@ -345,7 +345,7 @@ class StepByStepStateMachine:
         self.step_duration = 0.5  # Durée d'un pas en secondes
         self.search_rotation_angle = 10  # Angle de rotation pour chercher (degrés)
         self.max_search_attempts = 36  # 36 * 10° = 360° (un tour complet)
-        self.line_lost_threshold = 25  # Nombre de frames sans ligne avant de chercher (augmenté pour tolérance)
+        self.line_lost_threshold = 15  # Nombre de frames sans ligne avant de chercher (~0.75s à 20Hz)
         self.approach_distance_cm = 10  # Distance fixe d'approche en cm
         self.approach_duration = 0.5  # Durée d'avance pour 10 cm (à ajuster selon robot)
         self.low_error_threshold = 10  # Seuil d'erreur faible pour avancer avec PID (pixels)
