@@ -333,7 +333,7 @@ class StepByStepStateMachine:
         self.step_duration = 0.5  # Durée d'un pas en secondes
         self.search_rotation_angle = 10  # Angle de rotation pour chercher (degrés)
         self.max_search_attempts = 36  # 36 * 10° = 360° (un tour complet)
-        self.line_lost_threshold = 5  # Nombre de frames sans ligne avant de chercher
+        self.line_lost_threshold = 10  # Nombre de frames sans ligne avant de chercher (augmenté de 5 à 10)
         
         # Variables d'état
         self.line_lost_count = 0
@@ -342,6 +342,7 @@ class StepByStepStateMachine:
         self.last_line_offset = None
         self.movement_start_time = None
         self.frames_to_skip_after_rotation = 0  # Compteur pour skip des frames après rotation
+        self.startup_grace_period = 10  # Frames à ignorer au démarrage pour stabilisation caméra
         
     def start(self):
         """Démarre la machine à états."""
@@ -359,6 +360,8 @@ class StepByStepStateMachine:
         self.step_count = 0
         self.line_lost_count = 0
         self.search_attempts = 0
+        self.startup_grace_period = 10  # Réinitialiser la période de grâce au démarrage
+        print("[STEP_MACHINE] Période de grâce: 10 frames (~0.5s) pour stabilisation caméra")
         
     def stop(self):
         """Arrête la machine à états."""
@@ -377,6 +380,7 @@ class StepByStepStateMachine:
         self.search_attempts = 0
         self.last_line_offset = None
         self.frames_to_skip_after_rotation = 0
+        self.startup_grace_period = 10
         self.state = StepState.IDLE
         
     def approve_next_step(self):
@@ -429,8 +433,28 @@ class StepByStepStateMachine:
         line_result = self.line_detector.process(frame.copy())
         line_offset = line_result.get('value')
         
+        # Période de grâce au démarrage - ne pas compter les frames perdues
+        if self.startup_grace_period > 0:
+            self.startup_grace_period -= 1
+            print("[STEP_MACHINE] Période de grâce: {} frames restantes (line_offset={})".format(
+                self.startup_grace_period, line_offset))
+            # Pendant la période de grâce, si on détecte la ligne, on la garde
+            if line_offset is not None:
+                self.line_lost_count = 0
+                self.last_line_offset = line_offset
+            # On ne passe PAS en mode recherche pendant la période de grâce
+            return {
+                'state': self.state.name,
+                'line_offset': line_offset,
+                'waiting_approval': True,
+                'grace_period': self.startup_grace_period,
+                'step': self.step_count
+            }
+        
         if line_offset is None:
             self.line_lost_count += 1
+            print("[STEP_MACHINE] Ligne non détectée ({}/{} avant recherche)".format(
+                self.line_lost_count, self.line_lost_threshold))
             if self.line_lost_count >= self.line_lost_threshold:
                 print("[STEP_MACHINE] Ligne perdue - Passage en mode recherche")
                 self.state = StepState.SEARCHING_LINE
