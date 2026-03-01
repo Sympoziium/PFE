@@ -624,7 +624,7 @@ def render_pid_tab(title="Asservissement PID"):
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l\\'arrêt', 'error');
+            showToast('Erreur lors de l arrêt', 'error');
         }});
     }}
 
@@ -710,7 +710,7 @@ def render_pid_tab(title="Asservissement PID"):
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l\'arrêt', 'error');
+            showToast('Erreur lors de l arrêt', 'error');
         }});
     }}
 
@@ -723,7 +723,7 @@ def render_pid_tab(title="Asservissement PID"):
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l\'approbation', 'error');
+            showToast('Erreur lors de l approbation', 'error');
         }});
     }}
 
