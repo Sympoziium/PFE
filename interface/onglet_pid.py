@@ -217,6 +217,12 @@ def render_pid_tab(title="Asservissement PID"):
     .toast.info {{ background: #3498db; }}
     .toast.success {{ background: #27ae60; }}
 
+    @keyframes pulse {{
+        0% {{ transform: scale(1); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }}
+        50% {{ transform: scale(1.05); box-shadow: 0 6px 20px rgba(40, 167, 69, 0.5); }}
+        100% {{ transform: scale(1); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }}
+    }}
+
     </style>
     </head>
     <body>
@@ -375,6 +381,57 @@ def render_pid_tab(title="Asservissement PID"):
                     <button class='control-btn' id='startPidBtn'>▶️ Démarrer PID</button>
                     <button class='control-btn stop' id='stopPidBtn'>⛔ Arrêter PID</button>
                     <button class='primary-btn' id='resetPidBtn'>🔄 Réinitialiser PID</button>
+                </div>
+            </div>
+
+            <!-- Mode Step-by-Step (Avancé) -->
+            <div class='tab-content' style='border: 3px solid #ffc107; background: #fffbf0;'>
+                <h3 class='tab-subtitle' style='color: #856404;'>🚶 Mode Avancé: Step-by-Step</h3>
+                <p class='tab-text' style='margin-bottom: 15px; color: #856404;'>
+                    <strong>Mode pas à pas :</strong> Le robot avance par étapes, s'arrête pour que l'image soit nette, 
+                    puis attend votre autorisation pour continuer. Si la ligne est perdue, il la cherche automatiquement.
+                </p>
+                
+                <div style='background: #fff; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 2px solid #ffc107;'>
+                    <div style='display: flex; gap: 15px; align-items: center; margin-bottom: 15px;'>
+                        <div style='flex: 1;'>
+                            <div class='status-label'>État du mode Step</div>
+                            <div class='status-value' id='stepModeStatus' style='color: #6c757d;'>Arrêté</div>
+                        </div>
+                        <div style='flex: 1;'>
+                            <div class='status-label'>État de la machine</div>
+                            <div class='status-value' id='stepMachineState' style='font-size: 14px;'>IDLE</div>
+                        </div>
+                        <div style='flex: 1;'>
+                            <div class='status-label'>Étapes complétées</div>
+                            <div class='status-value' id='stepCount'>0</div>
+                        </div>
+                    </div>
+                    
+                    <div style='display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;'>
+                        <button class='control-btn' id='startStepModeBtn' style='background: #ffc107; color: #000;'>
+                            ▶️ Démarrer Mode Step
+                        </button>
+                        <button class='control-btn stop' id='stopStepModeBtn'>
+                            ⛔ Arrêter Mode Step
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Bouton d'autorisation d'étape (gros et visible) -->
+                <div style='background: #28a745; padding: 20px; border-radius: 15px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2);'>
+                    <button class='control-btn' id='approveStepBtn' 
+                            style='background: #fff; color: #28a745; font-size: 20px; font-weight: bold; 
+                                   padding: 20px 40px; border: 4px solid #28a745; cursor: pointer;'
+                            disabled>
+                        ✅ AUTORISER LA PROCHAINE ÉTAPE
+                    </button>
+                    <p style='margin-top: 10px; color: #fff; font-size: 14px;'>
+                        Cliquez pour permettre au robot d'avancer à la prochaine position
+                    </p>
+                    <div id='stepWaitingIndicator' style='margin-top: 10px; color: #fff; font-weight: bold; display: none;'>
+                        ⏸️ En attente de votre autorisation...
+                    </div>
                 </div>
             </div>
 
@@ -616,6 +673,104 @@ def render_pid_tab(title="Asservissement PID"):
         }}
     }}
 
+    // ========== MODE STEP-BY-STEP ==========
+    var stepModeRunning = false;
+    var stepStatusInterval = null;
+
+    function startStepMode() {{
+        fetch('/pid/step_mode/start', {{ method: 'POST' }})
+        .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
+        .then(function(data) {{
+            stepModeRunning = true;
+            document.getElementById('stepModeStatus').textContent = 'Actif';
+            document.getElementById('stepModeStatus').style.color = '#28a745';
+            document.getElementById('approveStepBtn').disabled = false;
+            appendLog('Mode Step-by-Step démarré');
+            showToast('Mode Step activé!', 'success');
+            startStepStatusPolling();
+        }})
+        .catch(function(err) {{
+            appendLog('ERREUR: ' + err.message);
+            showToast('Erreur lors du démarrage', 'error');
+        }});
+    }}
+
+    function stopStepMode() {{
+        fetch('/pid/step_mode/stop', {{ method: 'POST' }})
+        .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
+        .then(function(data) {{
+            stepModeRunning = false;
+            document.getElementById('stepModeStatus').textContent = 'Arrêté';
+            document.getElementById('stepModeStatus').style.color = '#6c757d';
+            document.getElementById('approveStepBtn').disabled = true;
+            document.getElementById('stepWaitingIndicator').style.display = 'none';
+            appendLog('Mode Step-by-Step arrêté');
+            showToast('Mode Step arrêté', 'info');
+            stopStepStatusPolling();
+        }})
+        .catch(function(err) {{
+            appendLog('ERREUR: ' + err.message);
+            showToast('Erreur lors de l\'arrêt', 'error');
+        }});
+    }}
+
+    function approveNextStep() {{
+        fetch('/pid/step_mode/approve', {{ method: 'POST' }})
+        .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
+        .then(function(data) {{
+            appendLog('✓ Prochaine étape autorisée');
+            showToast('Étape autorisée!', 'success');
+        }})
+        .catch(function(err) {{
+            appendLog('ERREUR: ' + err.message);
+            showToast('Erreur lors de l\'approbation', 'error');
+        }});
+    }}
+
+    function startStepStatusPolling() {{
+        if (stepStatusInterval) return;
+        stepStatusInterval = setInterval(function() {{
+            fetch('/pid/step_mode/status')
+            .then(function(r) {{ return r.json(); }})
+            .then(function(data) {{
+                // Mettre à jour l'état de la machine
+                var state = data.state || 'IDLE';
+                document.getElementById('stepMachineState').textContent = state;
+                
+                // Mettre à jour le compteur d'étapes
+                document.getElementById('stepCount').textContent = data.step_count || 0;
+                
+                // Afficher l'indicateur d'attente si nécessaire
+                if (data.waiting_approval) {{
+                    document.getElementById('stepWaitingIndicator').style.display = 'block';
+                    document.getElementById('approveStepBtn').style.animation = 'pulse 1.5s infinite';
+                }} else {{
+                    document.getElementById('stepWaitingIndicator').style.display = 'none';
+                    document.getElementById('approveStepBtn').style.animation = 'none';
+                }}
+                
+                // Mettre à jour les valeurs de debug
+                if (data.line_offset !== undefined) {{
+                    document.getElementById('currentError').textContent = parseFloat(data.line_offset).toFixed(1);
+                }}
+                if (data.left_speed !== undefined) {{
+                    document.getElementById('leftSpeed').textContent = data.left_speed;
+                }}
+                if (data.right_speed !== undefined) {{
+                    document.getElementById('rightSpeed').textContent = data.right_speed;
+                }}
+            }})
+            .catch(function(err) {{ console.error('Step status polling error:', err); }});
+        }}, 200);
+    }}
+
+    function stopStepStatusPolling() {{
+        if (stepStatusInterval) {{
+            clearInterval(stepStatusInterval);
+            stepStatusInterval = null;
+        }}
+    }}
+
     // Contrôle manuel de rotation
     function manualTurn(angle) {{
         appendLog('Rotation manuelle: ' + angle + '° demandée...');
@@ -657,8 +812,18 @@ def render_pid_tab(title="Asservissement PID"):
     // Navigation
     function navigateTo(path) {{
         stopStatusPolling();
+        stopStepStatusPolling();
+        
+        var promises = [];
         if (pidRunning) {{
-            fetch('/pid/stop', {{ method: 'POST' }})
+            promises.push(fetch('/pid/stop', {{ method: 'POST' }}));
+        }}
+        if (stepModeRunning) {{
+            promises.push(fetch('/pid/step_mode/stop', {{ method: 'POST' }}));
+        }}
+        
+        if (promises.length > 0) {{
+            Promise.all(promises)
                 .then(function() {{ location.href = path; }})
                 .catch(function() {{ location.href = path; }});
         }} else {{
@@ -695,6 +860,11 @@ def render_pid_tab(title="Asservissement PID"):
         // Boutons de rotation manuelle
         document.getElementById('turnLeftBtn').addEventListener('click', turnLeft);
         document.getElementById('turnRightBtn').addEventListener('click', turnRight);
+
+        // Boutons du mode step-by-step
+        document.getElementById('startStepModeBtn').addEventListener('click', startStepMode);
+        document.getElementById('stopStepModeBtn').addEventListener('click', stopStepMode);
+        document.getElementById('approveStepBtn').addEventListener('click', approveNextStep);
 
         // Charger les paramètres initiaux
         fetch('/pid/get_params')
@@ -743,8 +913,12 @@ def render_pid_tab(title="Asservissement PID"):
     // Cleanup on page unload
     window.addEventListener('beforeunload', function() {{
         stopStatusPolling();
+        stopStepStatusPolling();
         if (pidRunning) {{
             fetch('/pid/stop', {{ method: 'POST' }});
+        }}
+        if (stepModeRunning) {{
+            fetch('/pid/step_mode/stop', {{ method: 'POST' }});
         }}
     }});
     </script>

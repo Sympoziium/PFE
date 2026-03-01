@@ -50,6 +50,13 @@ def register_routes(ctrl):
     app.add_url_rule('/pid/stop', 'pid_stop', lambda: ctrl.pid_stop(), methods=['POST'])
     app.add_url_rule('/pid/reset', 'pid_reset', lambda: ctrl.pid_reset(), methods=['POST'])
     app.add_url_rule('/pid/status', 'pid_status', lambda: ctrl.pid_status())
+    
+    # Routes pour le mode step-by-step
+    app.add_url_rule('/pid/step_mode/start', 'pid_step_start', lambda: ctrl.pid_step_start(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/stop', 'pid_step_stop', lambda: ctrl.pid_step_stop(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/approve', 'pid_step_approve', lambda: ctrl.pid_step_approve(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/status', 'pid_step_status', lambda: ctrl.pid_step_status())
+    
     # Routes pour le détecteur de ligne
     app.add_url_rule('/line_detector/update_params', 'line_detector_update_params', 
                     lambda: ctrl.line_detector_update_params(), methods=['POST'])

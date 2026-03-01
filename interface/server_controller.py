@@ -15,6 +15,7 @@ from interface.onglet_acceuil import render_accueil_tab
 from interface.onglet_vision import render_vision_tab
 from interface.onglet_template import render_template_tab  # Exemple d'onglet template générique
 from core.robot.pid_controller import PIDController
+from core.robot.line_following_state_machine import StepByStepStateMachine
 
 # --- Fonction helper pour formater les résultats de détection ---
 def format_detection_result(results, detector_name="Détecteur"):
@@ -111,6 +112,10 @@ class controller:
         self.last_correction = 0
         self.last_left_speed = 0
         self.last_right_speed = 0
+        # Mode step-by-step
+        self.step_machine = None
+        self.step_mode_active = False
+        self.step_mode_thread = None
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
@@ -797,4 +802,154 @@ class controller:
             'state': self.state_machine.get_state().name,
             'photos_taken': len(self.state_machine.photos_taken),
             'rotation_count': self.state_machine.rotation_count
+        })
+    
+    # ===== MODE STEP-BY-STEP =====
+    
+    def pid_step_start(self):
+        """Démarre le mode step-by-step."""
+        try:
+            print("[DEBUG] pid_step_start() appelé")
+            
+            # Vérifier si un mode est déjà actif
+            if self.step_mode_active:
+                print("[WARNING] Mode step déjà actif")
+                return jsonify({'error': 'Step mode already running'}), 400
+            
+            if self.pid_active:
+                print("[WARNING] PID normal actif, arrêter d'abord")
+                return jsonify({'error': 'Normal PID is running. Stop it first.'}), 400
+            
+            vp = self.vision_pipeline
+            if not vp or not vp.is_running():
+                return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
+            
+            # Trouver le détecteur de ligne
+            line_detector = None
+            for detector in vp.get_detectors():
+                if hasattr(detector, 'white_threshold'):
+                    line_detector = detector
+                    break
+            
+            if not line_detector:
+                return jsonify({'error': 'Line detector not found'}), 404
+            
+            # Créer la machine à états si nécessaire
+            if self.step_machine is None:
+                print("[DEBUG] Création de la machine step-by-step")
+                self.step_machine = StepByStepStateMachine(
+                    robot=self.robot,
+                    camera=vp.camera,
+                    pid_controller=self.pid_controller,
+                    line_detector=line_detector
+                )
+            
+            # Démarrer la machine
+            print("[DEBUG] Démarrage de la machine step-by-step")
+            self.step_machine.start()
+            self.step_mode_active = True
+            
+            # Créer le thread de contrôle
+            import threading
+            def step_loop():
+                print("[STEP_LOOP] Démarrage du step_loop")
+                while self.step_mode_active:
+                    try:
+                        # Récupérer l'image actuelle
+                        frame = vp.get_last_frame()
+                        if frame is None:
+                            time.sleep(0.05)
+                            continue
+                        
+                        # Exécuter un cycle de la machine à états
+                        result = self.step_machine.step(frame)
+                        
+                        # Sauvegarder les infos pour l'affichage
+                        self.last_line_offset = result.get('line_offset', 0)
+                        self.last_left_speed = result.get('left_speed', 0)
+                        self.last_right_speed = result.get('right_speed', 0)
+                        
+                        time.sleep(0.05)  # 20 Hz
+                        
+                    except Exception as e:
+                        print("[ERROR] Erreur dans step_loop: {}".format(e))
+                        import traceback
+                        traceback.print_exc()
+                        time.sleep(0.1)
+                
+                print("[STEP_LOOP] Arrêt du step_loop")
+                self.robot.stop()
+            
+            self.step_mode_thread = threading.Thread(target=step_loop)
+            self.step_mode_thread.daemon = True
+            self.step_mode_thread.start()
+            
+            print("[DEBUG] Mode step-by-step démarré avec succès")
+            return jsonify({'status': 'started'})
+            
+        except Exception as e:
+            print("[ERROR] Exception dans pid_step_start(): {}".format(e))
+            import traceback
+            traceback.print_exc()
+            self.step_mode_active = False
+            return jsonify({'error': 'Failed to start step mode: {}'.format(str(e))}), 500
+    
+    def pid_step_stop(self):
+        """Arrête le mode step-by-step."""
+        print("[DEBUG] pid_step_stop() appelé")
+        
+        if self.step_machine:
+            self.step_machine.stop()
+        
+        self.step_mode_active = False
+        
+        # Attendre que le thread se termine
+        if self.step_mode_thread and self.step_mode_thread.is_alive():
+            print("[DEBUG] Attente de la fin du thread step...")
+            self.step_mode_thread.join(timeout=2.0)
+            if self.step_mode_thread.is_alive():
+                print("[WARNING] Le thread step n'a pas terminé dans le délai")
+            else:
+                print("[DEBUG] Thread step terminé proprement")
+        
+        self.step_mode_thread = None
+        self.robot.stop()
+        
+        # Réinitialiser les valeurs affichées
+        self.last_line_offset = 0
+        self.last_correction = 0
+        self.last_left_speed = 0
+        self.last_right_speed = 0
+        
+        print("[DEBUG] Mode step-by-step arrêté")
+        return jsonify({'status': 'stopped'})
+    
+    def pid_step_approve(self):
+        """Approuve la prochaine étape."""
+        print("[DEBUG] pid_step_approve() appelé")
+        
+        if not self.step_mode_active or not self.step_machine:
+            return jsonify({'error': 'Step mode not running'}), 400
+        
+        self.step_machine.approve_next_step()
+        
+        return jsonify({'status': 'approved'})
+    
+    def pid_step_status(self):
+        """Retourne le statut du mode step-by-step."""
+        if not self.step_machine:
+            return jsonify({
+                'active': False,
+                'state': 'IDLE',
+                'waiting_approval': False
+            })
+        
+        return jsonify({
+            'active': self.step_mode_active,
+            'state': self.step_machine.get_state().name,
+            'waiting_approval': self.step_machine.is_waiting_approval(),
+            'step_count': self.step_machine.step_count,
+            'line_offset': self.last_line_offset,
+            'left_speed': self.last_left_speed,
+            'right_speed': self.last_right_speed
         })

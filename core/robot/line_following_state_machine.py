@@ -18,6 +18,16 @@ class State(Enum):
     COMPLETED = 5
     ERROR = 6
 
+
+class StepState(Enum):
+    """États pour la machine step-by-step (mode avancé)."""
+    IDLE = 0
+    MOVING = 1  # Robot en mouvement
+    WAITING_APPROVAL = 2  # Attend validation utilisateur
+    SEARCHING_LINE = 3  # Cherche la ligne en tournant
+    LINE_LOST = 4  # Ligne perdue
+    STOPPED = 5  # Arrêt complet
+
 class LineFollowingStateMachine:
     def __init__(self, robot, camera, pid_controller, line_detector, stop_condition_detector=None):
         """
@@ -288,3 +298,321 @@ class LineFollowingStateMachine:
     def is_running(self):
         """Vérifie si la machine est en cours d'exécution."""
         return self.running
+
+
+class StepByStepStateMachine:
+    """
+    Machine à états pour le mode avancé avec avancement étape par étape.
+    
+    Le robot avance, s'arrête pour que l'image soit nette, attend la validation
+    de l'utilisateur, puis recalcule et continue.
+    
+    Si la ligne est perdue, le robot la cherche en tournant sur lui-même.
+    """
+    
+    def __init__(self, robot, camera, pid_controller, line_detector):
+        """
+        Initialise la machine à états step-by-step.
+        
+        Args:
+            robot: Instance du robot Zumi
+            camera: Instance de la caméra
+            pid_controller: Instance du contrôleur PID
+            line_detector: Détecteur de ligne
+        """
+        self.robot = robot
+        self.camera = camera
+        self.pid_controller = pid_controller
+        self.line_detector = line_detector
+        
+        self.state = StepState.IDLE
+        self.running = False
+        self.approved_to_move = False  # Validation utilisateur
+        
+        # Paramètres configurables
+        self.step_duration = 0.5  # Durée d'un pas en secondes
+        self.search_rotation_angle = 15  # Angle de rotation pour chercher (degrés)
+        self.max_search_attempts = 24  # 24 * 15° = 360°
+        self.line_lost_threshold = 5  # Nombre de frames sans ligne avant de chercher
+        
+        # Variables d'état
+        self.line_lost_count = 0
+        self.search_attempts = 0
+        self.step_count = 0
+        self.last_line_offset = None
+        self.movement_start_time = None
+        
+    def start(self):
+        """Démarre la machine à états."""
+        print("[STEP_MACHINE] Démarrage - État: WAITING_APPROVAL")
+        self.state = StepState.WAITING_APPROVAL
+        self.running = True
+        self.approved_to_move = False
+        self.pid_controller.reset()
+        self.step_count = 0
+        self.line_lost_count = 0
+        self.search_attempts = 0
+        
+    def stop(self):
+        """Arrête la machine à états."""
+        print("[STEP_MACHINE] Arrêt demandé")
+        self.running = False
+        self.robot.stop()
+        self.state = StepState.STOPPED
+        self.approved_to_move = False
+        
+    def reset(self):
+        """Réinitialise la machine à états."""
+        self.stop()
+        self.pid_controller.reset()
+        self.step_count = 0
+        self.line_lost_count = 0
+        self.search_attempts = 0
+        self.last_line_offset = None
+        self.state = StepState.IDLE
+        
+    def approve_next_step(self):
+        """Autorise le prochain mouvement (appelé par l'interface)."""
+        print("[STEP_MACHINE] Prochaine étape approuvée par l'utilisateur")
+        self.approved_to_move = True
+        
+    def step(self, frame):
+        """
+        Exécute un cycle de la machine à états.
+        
+        Args:
+            frame: Image actuelle de la caméra
+            
+        Returns:
+            dict: État actuel et informations de debug
+        """
+        if not self.running:
+            return {'state': self.state.name, 'active': False}
+        
+        try:
+            if self.state == StepState.WAITING_APPROVAL:
+                return self._handle_waiting_approval(frame)
+                
+            elif self.state == StepState.MOVING:
+                return self._handle_moving(frame)
+                
+            elif self.state == StepState.SEARCHING_LINE:
+                return self._handle_searching_line(frame)
+                
+            elif self.state == StepState.LINE_LOST:
+                return self._handle_line_lost(frame)
+                
+            elif self.state == StepState.STOPPED:
+                return self._handle_stopped()
+                
+        except Exception as e:
+            print("[STEP_MACHINE ERROR] {}".format(e))
+            import traceback
+            traceback.print_exc()
+            self.robot.stop()
+            self.state = StepState.STOPPED
+            return {'state': 'ERROR', 'error': str(e)}
+        
+        return {'state': self.state.name}
+    
+    def _handle_waiting_approval(self, frame):
+        """Gère l'état d'attente de validation."""
+        # Vérifier que la ligne est toujours visible
+        line_result = self.line_detector.process(frame.copy())
+        line_offset = line_result.get('value')
+        
+        if line_offset is None:
+            self.line_lost_count += 1
+            if self.line_lost_count >= self.line_lost_threshold:
+                print("[STEP_MACHINE] Ligne perdue - Passage en mode recherche")
+                self.state = StepState.SEARCHING_LINE
+                self.search_attempts = 0
+                return {'state': self.state.name, 'line_offset': None}
+        else:
+            self.line_lost_count = 0
+            self.last_line_offset = line_offset
+        
+        # Attendre l'approbation
+        if self.approved_to_move:
+            print("[STEP_MACHINE] Début du mouvement (étape {})".format(self.step_count + 1))
+            self.approved_to_move = False
+            self.state = StepState.MOVING
+            self.movement_start_time = time.time()
+            self.step_count += 1
+            return {'state': self.state.name, 'line_offset': line_offset, 'step': self.step_count}
+        
+        # Pas encore approuvé, rester en attente
+        return {
+            'state': self.state.name,
+            'line_offset': line_offset,
+            'waiting_approval': True,
+            'step': self.step_count
+        }
+    
+    def _handle_moving(self, frame):
+        """Gère l'état de mouvement."""
+        # Détecter la ligne
+        line_result = self.line_detector.process(frame.copy())
+        line_offset = line_result.get('value')
+        
+        if line_offset is None:
+            # Ligne perdue pendant le mouvement
+            self.robot.stop()
+            self.line_lost_count += 1
+            
+            if self.line_lost_count >= self.line_lost_threshold:
+                print("[STEP_MACHINE] Ligne perdue pendant le mouvement")
+                self.state = StepState.SEARCHING_LINE
+                self.search_attempts = 0
+                return {'state': self.state.name, 'line_offset': None}
+            
+            # Continuer avec la dernière valeur connue si disponible
+            if self.last_line_offset is not None:
+                line_offset = self.last_line_offset
+            else:
+                # Pas de valeur connue, arrêter
+                self.state = StepState.WAITING_APPROVAL
+                return {'state': self.state.name, 'line_offset': None}
+        else:
+            self.line_lost_count = 0
+            self.last_line_offset = line_offset
+        
+        # Calculer et appliquer la commande PID
+        left_speed, right_speed = self.pid_controller.compute(line_offset)
+        self.robot.control_motors(left_speed, right_speed)
+        
+        # Vérifier si la durée du pas est écoulée
+        elapsed = time.time() - self.movement_start_time
+        if elapsed >= self.step_duration:
+            print("[STEP_MACHINE] Fin du mouvement - Arrêt pour stabilisation")
+            self.robot.stop()
+            self.state = StepState.WAITING_APPROVAL
+            time.sleep(0.3)  # Pause pour que l'image se stabilise
+            return {
+                'state': self.state.name,
+                'line_offset': line_offset,
+                'left_speed': left_speed,
+                'right_speed': right_speed,
+                'step_completed': True,
+                'step': self.step_count
+            }
+        
+        return {
+            'state': self.state.name,
+            'line_offset': line_offset,
+            'left_speed': left_speed,
+            'right_speed': right_speed,
+            'elapsed': elapsed,
+            'step': self.step_count
+        }
+    
+    def _handle_searching_line(self, frame):
+        """Gère la recherche de ligne en tournant sur place."""
+        # Détecter si la ligne est visible
+        line_result = self.line_detector.process(frame.copy())
+        line_offset = line_result.get('value')
+        
+        if line_offset is not None:
+            # Ligne retrouvée !
+            print("[STEP_MACHINE] Ligne retrouvée après {} tentatives".format(self.search_attempts))
+            self.robot.stop()
+            self.line_lost_count = 0
+            self.last_line_offset = line_offset
+            self.state = StepState.WAITING_APPROVAL
+            time.sleep(0.3)  # Stabilisation
+            return {
+                'state': self.state.name,
+                'line_offset': line_offset,
+                'line_found': True,
+                'search_attempts': self.search_attempts
+            }
+        
+        # Ligne non trouvée, continuer à chercher
+        self.search_attempts += 1
+        
+        if self.search_attempts > self.max_search_attempts:
+            # Trop de tentatives, abandonner
+            print("[STEP_MACHINE] Ligne non trouvée après {} tentatives - Arrêt".format(self.max_search_attempts))
+            self.robot.stop()
+            self.state = StepState.LINE_LOST
+            return {
+                'state': self.state.name,
+                'line_offset': None,
+                'search_failed': True
+            }
+        
+        # Tourner d'un petit angle pour chercher
+        print("[STEP_MACHINE] Recherche de ligne... tentative {}/{}".format(
+            self.search_attempts, self.max_search_attempts))
+        
+        # Alterner la direction de recherche pour couvrir les deux côtés
+        direction = 1 if self.search_attempts % 2 == 1 else -1
+        angle = direction * self.search_rotation_angle
+        
+        if hasattr(self.robot, 'turn'):
+            self.robot.turn(angle)
+        else:
+            # Rotation manuelle
+            speed = 10
+            duration = abs(angle) / 90.0 * 0.3
+            self.robot.control_motors(direction * speed, -direction * speed)
+            time.sleep(duration)
+            self.robot.stop()
+        
+        time.sleep(0.2)  # Pause pour stabilisation
+        
+        return {
+            'state': self.state.name,
+            'line_offset': None,
+            'searching': True,
+            'search_attempts': self.search_attempts,
+            'rotation_angle': angle
+        }
+    
+    def _handle_line_lost(self, frame):
+        """Gère l'état de ligne perdue définitivement."""
+        print("[STEP_MACHINE] Ligne perdue - En attente d'intervention manuelle")
+        self.robot.stop()
+        
+        # Vérifier quand même si la ligne réapparaît
+        line_result = self.line_detector.process(frame.copy())
+        line_offset = line_result.get('value')
+        
+        if line_offset is not None:
+            print("[STEP_MACHINE] Ligne détectée à nouveau!")
+            self.line_lost_count = 0
+            self.last_line_offset = line_offset
+            self.search_attempts = 0
+            self.state = StepState.WAITING_APPROVAL
+            return {
+                'state': self.state.name,
+                'line_offset': line_offset,
+                'line_recovered': True
+            }
+        
+        return {
+            'state': self.state.name,
+            'line_offset': None,
+            'line_lost': True
+        }
+    
+    def _handle_stopped(self):
+        """Gère l'état d'arrêt."""
+        self.robot.stop()
+        return {
+            'state': self.state.name,
+            'stopped': True,
+            'steps_completed': self.step_count
+        }
+    
+    def get_state(self):
+        """Retourne l'état actuel."""
+        return self.state
+    
+    def is_running(self):
+        """Vérifie si la machine est en cours d'exécution."""
+        return self.running
+    
+    def is_waiting_approval(self):
+        """Vérifie si la machine attend une approbation."""
+        return self.state == StepState.WAITING_APPROVAL
