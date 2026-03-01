@@ -331,8 +331,8 @@ class StepByStepStateMachine:
         
         # Paramètres configurables
         self.step_duration = 0.5  # Durée d'un pas en secondes
-        self.search_rotation_angle = 15  # [DEPRECATED] Angle de rotation pour chercher (degrés)
-        self.max_search_attempts = 150  # ~5 secondes de rotation continue à 30 fps
+        self.search_rotation_angle = 10  # Angle de rotation pour chercher (degrés)
+        self.max_search_attempts = 36  # 36 * 10° = 360° (un tour complet)
         self.line_lost_threshold = 5  # Nombre de frames sans ligne avant de chercher
         
         # Variables d'état
@@ -507,7 +507,7 @@ class StepByStepStateMachine:
         }
     
     def _handle_searching_line(self, frame):
-        """Gère la recherche de ligne en tournant sur place de façon continue."""
+        """Gère la recherche de ligne en tournant par petits incréments."""
         # Détecter si la ligne est visible
         line_result = self.line_detector.process(frame.copy())
         line_offset = line_result.get('value')
@@ -541,24 +541,31 @@ class StepByStepStateMachine:
                 'search_failed': True
             }
         
-        # Tourner en continu sur place pour chercher la ligne
-        print("[STEP_MACHINE] Recherche de ligne en rotation continue... tentative {}/{}".format(
-            self.search_attempts, self.max_search_attempts))
+        # Tourner d'un petit angle (10°), s'arrêter, puis analyser
+        print("[STEP_MACHINE] Recherche de ligne... rotation {} degrés (tentative {}/{})".format(
+            self.search_rotation_angle, self.search_attempts, self.max_search_attempts))
         
-        # Rotation continue vers la gauche (sens anti-horaire)
-        # Le robot tourne sur lui-même pendant qu'il cherche
-        speed = 12  # Vitesse de rotation modérée pour avoir le temps de détecter
-        self.robot.control_motors(speed, -speed)
+        # Toujours tourner dans le même sens (gauche = anti-horaire)
+        angle = self.search_rotation_angle
         
-        # Pas de sleep ici, la rotation continue pendant que la détection se fait
-        # Le robot s'arrêtera automatiquement quand la ligne sera trouvée
+        if hasattr(self.robot, 'turn'):
+            self.robot.turn(angle)
+        else:
+            # Rotation manuelle
+            speed = 10
+            duration = abs(angle) / 90.0 * 0.3
+            self.robot.control_motors(speed, -speed)
+            time.sleep(duration)
+            self.robot.stop()
+        
+        time.sleep(0.2)  # Pause pour stabilisation et capture de l'image
         
         return {
             'state': self.state.name,
             'line_offset': None,
             'searching': True,
             'search_attempts': self.search_attempts,
-            'rotating_continuously': True
+            'rotation_angle': angle
         }
     
     def _handle_line_lost(self, frame):
