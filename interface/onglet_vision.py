@@ -768,14 +768,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	// Charger la liste des détecteurs au chargement de la page et lier les événements
 	window.addEventListener('DOMContentLoaded', function() {
 		loadDetectors();
-		// Navigation buttons
-		var navBtns = document.querySelectorAll('.tab-nav .primary-btn');
-		Array.prototype.forEach.call(navBtns, function(btn) {
-			btn.addEventListener('click', function() {
-				var path = btn.getAttribute('data-path');
-				navigateTo(path);
-			});
-		});
 		// Camera toggle
 		var camBtn = document.getElementById('cameraToggleBtn');
 		if (camBtn) camBtn.addEventListener('click', toggleCamera);

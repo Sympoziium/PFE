@@ -679,14 +679,6 @@ def render_pid_tab(title="Asservissement PID"):
 
     // Event listeners
     window.addEventListener('DOMContentLoaded', function() {{
-        // Boutons de navigation
-        var navBtns = document.querySelectorAll('.tab-nav .primary-btn');
-        Array.prototype.forEach.call(navBtns, function(btn) {{
-            btn.addEventListener('click', function() {{
-                navigateTo(btn.getAttribute('data-path'));
-            }});
-        }});
-
         // Boutons de contrôle
         document.getElementById('updateParamsBtn').addEventListener('click', updateParams);
         document.getElementById('startPidBtn').addEventListener('click', startPid);
