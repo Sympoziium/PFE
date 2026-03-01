@@ -349,6 +349,12 @@ class StepByStepStateMachine:
         self.running = True
         self.approved_to_move = False
         self.pid_controller.reset()
+        
+        # S'assurer que le PID est en mode avance (pas rotation)
+        # pour permettre au robot de suivre la ligne
+        self.pid_controller.update_params(rotation_mode=False)
+        print("[STEP_MACHINE] PID configuré en mode avance (rotation_mode=False)")
+        
         self.step_count = 0
         self.line_lost_count = 0
         self.search_attempts = 0
