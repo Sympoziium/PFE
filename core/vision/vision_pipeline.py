@@ -22,13 +22,14 @@ import gc
 
 
 class VisionPipeline:
-    def __init__(self, camera, detectors=None, fps=30):
+    def __init__(self, camera, detectors=None, fps=30, debug=False):
         self.camera = camera
         self.detectors = detectors if detectors is not None else []
         self.periode = 1.0 / fps
         self.running = False
         self.last_captured_image_url = None
         self.CAPTURE_DIR = None
+        self.debug = debug
         # Buffer de la dernière image et protection de concurrence
         self._lock = threading.Lock()
         self._last_frame = None
@@ -66,7 +67,8 @@ class VisionPipeline:
             self.camera.start_camera()
             self.running = True
         except Exception as e:
-            print("Erreur lors du demarrage du pipeline de vision: {}".format(e))
+            if self.debug:
+                print("Erreur lors du demarrage du pipeline de vision: {}".format(e))
             
         
     def stop(self):
@@ -79,7 +81,8 @@ class VisionPipeline:
         try:
             self.camera.close()
         except Exception as e:
-            print("Erreur lors de l'arret du pipeline de vision: {}".format(e))
+            if self.debug:
+                print("Erreur lors de l'arret du pipeline de vision: {}".format(e))
         
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
@@ -116,7 +119,8 @@ class VisionPipeline:
             return detection
 
         except Exception as e:
-            print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
+            if self.debug:
+                print("Erreur lors du traitement de l'image par le detecteur {}: {}".format(detector, e))
             
     def is_running(self):
         """ vérifier si le pipeline de vision est en cours d'exécution """
@@ -136,7 +140,8 @@ class VisionPipeline:
                 # Capture directe depuis la caméra (utilisé quand aucun flux ne tourne)
                 return self.camera.capture()
             except Exception as e:
-                print("Erreur lors de la capture d'une image brute: {}".format(e))
+                if self.debug:
+                    print("Erreur lors de la capture d'une image brute: {}".format(e))
                 
 
     def update_last_frame(self, frame):
@@ -193,9 +198,11 @@ class VisionPipeline:
                 frame = self._hires_capture_fn(width, height)
                 if frame is not None:
                     return frame
-                print("[VisionPipeline] Hires capture returned None, falling back to normal")
+                if self.debug:
+                    print("[VisionPipeline] Hires capture returned None, falling back to normal")
             except Exception as e:
-                print("[VisionPipeline] Hires capture failed: {}, falling back".format(e))
+                if self.debug:
+                    print("[VisionPipeline] Hires capture failed: {}, falling back".format(e))
         
         # Fallback : capture normale
         frame = self.get_last_frame()
@@ -225,7 +232,8 @@ class VisionPipeline:
             try:
                 self.camera.close()
             except Exception as e:
-                print("[VisionPipeline] Erreur fermeture caméra: {}".format(e))
+                if self.debug:
+                    print("[VisionPipeline] Erreur fermeture caméra: {}".format(e))
         
         # Laisser du temps pour que la caméra se libère complètement
         # (surtout important sur Pi Zero avec peu de ressources GPU)
@@ -240,9 +248,11 @@ class VisionPipeline:
         try:
             cam_class = type(self.camera)
             self.camera = cam_class(image_w=width, image_h=height)
-            print("[VisionPipeline] Résolution caméra changée: {}x{}".format(width, height))
+            if self.debug:
+                print("[VisionPipeline] Résolution caméra changée: {}x{}".format(width, height))
         except Exception as e:
-            print("[VisionPipeline] ERREUR création caméra: {}".format(e))
+            if self.debug:
+                print("[VisionPipeline] ERREUR création caméra: {}".format(e))
             raise
 
 # ----------------------------------------
@@ -250,7 +260,7 @@ class VisionPipeline:
 # ----------------------------------------
     @staticmethod
     def annotate_frame(frame, detections, box_color=(0, 255, 0), text_color=(0, 255, 0),
-                       thickness=2, font_scale=0.5):
+                       thickness=2, font_scale=0.5, debug=False):
         """
         Dessine les bounding boxes et labels sur une **copie** de l'image.
 
@@ -281,13 +291,13 @@ class VisionPipeline:
             # distance approximative
             # Attention: l'implémentation ne devrais pas être faite ici si on souhaite utiliser la distance calculé dans le contrôle du robot.
             # on l'a fait ici pour tester vite fais, mais cette fonction ne sert qu'â annoter l'image, pas à faire des calculs de détection ou de contrôle.
-            distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label) 
+            distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label, debug=debug)
             cv2.putText(annotated, "{:.1f} cm".format(distance_cm) if distance_cm else "N/A", (x, y + h + 15), font, font_scale,
                         text_color, 1, cv2.LINE_AA)
         return annotated
     
     @staticmethod
-    def approximate_object_distance(detection_box, frame_h, label):
+    def approximate_object_distance(detection_box, frame_h, label, debug=False):
         """
         calculer une estimation de la distance d'un objet à partir de sa taille apparente dans l'image
         en utilisant une formule de type : D = (H * f) / h
@@ -321,10 +331,16 @@ class VisionPipeline:
         elif frame_h == 480:
             normalized_height = object_height_pixels * facteur_M['640x480']
         else:
-            print("Résolution non reconnue pour la normalisation: hauteur image = {}".format(frame_h))
+            if debug:
+                print("Résolution non reconnue pour la normalisation: hauteur image = {}".format(frame_h))
             normalized_height = object_height_pixels  # pas de normalisation
         
-        hauteur_réelle_obj_cm = hauteur_reelle_cm[object_name] if object_name in hauteur_reelle_cm else print("Objet inconnu pour la distance: {}, utiliser une hauteur par défaut de 5 cm".format(object_name)) or 5.0
+        if object_name in hauteur_reelle_cm:
+            hauteur_réelle_obj_cm = hauteur_reelle_cm[object_name]
+        else:
+            if debug:
+                print("Objet inconnu pour la distance: {}, utiliser une hauteur par défaut de 5 cm".format(object_name))
+            hauteur_réelle_obj_cm = 5.0
 
         # formule de distance : D = (H * f) / h
         # où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée)
@@ -332,7 +348,8 @@ class VisionPipeline:
             distance_cm = (hauteur_réelle_obj_cm * f_pixels) / normalized_height
             return distance_cm
         else:
-            print("Hauteur de l'objet en pixels est nulle, impossible de calculer la distance.")
+            if debug:
+                print("Hauteur de l'objet en pixels est nulle, impossible de calculer la distance.")
             return None
 
     def save_annotated_image(self, frame, detections, filename):
@@ -347,7 +364,7 @@ class VisionPipeline:
         if not detections or not self.CAPTURE_DIR:
             return None, None
 
-        annotated = self.annotate_frame(frame, detections)
+        annotated = self.annotate_frame(frame, detections, debug=self.debug)
 
         base, ext = os.path.splitext(filename)
         ann_name = '{}_det_{}{}'.format(base, uuid.uuid4().hex[:6], ext or '.jpg')
@@ -382,9 +399,11 @@ class VisionPipeline:
             diagnostic = detector.diagnostique_detecteur(filename)
             return diagnostic
         except Exception as e:
-            print("Erreur lors de l'obtention du diagnostic du détecteur {}: {}".format(detector, e))
+            if self.debug:
+                print("Erreur lors de l'obtention du diagnostic du détecteur {}: {}".format(detector, e))
             import traceback
-            traceback.print_exc()
+            if self.debug:
+                traceback.print_exc()
             return {'error': "Erreur lors de l'obtention du diagnostic du détecteur", 'details': str(e)}
 
 # ----------------------------------------
@@ -402,20 +421,24 @@ class VisionPipeline:
 
             # récupération de la dernière frame du livefeed
             frame = self.get_last_frame()
-            if frame is not None and self._passive_detectors:
-                # passer l'image à tous les détecteurs de la liste
-                for detector in self._passive_detectors:
-                    try:
-                        detection_result = detector.process_passive(frame)
-                        with self._result_lock:
-                            self._last_detection_result = detection_result
+            if frame is not None and nb_detectors > 0:
+                # faire la détection avec le détecteur courant
+                detector = self._passive_detectors[detector_index]
+                try:
+                    detection_result = detector.process_passive(frame)
+                    with self._result_lock:
+                        self._last_detection_result = detection_result
 
-                        # --- Hard Positive Mining: sauvegarder les crops ---
-                        if self._mining_enabled and detection_result.get('Object_detected'):
-                            self._harvest_crops(frame, detection_result.get('detections', []))
+                    # --- Hard Positive Mining: sauvegarder les crops ---
+                    if self._mining_enabled and detection_result.get('Object_detected'):
+                        self._harvest_crops(frame, detection_result.get('detections', []))
 
-                    except Exception as e:
+                except Exception as e:
+                    if self.debug:
                         print("Erreur lors de la détection passive avec le détecteur {}: {}".format(detector, e))
+
+                # passer au détecteur suivant pour la prochaine itération
+                detector_index = (detector_index + 1) % nb_detectors
         
             # Interval de détection passive
             time.sleep(self._passive_interval)
@@ -433,7 +456,8 @@ class VisionPipeline:
             daemon=True  # s'arrête automatiquement quand le programme principal se termine
         )
         self._passive_thread.start()
-        print("[PassiveVision] Démarré (intervalle: {}s)".format(interval))
+        if self.debug:
+            print("[PassiveVision] Démarré (intervalle: {}s)".format(interval))
 
     def stop_passive_detection(self):
         """Arrête le thread de détection passive."""
@@ -442,17 +466,20 @@ class VisionPipeline:
         if self._passive_thread:
             self._passive_thread.join(timeout=2.0)  # attendre que le thread se termine proprement
         
-        print("[PassiveVision] Arrêté")
+        if self.debug:
+            print("[PassiveVision] Arrêté")
     
     def pause_passive_detection(self):
         """Met en pause le thread de détection passive."""
         self._passive_pause_event.clear()
-        print("[PassiveVision] En pause")
+        if self.debug:
+            print("[PassiveVision] En pause")
     
     def resume_passive_detection(self):
         """Reprend le thread de détection passive s'il était en pause."""
         self._passive_pause_event.set()
-        print("[PassiveVision] Repris")
+        if self.debug:
+            print("[PassiveVision] Repris")
 
     def get_last_detection_result(self):
         """Retourne le dernier résultat de détection passive (thread-safe)."""
@@ -510,18 +537,21 @@ class VisionPipeline:
                 with self._mining_lock:
                     self._mining_counts[obj_name] = self._mining_counts.get(obj_name, 0) + 1
             except Exception as e:
-                print("[Mining] Erreur sauvegarde crop: {}".format(e))
+                if self.debug:
+                    print("[Mining] Erreur sauvegarde crop: {}".format(e))
 
     def enable_mining(self):
         """Active le mode hard positive mining."""
         self._ensure_mining_dir()
         self._mining_enabled = True
-        print("[Mining] Activé — dossier: {}".format(self._mining_dir))
+        if self.debug:
+            print("[Mining] Activé — dossier: {}".format(self._mining_dir))
 
     def disable_mining(self):
         """Désactive le mode hard positive mining."""
         self._mining_enabled = False
-        print("[Mining] Désactivé")
+        if self.debug:
+            print("[Mining] Désactivé")
 
     def get_mining_stats(self):
         """Retourne les statistiques de mining (thread-safe)."""
@@ -559,4 +589,5 @@ class VisionPipeline:
                 pass
         with self._mining_lock:
             self._mining_counts.clear()
-        print("[Mining] {} crops supprimés".format(len(files)))
+        if self.debug:
+            print("[Mining] {} crops supprimés".format(len(files)))
