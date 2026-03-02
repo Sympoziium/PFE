@@ -1,11 +1,11 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # onglet_pid.py
 # ------------------
-"""Page web pour le contrôle PID du suivi de ligne."""
+"""Page web pour le contrÃ´le PID du suivi de ligne."""
 
 def render_pid_tab(title="Asservissement PID"):
-    """Retourne une page HTML complète pour le contrôle PID."""
+    """Retourne une page HTML complÃ¨te pour le contrÃ´le PID."""
 
     html = """<!DOCTYPE html><html lang='fr'>
     <head>
@@ -238,25 +238,25 @@ def render_pid_tab(title="Asservissement PID"):
                 </div>
             </div>
 
-            <!-- Paramètres PID -->
+            <!-- ParamÃ¨tres PID -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Paramètres PID</h3>
+                <h3 class='tab-subtitle'>ParamÃ¨tres PID</h3>
                 
-                <!-- Mode de contrôle -->
+                <!-- Mode de contrÃ´le -->
                 <div style='margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 10px;'>
                     <label style='font-weight: bold; font-size: 16px; display: block; margin-bottom: 10px;'>
-                        Mode de contrôle
+                        Mode de contrÃ´le
                     </label>
                     <div style='display: flex; gap: 10px;'>
                         <button class='control-btn' id='rotationModeBtn' style='flex: 1;'>
-                            🔄 Mode Rotation (Tuning)
+                            ðŸ”„ Mode Rotation (Tuning)
                         </button>
                         <button class='control-btn' id='driveModeBtn' style='flex: 1; background: #6c757d;'>
-                            ➡️ Mode Avance (Suivi)
+                            âž¡ï¸ Mode Avance (Suivi)
                         </button>
                     </div>
                     <p style='margin-top: 10px; font-size: 13px; color: #666;'>
-                        <strong>Mode Rotation:</strong> Le Zumi tourne sur place pour centrer la ligne (idéal pour régler Kp, Ki, Kd).<br>
+                        <strong>Mode Rotation:</strong> Le Zumi tourne sur place pour centrer la ligne (idÃ©al pour rÃ©gler Kp, Ki, Kd).<br>
                         <strong>Mode Avance:</strong> Le Zumi avance en suivant la ligne.
                     </p>
                 </div>
@@ -267,17 +267,17 @@ def render_pid_tab(title="Asservissement PID"):
                         <input type='number' step='0.01' class='param-input' id='kpInput' value='0.1'>
                     </div>
                     <div class='param-item'>
-                        <label class='param-label'>Ki (Intégral)</label>
+                        <label class='param-label'>Ki (IntÃ©gral)</label>
                         <input type='number' step='0.001' class='param-input' id='kiInput' value='0.0'>
                     </div>
                     <div class='param-item'>
-                        <label class='param-label'>Kd (Dérivé)</label>
+                        <label class='param-label'>Kd (DÃ©rivÃ©)</label>
                         <input type='number' step='0.01' class='param-input' id='kdInput' value='0.05'>
                     </div>
                     <div class='param-item'>
                         <label class='param-label'>Vitesse de base</label>
                         <input type='number' step='1' class='param-input' id='baseSpeedInput' value='20'>
-                        <small style='color: #666;'>(utilisé uniquement en mode avance)</small>
+                        <small style='color: #666;'>(utilisÃ© uniquement en mode avance)</small>
                     </div>
                     <div class='param-item'>
                         <label class='param-label'>Correction max</label>
@@ -285,42 +285,42 @@ def render_pid_tab(title="Asservissement PID"):
                     </div>
                 </div>
                 
-                <!-- Paramètres de calcul d'angle pour le mode rotation -->
+                <!-- ParamÃ¨tres de calcul d'angle pour le mode rotation -->
                 <div style='margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 10px; border: 2px solid #ffc107;'>
-                    <h4 style='margin: 0 0 10px 0; color: #856404;'>⚙️ Paramètres de rotation (Mode Rotation uniquement)</h4>
+                    <h4 style='margin: 0 0 10px 0; color: #856404;'>âš™ï¸ ParamÃ¨tres de rotation (Mode Rotation uniquement)</h4>
                     <p style='font-size: 13px; color: #856404; margin-bottom: 15px;'>
-                        Ces paramètres contrôlent le calcul de l'angle lorsque le mode rotation est activé.
+                        Ces paramÃ¨tres contrÃ´lent le calcul de l'angle lorsque le mode rotation est activÃ©.
                     </p>
                     <div class='param-grid'>
                         <div class='param-item'>
-                            <label class='param-label'>Échelle d'angle (angle_scale)</label>
+                            <label class='param-label'>Ã‰chelle d'angle (angle_scale)</label>
                             <input type='number' step='0.01' class='param-input' id='angleScaleInput' value='0.3'>
-                            <small style='color: #666;'>Conversion erreur → angle (0.3 = 100px → 30°)</small>
+                            <small style='color: #666;'>Conversion erreur â†’ angle (0.3 = 100px â†’ 30Â°)</small>
                         </div>
                         <div class='param-item'>
-                            <label class='param-label'>Angle maximal (degrés)</label>
+                            <label class='param-label'>Angle maximal (degrÃ©s)</label>
                             <input type='number' step='1' class='param-input' id='maxAngleInput' value='45'>
                             <small style='color: #666;'>Limite les rotations brusques</small>
                         </div>
                         <div class='param-item'>
-                            <label class='param-label'>Seuil minimal (degrés)</label>
+                            <label class='param-label'>Seuil minimal (degrÃ©s)</label>
                             <input type='number' step='0.5' class='param-input' id='minAngleThresholdInput' value='2'>
-                            <small style='color: #666;'>Angle minimum pour déclencher une rotation</small>
+                            <small style='color: #666;'>Angle minimum pour dÃ©clencher une rotation</small>
                         </div>
                     </div>
                 </div>
                 
-                <button class='primary-btn' id='updateParamsBtn'>📝 Mettre à jour les paramètres</button>
+                <button class='primary-btn' id='updateParamsBtn'>ðŸ“ Mettre Ã  jour les paramÃ¨tres</button>
             </div>
 
-            <!-- Paramètres du détecteur de ligne -->
+            <!-- ParamÃ¨tres du dÃ©tecteur de ligne -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Paramètres du détecteur de ligne</h3>
+                <h3 class='tab-subtitle'>ParamÃ¨tres du dÃ©tecteur de ligne</h3>
                 <div class='param-grid'>
                     <div class='param-item'>
                         <label class='param-label'>Seuil blanc (0-255)</label>
                         <input type='number' min='0' max='255' step='5' class='param-input' id='whiteThresholdInput' value='200'>
-                        <small style='color: #666;'>Plus élevé = détecte seulement le blanc pur</small>
+                        <small style='color: #666;'>Plus Ã©levÃ© = dÃ©tecte seulement le blanc pur</small>
                     </div>
                     <div class='param-item'>
                         <label class='param-label'>Aire minimale (pixels)</label>
@@ -328,35 +328,35 @@ def render_pid_tab(title="Asservissement PID"):
                         <small style='color: #666;'>Ignore les petits objets blancs</small>
                     </div>
                     <div class='param-item'>
-                        <label class='param-label'>Zone de détection (0.0-1.0)</label>
+                        <label class='param-label'>Zone de dÃ©tection (0.0-1.0)</label>
                         <input type='number' min='0' max='1' step='0.05' class='param-input' id='offsetRatioInput' value='0.6'>
-                        <small style='color: #666;'>0.6 = cherche dans les 40% inférieurs</small>
+                        <small style='color: #666;'>0.6 = cherche dans les 40% infÃ©rieurs</small>
                     </div>
                 </div>
-                <button class='primary-btn' id='updateLineDetectorBtn'>📝 Mettre à jour le détecteur</button>
+                <button class='primary-btn' id='updateLineDetectorBtn'>ðŸ“ Mettre Ã  jour le dÃ©tecteur</button>
             </div>
 
-            <!-- Contrôle Manuel de Rotation -->
+            <!-- ContrÃ´le Manuel de Rotation -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>🎮 Contrôle Manuel de Rotation</h3>
+                <h3 class='tab-subtitle'>ðŸŽ® ContrÃ´le Manuel de Rotation</h3>
                 <p class='tab-text' style='margin-bottom: 15px; color: #666;'>
-                    Utilisez la fonction turn() du Zumi pour effectuer des rotations précises avec le gyroscope.
+                    Utilisez la fonction turn() du Zumi pour effectuer des rotations prÃ©cises avec le gyroscope.
                 </p>
                 
                 <div style='background: #e8f4f8; padding: 15px; border-radius: 10px; margin-bottom: 15px;'>
                     <div style='display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;'>
                         <div style='flex: 1; min-width: 200px;'>
-                            <label class='param-label'>Angle de rotation (degrés)</label>
+                            <label class='param-label'>Angle de rotation (degrÃ©s)</label>
                             <input type='number' step='1' class='param-input' id='manualAngleInput' value='90' 
                                    style='font-size: 18px; font-weight: bold;'>
-                            <small style='color: #666;'>Positif = gauche, Négatif = droite</small>
+                            <small style='color: #666;'>Positif = gauche, NÃ©gatif = droite</small>
                         </div>
                         <div style='display: flex; gap: 10px;'>
                             <button class='control-btn' id='turnLeftBtn' style='background: #17a2b8;'>
-                                ↺ Tourner à gauche
+                                â†º Tourner Ã  gauche
                             </button>
                             <button class='control-btn' id='turnRightBtn' style='background: #17a2b8;'>
-                                ↻ Tourner à droite
+                                â†» Tourner Ã  droite
                             </button>
                         </div>
                     </div>
@@ -365,84 +365,84 @@ def render_pid_tab(title="Asservissement PID"):
                 <div style='margin-top: 15px;'>
                     <p class='param-label' style='margin-bottom: 8px;'>Rotations rapides :</p>
                     <div style='display: flex; gap: 8px; flex-wrap: wrap;'>
-                        <button class='primary-btn' onclick='quickTurn(45)'>↺ 45° G</button>
-                        <button class='primary-btn' onclick='quickTurn(90)'>↺ 90° G</button>
-                        <button class='primary-btn' onclick='quickTurn(180)'>↺ 180°</button>
-                        <button class='primary-btn' onclick='quickTurn(-90)'>↻ 90° D</button>
-                        <button class='primary-btn' onclick='quickTurn(-45)'>↻ 45° D</button>
+                        <button class='primary-btn' onclick='quickTurn(45)'>â†º 45Â° G</button>
+                        <button class='primary-btn' onclick='quickTurn(90)'>â†º 90Â° G</button>
+                        <button class='primary-btn' onclick='quickTurn(180)'>â†º 180Â°</button>
+                        <button class='primary-btn' onclick='quickTurn(-90)'>â†» 90Â° D</button>
+                        <button class='primary-btn' onclick='quickTurn(-45)'>â†» 45Â° D</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Contrôles -->
+            <!-- ContrÃ´les -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Contrôle</h3>
+                <h3 class='tab-subtitle'>ContrÃ´le</h3>
                 <div style='text-align: center;'>
-                    <button class='control-btn' id='startPidBtn'>▶️ Démarrer PID</button>
-                    <button class='control-btn stop' id='stopPidBtn'>⛔ Arrêter PID</button>
-                    <button class='primary-btn' id='resetPidBtn'>🔄 Réinitialiser PID</button>
+                    <button class='control-btn' id='startPidBtn'>â–¶ï¸ DÃ©marrer PID</button>
+                    <button class='control-btn stop' id='stopPidBtn'>â›” ArrÃªter PID</button>
+                    <button class='primary-btn' id='resetPidBtn'>ðŸ”„ RÃ©initialiser PID</button>
                 </div>
             </div>
 
-            <!-- Mode Step-by-Step (Avancé) -->
+            <!-- Mode Step-by-Step (AvancÃ©) -->
             <div class='tab-content' style='border: 3px solid #ffc107; background: #fffbf0;'>
-                <h3 class='tab-subtitle' style='color: #856404;'>🚶 Mode Avancé: Step-by-Step</h3>
+                <h3 class='tab-subtitle' style='color: #856404;'>ðŸš¶ Mode AvancÃ©: Step-by-Step</h3>
                 <p class='tab-text' style='margin-bottom: 15px; color: #856404;'>
-                    <strong>Mode pas à pas :</strong> Le robot avance par étapes, s'arrête pour que l'image soit nette, 
+                    <strong>Mode pas Ã  pas :</strong> Le robot avance par Ã©tapes, s'arrÃªte pour que l'image soit nette, 
                     puis attend votre autorisation pour continuer. Si la ligne est perdue, il la cherche automatiquement.
                 </p>
                 
                 <div style='background: #fff; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 2px solid #ffc107;'>
                     <div style='display: flex; gap: 15px; align-items: center; margin-bottom: 15px;'>
                         <div style='flex: 1;'>
-                            <div class='status-label'>État du mode Step</div>
-                            <div class='status-value' id='stepModeStatus' style='color: #6c757d;'>Arrêté</div>
+                            <div class='status-label'>Ã‰tat du mode Step</div>
+                            <div class='status-value' id='stepModeStatus' style='color: #6c757d;'>ArrÃªtÃ©</div>
                         </div>
                         <div style='flex: 1;'>
-                            <div class='status-label'>État de la machine</div>
+                            <div class='status-label'>Ã‰tat de la machine</div>
                             <div class='status-value' id='stepMachineState' style='font-size: 14px;'>IDLE</div>
                         </div>
                         <div style='flex: 1;'>
-                            <div class='status-label'>Étapes complétées</div>
+                            <div class='status-label'>Ã‰tapes complÃ©tÃ©es</div>
                             <div class='status-value' id='stepCount'>0</div>
                         </div>
                     </div>
                     
                     <div style='display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;'>
                         <button class='control-btn' id='startStepModeBtn' style='background: #ffc107; color: #000;'>
-                            ▶️ Démarrer Mode Step
+                            â–¶ï¸ DÃ©marrer Mode Step
                         </button>
                         <button class='control-btn stop' id='stopStepModeBtn'>
-                            ⛔ Arrêter Mode Step
+                            â›” ArrÃªter Mode Step
                         </button>
                     </div>
                 </div>
                 
-                <!-- Bouton d'autorisation d'étape (gros et visible) -->
+                <!-- Bouton d'autorisation d'Ã©tape (gros et visible) -->
                 <div style='background: #28a745; padding: 20px; border-radius: 15px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2);'>
                     <button class='control-btn' id='approveStepBtn' 
                             style='background: #fff; color: #28a745; font-size: 20px; font-weight: bold; 
                                    padding: 20px 40px; border: 4px solid #28a745; cursor: pointer;'
                             disabled>
-                        ✅ AUTORISER LA PROCHAINE ÉTAPE
+                        âœ… AUTORISER LA PROCHAINE Ã‰TAPE
                     </button>
                     <p style='margin-top: 10px; color: #fff; font-size: 14px;'>
-                        Cliquez pour permettre au robot d'avancer à la prochaine position
+                        Cliquez pour permettre au robot d'avancer Ã  la prochaine position
                     </p>
                     <div id='stepWaitingIndicator' style='margin-top: 10px; color: #fff; font-weight: bold; display: none;'>
-                        ⏸️ En attente de votre autorisation...
+                        â¸ï¸ En attente de votre autorisation...
                     </div>
                 </div>
             </div>
 
-            <!-- Statut temps réel -->
+            <!-- Statut temps rÃ©el -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Statut temps réel</h3>
+                <h3 class='tab-subtitle'>Statut temps rÃ©el</h3>
                 <div class='status-panel'>
                     <div class='status-grid'>
                         <div class='status-item'>
-                            <div class='status-label'>État</div>
-                            <div class='status-value' id='pidStatus'>Arrêté</div>
+                            <div class='status-label'>Ã‰tat</div>
+                            <div class='status-value' id='pidStatus'>ArrÃªtÃ©</div>
                         </div>
                         <div class='status-item'>
                             <div class='status-label'>Erreur actuelle</div>
@@ -470,11 +470,11 @@ def render_pid_tab(title="Asservissement PID"):
                 <div class='log-terminal' id='logTerminal'>Terminal PID...</div>
             </div>
 
-            <!-- Flux vidéo -->
+            <!-- Flux vidÃ©o -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Flux vidéo</h3>
+                <h3 class='tab-subtitle'>Flux vidÃ©o</h3>
                 <div class='live-feed'>
-                    <img id='videoFeed' src='/video' alt='Flux vidéo'>
+                    <img id='videoFeed' src='/video' alt='Flux vidÃ©o'>
                 </div>
             </div>
         </div>
@@ -520,8 +520,8 @@ def render_pid_tab(title="Asservissement PID"):
         document.getElementById('rotationModeBtn').style.background = '#28a745';
         document.getElementById('driveModeBtn').style.background = '#6c757d';
         updateParams();
-        appendLog('Mode ROTATION activé - Le Zumi tourne sur place');
-        showToast('Mode Rotation activé', 'info');
+        appendLog('Mode ROTATION activÃ© - Le Zumi tourne sur place');
+        showToast('Mode Rotation activÃ©', 'info');
     }}
 
     // Basculer en mode avance
@@ -530,11 +530,11 @@ def render_pid_tab(title="Asservissement PID"):
         document.getElementById('rotationModeBtn').style.background = '#6c757d';
         document.getElementById('driveModeBtn').style.background = '#28a745';
         updateParams();
-        appendLog('Mode AVANCE activé - Le Zumi suit la ligne');
-        showToast('Mode Avance activé', 'info');
+        appendLog('Mode AVANCE activÃ© - Le Zumi suit la ligne');
+        showToast('Mode Avance activÃ©', 'info');
     }}
 
-    // Mettre à jour les paramètres PID
+    // Mettre Ã  jour les paramÃ¨tres PID
     function updateParams() {{
         var params = {{
             kp: parseFloat(document.getElementById('kpInput').value),
@@ -556,19 +556,19 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
             var mode = rotationMode? 'ROTATION' : 'AVANCE';
-            appendLog('Paramètres mis à jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
+            appendLog('ParamÃ¨tres mis Ã  jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
             if (rotationMode) {{
-                appendLog('  Angle: scale=' + params.angle_scale + ', max=' + params.max_angle + '°, min=' + params.min_angle_threshold + '°');
+                appendLog('  Angle: scale=' + params.angle_scale + ', max=' + params.max_angle + 'Â°, min=' + params.min_angle_threshold + 'Â°');
             }}
-            showToast('Paramètres PID mis à jour!', 'success');
+            showToast('ParamÃ¨tres PID mis Ã  jour!', 'success');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de la mise à jour', 'error');
+            showToast('Erreur lors de la mise Ã  jour', 'error');
         }});
     }}
 
-    // Mettre à jour les paramètres du détecteur de ligne
+    // Mettre Ã  jour les paramÃ¨tres du dÃ©tecteur de ligne
     function updateLineDetectorParams() {{
         var params = {{
             white_threshold: parseInt(document.getElementById('whiteThresholdInput').value),
@@ -583,16 +583,16 @@ def render_pid_tab(title="Asservissement PID"):
         }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            appendLog('Détecteur de ligne mis à jour: Seuil=' + params.white_threshold + ', Aire=' + params.min_area);
-            showToast('Paramètres du détecteur mis à jour!', 'success');
+            appendLog('DÃ©tecteur de ligne mis Ã  jour: Seuil=' + params.white_threshold + ', Aire=' + params.min_area);
+            showToast('ParamÃ¨tres du dÃ©tecteur mis Ã  jour!', 'success');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de la mise à jour', 'error');
+            showToast('Erreur lors de la mise Ã  jour', 'error');
         }});
     }}
 
-    // Démarrer le PID
+    // DÃ©marrer le PID
     function startPid() {{
         fetch('/pid/start', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
@@ -600,45 +600,45 @@ def render_pid_tab(title="Asservissement PID"):
             pidRunning = true;
             document.getElementById('pidStatus').textContent = 'Actif';
             document.getElementById('pidStatus').style.color = '#28a745';
-            appendLog('PID démarré');
-            showToast('PID démarré!', 'success');
+            appendLog('PID dÃ©marrÃ©');
+            showToast('PID dÃ©marrÃ©!', 'success');
             startStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors du démarrage', 'error');
+            showToast('Erreur lors du dÃ©marrage', 'error');
         }});
     }}
 
-    // Arrêter le PID
+    // ArrÃªter le PID
     function stopPid() {{
         fetch('/pid/stop', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
             pidRunning = false;
-            document.getElementById('pidStatus').textContent = 'Arrêté';
+            document.getElementById('pidStatus').textContent = 'ArrÃªtÃ©';
             document.getElementById('pidStatus').style.color = '#dc3545';
-            appendLog('PID arrêté');
-            showToast('PID arrêté', 'info');
+            appendLog('PID arrÃªtÃ©');
+            showToast('PID arrÃªtÃ©', 'info');
             stopStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l arrêt', 'error');
+            showToast('Erreur lors de l arrÃªt', 'error');
         }});
     }}
 
-    // Réinitialiser le PID
+    // RÃ©initialiser le PID
     function resetPid() {{
         fetch('/pid/reset', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            appendLog('PID réinitialisé');
-            showToast('PID réinitialisé', 'info');
+            appendLog('PID rÃ©initialisÃ©');
+            showToast('PID rÃ©initialisÃ©', 'info');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de la réinitialisation', 'error');
+            showToast('Erreur lors de la rÃ©initialisation', 'error');
         }});
     }}
 
@@ -685,13 +685,13 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('stepModeStatus').textContent = 'Actif';
             document.getElementById('stepModeStatus').style.color = '#28a745';
             document.getElementById('approveStepBtn').disabled = false;
-            appendLog('Mode Step-by-Step démarré');
-            showToast('Mode Step activé!', 'success');
+            appendLog('Mode Step-by-Step dÃ©marrÃ©');
+            showToast('Mode Step activÃ©!', 'success');
             startStepStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors du démarrage', 'error');
+            showToast('Erreur lors du dÃ©marrage', 'error');
         }});
     }}
 
@@ -700,17 +700,17 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
             stepModeRunning = false;
-            document.getElementById('stepModeStatus').textContent = 'Arrêté';
+            document.getElementById('stepModeStatus').textContent = 'ArrÃªtÃ©';
             document.getElementById('stepModeStatus').style.color = '#6c757d';
             document.getElementById('approveStepBtn').disabled = true;
             document.getElementById('stepWaitingIndicator').style.display = 'none';
-            appendLog('Mode Step-by-Step arrêté');
-            showToast('Mode Step arrêté', 'info');
+            appendLog('Mode Step-by-Step arrÃªtÃ©');
+            showToast('Mode Step arrÃªtÃ©', 'info');
             stopStepStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l arrêt', 'error');
+            showToast('Erreur lors de l arrÃªt', 'error');
         }});
     }}
 
@@ -718,8 +718,8 @@ def render_pid_tab(title="Asservissement PID"):
         fetch('/pid/step_mode/approve', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            appendLog('✓ Prochaine étape autorisée');
-            showToast('Étape autorisée!', 'success');
+            appendLog('âœ“ Prochaine Ã©tape autorisÃ©e');
+            showToast('Ã‰tape autorisÃ©e!', 'success');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
@@ -733,14 +733,14 @@ def render_pid_tab(title="Asservissement PID"):
             fetch('/pid/step_mode/status')
             .then(function(r) {{ return r.json(); }})
             .then(function(data) {{
-                // Mettre à jour l'état de la machine
+                // Mettre Ã  jour l'Ã©tat de la machine
                 var state = data.state || 'IDLE';
                 document.getElementById('stepMachineState').textContent = state;
                 
-                // Mettre à jour le compteur d'étapes
+                // Mettre Ã  jour le compteur d'Ã©tapes
                 document.getElementById('stepCount').textContent = data.step_count || 0;
                 
-                // Afficher l'indicateur d'attente si nécessaire
+                // Afficher l'indicateur d'attente si nÃ©cessaire
                 if (data.waiting_approval) {{
                     document.getElementById('stepWaitingIndicator').style.display = 'block';
                     document.getElementById('approveStepBtn').style.animation = 'pulse 1.5s infinite';
@@ -749,7 +749,7 @@ def render_pid_tab(title="Asservissement PID"):
                     document.getElementById('approveStepBtn').style.animation = 'none';
                 }}
                 
-                // Mettre à jour les valeurs de debug
+                // Mettre Ã  jour les valeurs de debug
                 if (data.line_offset !== undefined) {{
                     document.getElementById('currentError').textContent = parseFloat(data.line_offset).toFixed(1);
                 }}
@@ -771,9 +771,9 @@ def render_pid_tab(title="Asservissement PID"):
         }}
     }}
 
-    // Contrôle manuel de rotation
+    // ContrÃ´le manuel de rotation
     function manualTurn(angle) {{
-        appendLog('Rotation manuelle: ' + angle + '° demandée...');
+        appendLog('Rotation manuelle: ' + angle + 'Â° demandÃ©e...');
         
         fetch('/zumi/turn', {{
             method: 'POST',
@@ -785,8 +785,8 @@ def render_pid_tab(title="Asservissement PID"):
             return r.json(); 
         }})
         .then(function(data) {{
-            var msg = data.message || 'Rotation complétée';
-            appendLog('✓ ' + msg);
+            var msg = data.message || 'Rotation complÃ©tÃ©e';
+            appendLog('âœ“ ' + msg);
             showToast(msg, 'success');
         }})
         .catch(function(err) {{
@@ -806,7 +806,7 @@ def render_pid_tab(title="Asservissement PID"):
 
     function turnRight() {{
         var angle = parseFloat(document.getElementById('manualAngleInput').value) || 90;
-        manualTurn(-Math.abs(angle));  // Négatif = droite
+        manualTurn(-Math.abs(angle));  // NÃ©gatif = droite
     }}
 
     // Navigation
@@ -831,7 +831,7 @@ def render_pid_tab(title="Asservissement PID"):
         }}
     }}
 
-    // Active l'état du bouton d'onglet selon l'URL courante
+    // Active l'Ã©tat du bouton d'onglet selon l'URL courante
     (function() {{
         var norm = function(p) {{ return (p || '').replace(/\\/+$/,'') || '/'; }};
         var here = norm(location.pathname);
@@ -844,7 +844,7 @@ def render_pid_tab(title="Asservissement PID"):
 
     // Event listeners
     window.addEventListener('DOMContentLoaded', function() {{
-        // Boutons de contrôle
+        // Boutons de contrÃ´le
         document.getElementById('updateParamsBtn').addEventListener('click', updateParams);
         document.getElementById('startPidBtn').addEventListener('click', startPid);
         document.getElementById('stopPidBtn').addEventListener('click', stopPid);
@@ -854,7 +854,7 @@ def render_pid_tab(title="Asservissement PID"):
         document.getElementById('rotationModeBtn').addEventListener('click', setRotationMode);
         document.getElementById('driveModeBtn').addEventListener('click', setDriveMode);
         
-        // Bouton détecteur de ligne
+        // Bouton dÃ©tecteur de ligne
         document.getElementById('updateLineDetectorBtn').addEventListener('click', updateLineDetectorParams);
 
         // Boutons de rotation manuelle
@@ -866,7 +866,7 @@ def render_pid_tab(title="Asservissement PID"):
         document.getElementById('stopStepModeBtn').addEventListener('click', stopStepMode);
         document.getElementById('approveStepBtn').addEventListener('click', approveNextStep);
 
-        // Charger les paramètres initiaux
+        // Charger les paramÃ¨tres initiaux
         fetch('/pid/get_params')
         .then(function(r) {{ return r.json(); }})
         .then(function(data) {{
@@ -876,7 +876,7 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('baseSpeedInput').value = data.base_speed || 20;
             document.getElementById('maxCorrectionInput').value = data.max_correction || 30;
             
-            // Charger les paramètres d'angle
+            // Charger les paramÃ¨tres d'angle
             document.getElementById('angleScaleInput').value = data.angle_scale || 0.3;
             document.getElementById('maxAngleInput').value = data.max_angle || 45;
             document.getElementById('minAngleThresholdInput').value = data.min_angle_threshold || 2;
@@ -890,23 +890,23 @@ def render_pid_tab(title="Asservissement PID"):
                 document.getElementById('driveModeBtn').style.background = '#28a745';
             }}
             
-            appendLog('Paramètres chargés depuis le serveur');
+            appendLog('ParamÃ¨tres chargÃ©s depuis le serveur');
         }})
         .catch(function(err) {{
-            appendLog('Impossible de charger les paramètres: ' + err.message);
+            appendLog('Impossible de charger les paramÃ¨tres: ' + err.message);
         }});
         
-        // Charger les paramètres du détecteur
+        // Charger les paramÃ¨tres du dÃ©tecteur
         fetch('/line_detector/get_params')
         .then(function(r) {{ return r.json(); }})
         .then(function(data) {{
             document.getElementById('whiteThresholdInput').value = data.white_threshold || 200;
             document.getElementById('minAreaInput').value = data.min_area || 300;
             document.getElementById('offsetRatioInput').value = data.offset_ratio || 0.6;
-            appendLog('Paramètres du détecteur chargés');
+            appendLog('ParamÃ¨tres du dÃ©tecteur chargÃ©s');
         }})
         .catch(function(err) {{
-            appendLog('Impossible de charger les paramètres du détecteur: ' + err.message);
+            appendLog('Impossible de charger les paramÃ¨tres du dÃ©tecteur: ' + err.message);
         }});
     }});
 
