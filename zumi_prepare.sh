@@ -142,10 +142,10 @@ cat << EOF | sudo tee /tmp/wpa_supplicant.conf
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 network={
-    ssid="Moroni_Guest"
-    psk="4504691075"
+    ssid="dlink-9828"
+    psk="jejvk77783"
     key_mgmt=WPA-PSK
-}
+    }
 EOF
 
 sudo ip link set wlan0 up
