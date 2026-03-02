@@ -745,34 +745,20 @@ class StepByStepStateMachine:
             self.line_lost_count = 0
             self.last_line_offset = line_offset
             
-            # CORRECTION: Décider automatiquement de l'action selon l'offset
-            # Si offset trop grand → RECENTER automatiquement (pas d'attente d'approbation)
-            # Si offset OK → WAITING_APPROVAL pour que l'utilisateur puisse avancer
-            if abs(line_offset) > self.low_error_threshold:
-                print("[STEP_MACHINE] Offset {} > seuil {} - Passage à RECENTER automatique".format(
-                    abs(line_offset), self.low_error_threshold))
-                self._display_message("Alignement auto...")
-                self.state = StepState.RECENTER
-                self.recenter_attempts = 0
-                # Marquer que c'est un recentrage automatique
-                self.auto_recenter = True
-                return {
-                    'state': self.state.name,
-                    'line_found': True,
-                    'line_offset': line_offset,
-                    'auto_recenter': True
-                }
-            else:
-                print("[STEP_MACHINE] Offset {} OK - Transition vers WAITING_APPROVAL".format(line_offset))
-                self._display_message("Ligne trouvee!")
-                time.sleep(0.5)
-                self.state = StepState.WAITING_APPROVAL
-                return {
-                    'state': self.state.name,
-                    'line_found': True,
-                    'line_offset': line_offset,
-                    'search_attempts': self.search_attempts
-                }
+            # TOUJOURS se recentrer après avoir trouvé la ligne en mode recherche
+            # pour garantir un bon alignement avant de continuer
+            print("[STEP_MACHINE] Ligne trouvée avec offset={} - Passage à RECENTER automatique".format(line_offset))
+            self._display_message("Alignement auto...")
+            self.state = StepState.RECENTER
+            self.recenter_attempts = 0
+            # Marquer que c'est un recentrage automatique (pas d'attente d'approbation)
+            self.auto_recenter = True
+            return {
+                'state': self.state.name,
+                'line_found': True,
+                'line_offset': line_offset,
+                'auto_recenter': True
+            }
         else:
             # Ligne non trouvée, retourner à SEARCH_SPIN pour tourner encore
             print("[STEP_MACHINE] Ligne non trouvée - Retour à SEARCH_SPIN")
