@@ -1005,45 +1005,24 @@ class StepByStepStateMachine:
         # Activer le PID en mode rotation
         self.pid_controller.update_params(rotation_mode=True)
         
-        # Effectuer la rotation avec PID jusqu'à ce que l'offset soit acceptable
-        # Durée de correction: ajustable selon les besoins
-        correction_duration = 1.0  # secondes
-        start_time = time.time()
+        # Effectuer UNE SEULE correction PID au lieu d'une boucle
+        # La boucle while peut causer des problèmes car elle bloque le cycle normal
+        left_speed, right_speed = self.pid_controller.compute(line_offset)
+        print("[STEP_MACHINE] Correction PID: left={}, right={}".format(left_speed, right_speed))
+        self.robot.control_motors(left_speed, right_speed)
         
-        while (time.time() - start_time) < correction_duration:
-            # Capturer une nouvelle frame
-            frame_current = self.camera.capture()
-            line_result_current = self.line_detector.process(frame_current.copy())
-            line_offset_current = line_result_current.get('value')
-            
-            if line_offset_current is None:
-                # Ligne perdue, arrêter
-                print("[STEP_MACHINE] Ligne perdue pendant le recentrage PID")
-                self.robot.stop()
-                break
-            
-            # Vérifier si on est bien centré
-            if abs(line_offset_current) <= self.recenter_tolerance:
-                print("[STEP_MACHINE] Centré avec PID! offset={}px".format(line_offset_current))
-                break
-            
-            # Calculer les vitesses avec PID en mode rotation
-            left_speed, right_speed = self.pid_controller.compute(line_offset_current)
-            self.robot.control_motors(left_speed, right_speed)
-            
-            time.sleep(0.05)  # 20 Hz
-        
-        # Arrêter les moteurs
+        # Laisser le robot tourner un court instant
+        time.sleep(0.1)
         self.robot.stop()
-        time.sleep(0.3)  # Stabilisation
         
         # Rester dans l'état RECENTER pour vérifier le résultat au prochain cycle
-        print("[STEP_MACHINE] Recentrage PID effectué - Vérification au prochain cycle")
+        print("[STEP_MACHINE] Correction PID appliquée - Vérification au prochain cycle")
         
         return {
             'state': self.state.name,
             'recenter_attempt': self.recenter_attempts,
-            'line_offset': line_offset
+            'line_offset': line_offset,
+            'correction_applied': True
         }
     
     def _handle_searching_line(self, frame):
