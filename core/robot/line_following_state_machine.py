@@ -348,8 +348,9 @@ class StepByStepStateMachine:
         self.line_lost_threshold = 15  # Nombre de frames sans ligne avant de chercher (~0.75s à 20Hz)
         self.approach_distance_cm = 10  # Distance fixe d'approche en cm
         self.approach_duration = 0.5  # Durée d'avance pour 10 cm (à ajuster selon robot)
-        self.low_error_threshold = 10  # Seuil d'erreur faible pour avancer avec PID (pixels)
+        self.low_error_threshold = 20  # Seuil d'erreur faible pour avancer tout droit (pixels)
         self.recenter_tolerance = 20  # Tolérance d'offset pour considérer centré (pixels)
+        self.straight_speed = 20  # Vitesse pour avancer tout droit (sans PID)
         
         # Variables d'état
         self.line_lost_count = 0
@@ -593,8 +594,8 @@ class StepByStepStateMachine:
         }
     
     def _handle_moving(self, frame):
-        """Gère l'état de mouvement."""
-        # Détecter la ligne
+        """Gère l'état de mouvement - Avance tout droit sans PID."""
+        # Détecter la ligne pour vérifier qu'elle est toujours visible
         line_result = self.line_detector.process(frame.copy())
         line_offset = line_result.get('value')
         
@@ -610,20 +611,18 @@ class StepByStepStateMachine:
                 self.frames_to_skip_after_rotation = 0  # Reset du compteur
                 return {'state': self.state.name, 'line_offset': None}
             
-            # Continuer avec la dernière valeur connue si disponible
-            if self.last_line_offset is not None:
-                line_offset = self.last_line_offset
-            else:
-                # Pas de valeur connue, arrêter
-                self.state = StepState.WAITING_APPROVAL
-                return {'state': self.state.name, 'line_offset': None}
+            # Pas de valeur connue, arrêter
+            self.robot.stop()
+            self.state = StepState.WAITING_APPROVAL
+            return {'state': self.state.name, 'line_offset': None}
         else:
             self.line_lost_count = 0
             self.last_line_offset = line_offset
         
-        # Calculer et appliquer la commande PID
-        left_speed, right_speed = self.pid_controller.compute(line_offset)
-        self.robot.control_motors(left_speed, right_speed)
+        # Avancer tout droit à vitesse constante (sans PID)
+        print("[STEP_MACHINE] Avance tout droit à vitesse {}px/s (offset détecté: {})".format(
+            self.straight_speed, line_offset))
+        self.robot.control_motors(self.straight_speed, self.straight_speed)
         
         # Vérifier si la durée du pas est écoulée
         elapsed = time.time() - self.movement_start_time
@@ -635,8 +634,8 @@ class StepByStepStateMachine:
             return {
                 'state': self.state.name,
                 'line_offset': line_offset,
-                'left_speed': left_speed,
-                'right_speed': right_speed,
+                'left_speed': self.straight_speed,
+                'right_speed': self.straight_speed,
                 'step_completed': True,
                 'step': self.step_count
             }
@@ -644,8 +643,8 @@ class StepByStepStateMachine:
         return {
             'state': self.state.name,
             'line_offset': line_offset,
-            'left_speed': left_speed,
-            'right_speed': right_speed,
+            'left_speed': self.straight_speed,
+            'right_speed': self.straight_speed,
             'elapsed': elapsed,
             'step': self.step_count
         }
@@ -903,7 +902,7 @@ class StepByStepStateMachine:
     def _handle_recenter(self, frame):
         """
         Gère l'état de recentrage sur la ligne.
-        Utilise turn(angle) pour aligner le robot avec la ligne.
+        Utilise le PID en mode rotation pour aligner le robot avec la ligne de manière fluide.
         """
         # Vérifier que la ligne est toujours visible
         line_result = self.line_detector.process(frame.copy())
@@ -913,6 +912,8 @@ class StepByStepStateMachine:
             # Ligne perdue pendant le recentrage
             print("[STEP_MACHINE] Ligne perdue pendant le recentrage - Retour à SEARCH_SPIN")
             self._display_message("Ligne perdue!")
+            # Remettre le PID en mode avance
+            self.pid_controller.update_params(rotation_mode=False)
             self.state = StepState.SEARCH_SPIN
             self.search_attempts = 0
             return {
@@ -926,6 +927,9 @@ class StepByStepStateMachine:
         if abs(line_offset) <= self.recenter_tolerance:
             print("[STEP_MACHINE] Robot bien centré (offset={}px) - Transition vers WAITING_APPROVAL".format(line_offset))
             self._display_message("Bien centre!")
+            # Remettre le PID en mode avance
+            self.pid_controller.update_params(rotation_mode=False)
+            self.robot.stop()
             time.sleep(0.3)
             self.state = StepState.WAITING_APPROVAL
             self.recenter_attempts = 0
@@ -941,6 +945,9 @@ class StepByStepStateMachine:
             print("[STEP_MACHINE] Trop de tentatives de recentrage ({}) - Transition vers WAITING_APPROVAL".format(
                 self.recenter_attempts))
             self._display_message("Recentrage OK")
+            # Remettre le PID en mode avance
+            self.pid_controller.update_params(rotation_mode=False)
+            self.robot.stop()
             time.sleep(0.3)
             self.state = StepState.WAITING_APPROVAL
             self.recenter_attempts = 0
@@ -953,51 +960,63 @@ class StepByStepStateMachine:
         
         # Attendre l'approbation de l'utilisateur (sauf si recentrage automatique)
         if not self.approved_to_move and not self.auto_recenter:
-            # Calculer l'angle de correction basé sur l'offset
-            # Heuristique: 1 pixel = ~0.1 degré (à ajuster selon votre configuration)
-            correction_angle = int(line_offset * 0.15)  # Plus agressif: 0.15 deg/px
-            self._display_message("Tourner {}deg? Appuyez".format(correction_angle))
+            self._display_message("Centrer? Appuyez")
             return {
                 'state': self.state.name,
                 'waiting_approval': True,
-                'line_offset': line_offset,
-                'correction_angle': correction_angle
+                'line_offset': line_offset
             }
         
         # Reset de l'approbation
         self.approved_to_move = False
         self.recenter_attempts += 1
         
-        # Calculer l'angle de correction
-        correction_angle = int(line_offset * 0.15)
+        print("[STEP_MACHINE] Recentrage PID - Offset: {}px (tentative {}/{})".format(
+            line_offset, self.recenter_attempts, self.max_recenter_attempts))
         
-        print("[STEP_MACHINE] Recentrage - Offset: {}px, Angle: {}° (tentative {}/{})".format(
-            line_offset, correction_angle, self.recenter_attempts, self.max_recenter_attempts))
+        self._display_message("Centrage PID...".format(line_offset))
         
-        self._display_message("Recentre {}deg...".format(correction_angle))
+        # Activer le PID en mode rotation
+        self.pid_controller.update_params(rotation_mode=True)
         
-        # Effectuer la rotation de correction
-        if hasattr(self.robot, 'turn'):
-            self.robot.turn(correction_angle)
-        else:
-            # Rotation manuelle
-            direction = 1 if correction_angle > 0 else -1
-            speed = 10
-            duration = abs(correction_angle) / 90.0 * 0.3
-            self.robot.control_motors(direction * speed, -direction * speed)
-            time.sleep(duration)
-            self.robot.stop()
+        # Effectuer la rotation avec PID jusqu'à ce que l'offset soit acceptable
+        # Durée de correction: ajustable selon les besoins
+        correction_duration = 1.0  # secondes
+        start_time = time.time()
         
-        # Pause pour stabilisation
-        time.sleep(0.3)
+        while (time.time() - start_time) < correction_duration:
+            # Capturer une nouvelle frame
+            frame_current = self.camera.capture()
+            line_result_current = self.line_detector.process(frame_current.copy())
+            line_offset_current = line_result_current.get('value')
+            
+            if line_offset_current is None:
+                # Ligne perdue, arrêter
+                print("[STEP_MACHINE] Ligne perdue pendant le recentrage PID")
+                self.robot.stop()
+                break
+            
+            # Vérifier si on est bien centré
+            if abs(line_offset_current) <= self.recenter_tolerance:
+                print("[STEP_MACHINE] Centré avec PID! offset={}px".format(line_offset_current))
+                break
+            
+            # Calculer les vitesses avec PID en mode rotation
+            left_speed, right_speed = self.pid_controller.compute(line_offset_current)
+            self.robot.control_motors(left_speed, right_speed)
+            
+            time.sleep(0.05)  # 20 Hz
+        
+        # Arrêter les moteurs
+        self.robot.stop()
+        time.sleep(0.3)  # Stabilisation
         
         # Rester dans l'état RECENTER pour vérifier le résultat au prochain cycle
-        print("[STEP_MACHINE] Recentrage effectué - Vérification au prochain cycle")
+        print("[STEP_MACHINE] Recentrage PID effectué - Vérification au prochain cycle")
         
         return {
             'state': self.state.name,
             'recenter_attempt': self.recenter_attempts,
-            'correction_angle': correction_angle,
             'line_offset': line_offset
         }
     
