@@ -59,22 +59,21 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		.tab-content {
 			border: 3px dashed #B5FFFC;
 			border-radius: 15px;
-			padding: 1.5%;
-			margin-bottom: 1.5vh;
+			padding: 2%;
+			margin-bottom: 2vh;
 			background: #FFFDF0; 
 			display: flex;
 			flex-direction: column;
-			align-items: center; /* CENTRE LES ÉLÉMENTS AU MILIEU */
-			gap: 12px;
+			align-items: flex-start; /* Aligne le contenu à GAUCHE */
+			gap: 15px;
 		}
 
-		/* --- NOUVEAU : Rangee de boutons alignes --- */
+		/* --- NOUVEAU : Colonne de boutons superposes --- */
 		.button-row {
 			display: flex;
-			justify-content: center;
-			gap: 15px;
-			width: 100%;
-			margin-bottom: 10px;
+			flex-direction: column; /* Superpose les boutons verticalement */
+			gap: 12px;
+			width: 100%; /* Permet d'utiliser le max-width des boutons */
 		}
 
 		/* --- Style des Boutons --- */
@@ -99,6 +98,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
 		.remoteDL-toggle-btn.on { background: #81ecec; box-shadow: 0 4px 0 #00cec9; color: #333; }
 		.remoteDL-toggle-btn.off { background: #fab1a0; box-shadow: 0 4px 0 #e17055; color: white; }
+
+		.toggle-btn, .primary-btn, .remoteDL-toggle-btn {
+        width: 250px;       /* Largeur identique pour tous */
+        text-align: center; /* Centre le texte à l'intérieur */
+        margin: 0;          /* Enlève les marges automatiques */
+    	}
 
 		/* --- LE VIEWER STYLE APPLE --- */
 		.image-viewer {
@@ -219,22 +224,23 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				</div>
 			</div>
 
-			<div class='tab-content'>
-				<div class='tab-header'>
-					<h3 class='tab-subtitle'>Capture image</h3>
-				</div>
-				
-				<div class="button-row">
-					<button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
-					<button class='primary-btn' id='captureImageBtn'>📸 Capture image</button>
-					<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn'>💾 Off</button>
-				</div>
-
-				<!-- Le cadre blanc "Viewer" qui contient ton image à bordure bleue -->
-				<div class='image-viewer' id='mainImageDisplay'>
-					<img id='mainImage' alt='Vue du robot'>
-				</div>
+		<div class='tab-content'>
+			<div class='tab-header'>
+				<h3 class='tab-subtitle'>Capture image</h3>
 			</div>
+			
+			<!-- Les boutons sont maintenant superposés et alignés à gauche -->
+			<div class="button-row">
+				<button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
+				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
+				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn'>💾 Off</button>
+			</div>
+
+			<!-- Le cadre blanc "Viewer" apparaîtra sous les boutons -->
+			<div class='image-viewer' id='mainImageDisplay'>
+				<img id='mainImage' alt='Vue du robot'>
+			</div>
+		</div>
 
 			<div class='tab-content'>
 				<div class='tab-header'>
