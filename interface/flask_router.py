@@ -38,6 +38,34 @@ def register_routes(ctrl):
     app.add_url_rule('/zumi/left', 'left', lambda: ctrl.left())
     app.add_url_rule('/zumi/right', 'right', lambda: ctrl.right())
     app.add_url_rule('/zumi/stop', 'stop', lambda: ctrl.stop())
+    app.add_url_rule('/zumi/turn', 'manual_turn', lambda: ctrl.manual_turn(), methods=['POST'])
+
+    # Page PID
+    app.add_url_rule('/pid', 'pid_page', lambda: ctrl.pid_page())
+
+    # Routes PID
+    app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])
+    app.add_url_rule('/pid/get_params', 'pid_get_params', lambda: ctrl.pid_get_params())
+    app.add_url_rule('/pid/start', 'pid_start', lambda: ctrl.pid_start(), methods=['POST'])
+    app.add_url_rule('/pid/stop', 'pid_stop', lambda: ctrl.pid_stop(), methods=['POST'])
+    app.add_url_rule('/pid/reset', 'pid_reset', lambda: ctrl.pid_reset(), methods=['POST'])
+    app.add_url_rule('/pid/status', 'pid_status', lambda: ctrl.pid_status())
+    
+    # Routes pour le mode step-by-step
+    app.add_url_rule('/pid/step_mode/start', 'pid_step_start', lambda: ctrl.pid_step_start(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/stop', 'pid_step_stop', lambda: ctrl.pid_step_stop(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/approve', 'pid_step_approve', lambda: ctrl.pid_step_approve(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/status', 'pid_step_status', lambda: ctrl.pid_step_status())
+    
+    # Routes pour le détecteur de ligne
+    app.add_url_rule('/line_detector/update_params', 'line_detector_update_params', 
+                    lambda: ctrl.line_detector_update_params(), methods=['POST'])
+    app.add_url_rule('/line_detector/get_params', 'line_detector_get_params', 
+                    lambda: ctrl.line_detector_get_params())
+    
+    app.add_url_rule('/state_machine/start', 'state_machine_start', lambda: ctrl.state_machine_start(), methods=['POST'])
+    app.add_url_rule('/state_machine/stop', 'state_machine_stop', lambda: ctrl.state_machine_stop(), methods=['POST'])
+    app.add_url_rule('/state_machine/status', 'state_machine_status', lambda: ctrl.state_machine_status())
 
     # --- PONT (Nouveaux liens) ---
     app.add_url_rule('/bridge/open', 'bridge_open', lambda: ctrl.bridge_open(), methods=['POST'])

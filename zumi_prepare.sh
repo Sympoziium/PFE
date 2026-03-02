@@ -142,8 +142,8 @@ cat << EOF | sudo tee /tmp/wpa_supplicant.conf
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 network={
-    ssid="dlink-8D39"
-    psk="xdvxj79799"
+    ssid="dlink-9828"
+    psk="jejvk77783"
     key_mgmt=WPA-PSK
     }
 EOF

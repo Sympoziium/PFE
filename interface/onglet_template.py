@@ -139,6 +139,7 @@ def render_template_tab(title: str = "Onglet générique") -> str:
 				<button class='primary-btn' data-path="/" onclick="location.href='/'">Accueil</button>
 				<button class='primary-btn' data-path="/vision" onclick="location.href='/vision'">Vision</button>
 				<button class='primary-btn' data-path="/onglet_template" onclick="location.href='/onglet_template'">Template</button>
+				<button class='primary-btn' data-path="/pid" onclick="location.href='/pid'">PID</button>
 				</div>
 			</div>
 
