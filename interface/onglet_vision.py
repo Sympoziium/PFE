@@ -15,208 +15,158 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	<title>{title}</title>
 	<link rel='icon' href='data:,'>
 	<style>
-			body {
-			margin: 0; padding: 0;
-			width: 100vw; height: 100vh;
-			font-family: 'Segoe UI', Arial, sans-serif;
-			/* Ton background pastel préféré */
-			background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
-			color: #333; display: flex; flex-direction: column;
-			overflow: hidden;
-		}
+		body {
+		margin: 0; padding: 0;
+		width: 100vw; height: 100vh;
+		font-family: 'Segoe UI', Arial, sans-serif;
+		background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
+		color: #333; display: flex; flex-direction: column;
+		overflow: hidden;
+	}
 
-		.container {
-			display: flex; justify-content: center; align-items: flex-start;
-			padding: 2vh; height: 96vh;
-		}
+	.container {
+		display: flex; justify-content: center; align-items: flex-start;
+		padding: 2vh; height: 96vh;
+	}
 
-		.tab-shell {
-			background: rgba(247, 253, 255, 0.95);
-			border-radius: 20px;
-			padding: 2%;
-			box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-			width: 92%; 
-			max-width: 1100px;
-			height: 88%;
-			display: flex;
-			flex-direction: column;
-		}
+	.tab-shell {
+		background: rgba(247, 253, 255, 0.95);
+		border-radius: 20px;
+		padding: 2%;
+		box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+		width: 92%; max-width: 1150px;
+		height: 88%;
+		display: flex; flex-direction: column;
+	}
 
-		.tab-header {
-			display: flex; align-items: center;
-			margin-bottom: 2vh;
-			padding-bottom: 1vh;
-			border-bottom: 2px solid #e0f4ff;
-		}
+	.tab-header {
+		display: flex; align-items: center;
+		margin-bottom: 2vh;
+		padding-bottom: 1vh;
+		border-bottom: 2px solid #e0f4ff;
+	}
 
-		.tab-nav {
-			display: flex; align-items: center;
-			gap: 8px;
-			margin-left: auto;
-		}
+	/* Correction des onglets : ils ne sont plus étirés */
+	.tab-nav {
+		display: flex; align-items: center;
+		gap: 8px;
+		margin-left: auto; /* Pousse les onglets à droite */
+	}
 
-		/* Conteneur principal JAUNE CRÈME */
-		.tab-content {
-			border: 3px dashed #B5FFFC;
-			border-radius: 15px;
-			padding: 2%;
-			margin-bottom: 2vh;
-			background: #FFFDF0; 
-			display: flex;
-			flex-direction: column;
-			align-items: flex-start; /* Aligne le contenu à GAUCHE */
-			gap: 15px;
-		}
+	.tab-content {
+		border: 3px dashed #B5FFFC;
+		border-radius: 15px;
+		padding: 2%;
+		margin-bottom: 2vh;
+		background: #FFFDF0; 
+		display: flex;
+		flex-direction: row; /* Aligne boutons à gauche et viewer à droite */
+		align-items: flex-start;
+		gap: 30px;
+	}
 
-		/* --- NOUVEAU : Colonne de boutons superposes --- */
-		.button-row {
-			display: flex;
-			flex-direction: column; /* Superpose les boutons verticalement */
-			gap: 12px;
-			width: 100%; /* Permet d'utiliser le max-width des boutons */
-		}
+	/* --- Alignement et Largeur des boutons --- */
+	.button-column {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		width: 280px; /* Largeur fixe pour tous les boutons de commande */
+	}
 
-		/* --- Style des Boutons --- */
-		.primary-btn, .toggle-btn, .remoteDL-toggle-btn, .detector-btn {
-			padding: 12px 20px;
-			border-radius: 12px;
-			border: none;
-			cursor: pointer;
-			font-weight: bold;
-			font-size: 0.95rem;
-			transition: transform 0.1s, background 0.2s;
-		}
+	.primary-btn, .toggle-btn, .remoteDL-toggle-btn, .detector-btn {
+		width: 100%; /* Prend toute la largeur de la colonne (280px) */
+		padding: 12px;
+		border-radius: 12px;
+		border: none;
+		cursor: pointer;
+		font-weight: bold;
+		font-size: 0.95rem;
+		transition: transform 0.1s, background 0.2s;
+		text-align: center;
+	}
 
-		.primary-btn { background: #87C7F1; color: white; box-shadow: 0 4px 0 #6BAED6; }
-		.toggle-btn { background: #FFB7D5; color: white; box-shadow: 0 4px 0 #E896B9; }
-		.detector-btn { background: #55efc4; color: #2d3436; box-shadow: 0 4px 0 #00b894; margin-top: 5px; }
+	.primary-btn { background: #87C7F1; color: white; box-shadow: 0 4px 0 #6BAED6; }
+	.toggle-btn { background: #FFB7D5; color: white; box-shadow: 0 4px 0 #E896B9; }
+	.detector-btn { background: #55efc4; color: #2d3436; box-shadow: 0 4px 0 #00b894; }
 
-		.primary-btn:active, .toggle-btn:active, .detector-btn:active {
-			transform: translateY(3px);
-			box-shadow: 0 1px 0 rgba(0,0,0,0.1);
-		}
+	.primary-btn:active, .toggle-btn:active, .detector-btn:active {
+		transform: translateY(3px);
+		box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+	}
 
-		.remoteDL-toggle-btn.on { background: #81ecec; box-shadow: 0 4px 0 #00cec9; color: #333; }
-		.remoteDL-toggle-btn.off { background: #fab1a0; box-shadow: 0 4px 0 #e17055; color: white; }
+	.remoteDL-toggle-btn.on { background: #81ecec; box-shadow: 0 4px 0 #00cec9; color: #333; }
+	.remoteDL-toggle-btn.off { background: #fab1a0; box-shadow: 0 4px 0 #e17055; color: white; }
 
-		.toggle-btn, .primary-btn, .remoteDL-toggle-btn {
-        width: 250px;       /* Largeur identique pour tous */
-        text-align: center; /* Centre le texte à l'intérieur */
-        margin: 0;          /* Enlève les marges automatiques */
-    	}
+	/* --- Viewer d'image --- */
+	.image-viewer {
+		display: none;
+		background: white;
+		border-radius: 25px;
+		padding: 15px;
+		flex-grow: 1; /* Prend l'espace restant à droite */
+		max-width: 600px;
+		box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+		text-align: center;
+		border: 1px solid #eee;
+	}
 
-		/* --- LE VIEWER STYLE APPLE --- */
-		.image-viewer {
-			display: none;
-			background: white;
-			border-radius: 25px;
-			padding: 15px;
-			width: 80%;
-			max-width: 500px;
-			box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-			text-align: center;
-			border: 1px solid #eee;
-		}
+	.image-viewer img {
+		max-width: 100%;
+		border-radius: 15px;
+		border: 5px solid #00BFFF;
+	}
 
-		.image-viewer img {
-			width: 100%;
-			border-radius: 15px;
-			border: 5px solid #00BFFF; /* Bordure bleue vive */
-			box-shadow: 0 0 15px rgba(0, 191, 255, 0.2);
-		}
+	/* --- Section Détection (Bas) --- */
+	.detection-row {
+		display: flex;
+		width: 100%;
+		gap: 20px;
+		align-items: flex-start;
+		justify-content: flex-start; /* Aligne à GAUCHE */
+	}
 
-		/* --- Zone Détection --- */
-		.tab-row {
-			display: flex;
-			width: 100%;
-			gap: 20px;
-			align-items: flex-start;
-			justify-content: center;
-		}
+	.tab-btn-group {
+		width: 280px; /* Même largeur que la colonne du haut pour l'alignement */
+		background: white;
+		padding: 15px;
+		border-radius: 20px;
+		border: 2px solid #B5FFFC;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
 
-		.tab-btn-group {
-			flex: 1;
-			max-width: 320px;
-			background: white;
-			padding: 15px;
-			border-radius: 20px;
-			border: 2px solid #B5FFFC;
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-		}
+	.select-detector {
+		padding: 10px;
+		border-radius: 10px;
+		border: 2px solid #87C7F1;
+		font-weight: bold;
+	}
 
-		.select-detector {
-			padding: 10px;
-			border-radius: 10px;
-			border: 2px solid #87C7F1;
-			background: white;
-			font-weight: bold;
-			color: #5A99C7;
-		}
+	.stop-detect-panel {
+		flex-grow: 1;
+		background: white;
+		border-radius: 20px;
+		border: 2px solid #55efc4;
+		padding: 15px;
+		display: none;
+	}
 
-		.stop-detect-panel {
-        flex: 1.5;
-        background: white;
-        border-radius: 20px;
-        border: 2px solid #55efc4;
-        padding: 15px;
-        /* On change 'display: none' par une gestion via JavaScript */
-        display: none; 
-        flex-direction: column;
-        gap: 10px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    }
+	.log-terminal {
+		background: #2d3436; color: #55efc4;
+		border-radius: 10px; padding: 10px;
+		height: 120px; overflow-y: auto; font-family: monospace;
+	}
 
-    /* On s'assure que le terminal est bien visible */
-    .log-terminal {
-        background: #2d3436;
-        color: #55efc4;
-        font-family: 'Consolas', monospace;
-        font-size: 0.85rem;
-        border-radius: 10px;
-        padding: 12px;
-        height: 150px; /* On lui redonne une hauteur fixe */
-        overflow-y: auto;
-        white-space: pre-wrap;
-        border: 1px solid #1e272e;
-    }
-
-		.detect-indicator {
-			border-radius: 10px;
-			padding: 8px;
-			text-align: center;
-			font-weight: bold;
-			color: #fff;
-			margin-bottom: 10px;
-		}
-		.detect-indicator.on { background: #55efc4; color: #006266; }
-		.detect-indicator.off { background: #ff7675; }
-
-		.log-terminal {
-			background: #2d3436;
-			color: #55efc4;
-			font-family: 'Consolas', monospace;
-			font-size: 0.8rem;
-			border-radius: 10px;
-			padding: 10px;
-			height: 120px;
-			overflow-y: auto;
-		}
-
-		/* --- Textes --- */
-		.tab-title { font-size: 1.8rem; font-weight: bold; color: #5A99C7; margin: 0; }
-		.tab-subtitle { font-size: 1.2rem; font-weight: bold; color: #666; margin: 0; }
-		.tab-text { font-size: 1rem; color: #444; font-weight: bold; }
-
+	.tab-title { font-size: 1.8rem; font-weight: bold; color: #5A99C7; }
+	.tab-subtitle { font-size: 1.2rem; font-weight: bold; color: #666; margin-bottom: 10px;}
 	</style>
 	</head>
 	<body>
-	<div class='container'>
+<div class='container'>
 		<div class='tab-shell'>
 			<div class='tab-header'>
 				<h2 class='tab-title'>{title}</h2>
-				<!-- Boutons de navigation entre onglets -->
 				<div class='tab-nav'>
 					<button class='primary-btn' data-path="/">Accueil</button>
 					<button class='primary-btn' data-path="/vision">Vision</button>
@@ -224,51 +174,39 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				</div>
 			</div>
 
-		<div class='tab-content'>
-			<div class='tab-header'>
-				<h3 class='tab-subtitle'>Capture image</h3>
-			</div>
-			
-			<!-- Les boutons sont maintenant superposés et alignés à gauche -->
-			<div class="button-row">
-				<button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
-				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
-				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn'>💾 Off</button>
-			</div>
-
-			<!-- Le cadre blanc "Viewer" apparaîtra sous les boutons -->
-			<div class='image-viewer' id='mainImageDisplay'>
-				<img id='mainImage' alt='Vue du robot'>
-			</div>
-		</div>
-
+			<!-- Section Capture : Boutons à gauche, Image à droite -->
 			<div class='tab-content'>
-				<div class='tab-header'>
-					<h3 class='tab-subtitle'>Image Detection</h3>
+				<div class="button-column">
+					<h3 class='tab-subtitle'>Capture image</h3>
+					<button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
+					<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
+					<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'>💾 Off</button>
 				</div>
-				<!-- AJOUT DES FONCTIONS DE DÉTECTION -->
-				<div class='tab-row'>
-					<div class='tab-btn-group'>
-						<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
-						<select id='detectorSelect' class='select-detector'>
-							<!-- options remplies dynamiquement -->
-						</select>
-						<button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
-						<button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
-					</div>
-					<!-- Stop detection diagnostic panel -->
-					<div class='stop-detect-panel' id='stopDetectPanel'>
-						<div class='tab-subtitle'>Diagnostic Stop</div>
-						<div class='indicator-and-terminal'>
-							<div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
-							<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
-						</div>
-					</div>
-					<!-- ajouter la dernière image capturée -->
+
+				<div class='image-viewer' id='mainImageDisplay'>
+					<img id='mainImage' alt='Image principale'>
+				</div>
+			</div>
+
+			<!-- Section Détection : Sélecteur à gauche, Diagnostic à droite -->
+			<div class='detection-row'>
+				<div class='tab-btn-group'>
+					<h3 class='tab-subtitle'>Image Detection</h3>
+					<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
+					<select id='detectorSelect' class='select-detector'></select>
+					<button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
+					<button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
+				</div>
+
+				<div class='stop-detect-panel' id='stopDetectPanel'>
+					<div class='tab-subtitle'>Diagnostic Stop</div>
+					<div id='stopDetectIndicator' class='detect-indicator' style="padding:10px; border-radius:10px; margin-bottom:10px; text-align:center; font-weight:bold; color:white; background:#bdc3c7;">Aucune détection</div>
+					<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
 				</div>
 			</div>
 		</div>
 	</div>
+
 
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
