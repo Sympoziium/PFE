@@ -396,37 +396,31 @@ class VisionPipeline:
         S'endort entre chaque détection pour ne pas saturer le CPU.
         Si le mining est activé, les crops des détections sont sauvegardés.
         """
-        # fait la liste des détecteurs assigné à la détection passive
-        nb_detectors = len(self._passive_detectors)
-        detector_index = 0
         while self._passive_running:
             # attend si le mode pause est activé
             self._passive_pause_event.wait()
 
             # récupération de la dernière frame du livefeed
             frame = self.get_last_frame()
-            if frame is not None and nb_detectors > 0:
-                # faire la détection avec le détecteur courant
-                detector = self._passive_detectors[detector_index]
-                try:
-                    detection_result = detector.process_passive(frame)
-                    with self._result_lock:
-                        self._last_detection_result = detection_result
+            if frame is not None and self._passive_detectors:
+                # passer l'image à tous les détecteurs de la liste
+                for detector in self._passive_detectors:
+                    try:
+                        detection_result = detector.process_passive(frame)
+                        with self._result_lock:
+                            self._last_detection_result = detection_result
 
-                    # --- Hard Positive Mining: sauvegarder les crops ---
-                    if self._mining_enabled and detection_result.get('Object_detected'):
-                        self._harvest_crops(frame, detection_result.get('detections', []))
+                        # --- Hard Positive Mining: sauvegarder les crops ---
+                        if self._mining_enabled and detection_result.get('Object_detected'):
+                            self._harvest_crops(frame, detection_result.get('detections', []))
 
-                except Exception as e:
-                    print("Erreur lors de la détection passive avec le détecteur {}: {}".format(detector, e))
-
-                # passer au détecteur suivant pour la prochaine itération
-                detector_index = (detector_index + 1) % nb_detectors
+                    except Exception as e:
+                        print("Erreur lors de la détection passive avec le détecteur {}: {}".format(detector, e))
         
             # Interval de détection passive
             time.sleep(self._passive_interval)
 
-    def start_passive_detection(self, interval=1.0, detector_index=0):
+    def start_passive_detection(self, interval=1.0):
         """Démarre le thread de détection passive avec l'intervalle spécifié."""
         if self._passive_thread and self._passive_thread.is_alive():
             return  # déjà actif
