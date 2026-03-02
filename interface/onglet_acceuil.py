@@ -229,10 +229,10 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 				<h2 class='tab-title'>{title}</h2>
 				<div class='tab-nav'>
 				<!-- Boutons de navigation entre onglets -->
-				<button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
-				<button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
-				<button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
-				<button class='primary-btn' data-path="/pid" onclick="navigateTo('/pid')">PID</button>
+				<button class='primary-btn' data-path="/">Accueil</button>
+				<button class='primary-btn' data-path="/vision">Vision</button>
+				<button class='primary-btn' data-path="/onglet_template">Template</button>
+        <button class='primary-btn' data-path="/pid">PID</button>
                 <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
 				</div>
 			</div>
@@ -245,9 +245,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 						<!-- Conteneur du flux vidéo en direct -->
 						<div class='live-feed' id='liveFeed' style = 'display:none;'>
 							<img id='videoStream' alt='Flux vidéo en direct'>
-						</div>
-					</div>
-				</div>
+                        </div>
+                    </div>
+                </div>
 
 				<div class='right-panel'>
                     <div class='driving-mode'>
@@ -257,37 +257,45 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 						
 						<div class="dpad-container">
 							<!-- HAUT -->
-							<button 
-								class="dpad-button dpad-up" 
-								onmousedown="startMove('forward')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('forward')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-up" data-direction="forward">
 								<svg viewBox="0 0 100 100"><path d="M50 20 L50 80 M20 50 L50 20 L80 50"></path></svg>
 							</button>
 							<!-- GAUCHE -->
-							<button 
-								class="dpad-button dpad-left"
-								onmousedown="startMove('left')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('left')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-left" data-direction="left">
 								<svg viewBox="0 0 100 100"><path d="M80 50 L20 50 M50 20 L20 50 L50 80"></path></svg>
 							</button>
 							<!-- CENTRE (Stop) -->
-							<button class="dpad-button dpad-center" onclick="stopMove()"></button>
+							<button class="dpad-button dpad-center" id="dpadCenterBtn"></button>
 							<!-- DROITE -->
-							<button 
-								class="dpad-button dpad-right"
-								onmousedown="startMove('right')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('right')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-right" data-direction="right">
 								<svg viewBox="0 0 100 100"><path d="M20 50 L80 50 M50 20 L80 50 L50 80"></path></svg>
 							</button>
 							<!-- BAS -->
-							<button 
-								class="dpad-button dpad-down"
-								onmousedown="startMove('reverse')" onmouseup="stopMove()" onmouseleave="stopMove()"
-								ontouchstart="startMove('reverse')" ontouchend="stopMove()">
+							<button class="dpad-button dpad-down" data-direction="reverse">
 								<svg viewBox="0 0 100 100"><path d="M50 80 L50 20 M20 50 L50 80 L80 50"></path></svg>
 							</button>
         				</div>
 					</div>
+                    <hr style="width:100%; margin: 20px 0; border: 1px solid #ccc;">
+
+                    <h3>🌉 Pont Levis</h3>
+
+                    <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
+                        <span style="font-weight:bold;">Mode Auto:</span>
+                        <label class="switch">
+                        <input type="checkbox" id="autoCheck" checked>
+                        <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div style="margin-bottom:10px;">
+                        <button class='command-button btn-green' onclick="fetch('/bridge/green', {method:'POST'})">Feu Vert</button>
+                        <button class='command-button btn-red' onclick="fetch('/bridge/red', {method:'POST'})">Feu Rouge</button>
+                    </div>
+                    <div>
+                        <button id="btnOpen" class='command-button btn-blue disabled' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
+                        <button id="btnClose" class='command-button btn-blue disabled' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
+                    </div>
 				</div>	
 			</div>
 		</div>
@@ -297,12 +305,13 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
 	<script>
-	// Active l'état du bouton d'onglet selon l'URL courante
-    (function() {
-		const norm = p => (p || '').replace(/\/+$/,'') || '/';
-		const here = norm(location.pathname);
-        document.querySelectorAll('.tab-nav .primary-btn').forEach(btn => {
-			const p = norm(btn.dataset?.path || btn.getAttribute('data-path'));
+	// Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
+	(function() {
+		var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
+		var here = norm(location.pathname);
+		var btns = document.querySelectorAll('.tab-nav .primary-btn');
+		Array.prototype.forEach.call(btns, function(btn) {
+			var p = norm(btn.getAttribute('data-path'));
 			if (p === here) btn.classList.add('active');
         });
     })();
@@ -345,27 +354,37 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	function navigateTo(path) {
 		try {
 			var liveFeed = document.getElementById('liveFeed');
-			var isActive = liveFeed && liveFeed.style.display === 'block';
+			var isActive = CAMERA_ACTIVE && liveFeed && liveFeed.style.display === 'block';
 			if (isActive) {
 				fetch('/close_camera', { method: 'POST' })
 					.then(function() { location.href = path; })
-					.catch(function() { location.href = path; });
+					.catch(function(err) { logError('navigateTo: /close_camera', err, { path: path }); location.href = path; });
 			} else {
 				location.href = path;
 			}
 		} catch (e) {
+			logError('navigateTo', e, { path: path });
 			location.href = path;
 		}
 	}
 
-    // ---  FONCTIONS DE MOUVEMENT ---
-    let isMoving = false;
-    let moveInterval = null; // Variable pour stocker notre 'setInterval'
+  // --- MODE AUTO ET GESTION UI ---
+	function toggleAuto(isAuto) {
+		var val = isAuto ? '1' : '0';
+		fetch('/bridge/mode_auto/' + val, { method: 'POST' })
+			.then(function() { console.log('Mode auto changé: ' + val); })
+			.catch(function(err) { logError('toggleAuto', err, { val: val }); });
 
-    function startMove(direction) {
-        if (isMoving) return; // Évite les commandes multiples
-        isMoving = true;
-        
+		var btnOpen = document.getElementById('btnOpen');
+		var btnClose = document.getElementById('btnClose');
+		if (isAuto) {
+			btnOpen.classList.add('disabled');
+			btnClose.classList.add('disabled');
+		} else {
+			btnOpen.classList.remove('disabled');
+			btnClose.classList.remove('disabled');
+		}
+	}
 		
 		
 		
@@ -442,15 +461,78 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     }
     // --- FIN DES MODIFICATIONS WATCHDOG ---
 
-    // Sécurité : si l'utilisateur relâche le clic n'importe où sur la page
-    window.addEventListener('mouseup', stopMove);
-    window.addEventListener('touchend', stopMove);
+	// --- FONCTIONS DE MOUVEMENT ---
+	var isMoving = false;
+	var moveInterval = null;
+
+	function startMove(direction) {
+		if (isMoving) return;
+		isMoving = true;
+
+		var sendMoveCommand = function() {
+			fetch('/zumi/' + direction)
+				.then(function(response) {
+					if (!response.ok) logError('startMove', new Error('move failed'), { direction: direction });
+				})
+				.catch(function(error) { logError('startMove: fetch', error, { direction: direction }); });
+		};
+
+		sendMoveCommand();
+		moveInterval = setInterval(sendMoveCommand, 250);
+	}
+
+	function stopMove() {
+		if (!isMoving) return;
+		isMoving = false;
+		if (moveInterval) {
+			clearInterval(moveInterval);
+			moveInterval = null;
+		}
+	}
+
+	// --- Charger les événements au DOMContentLoaded ---
+	window.addEventListener('DOMContentLoaded', function() {
+		// Navigation buttons (utilise data-path pour déterminer la destination)
+		var navBtns = document.querySelectorAll('.tab-nav .primary-btn');
+		Array.prototype.forEach.call(navBtns, function(btn) {
+			var path = btn.getAttribute('data-path');
+			if (path) {
+				btn.addEventListener('click', function() { navigateTo(path); });
+			}
+		});
+
+		// Camera toggle
+		var camBtn = document.getElementById('cameraToggleBtn');
+		if (camBtn) camBtn.addEventListener('click', toggleCamera);
+
+		// Auto check (pont levis)
+		var autoCheck = document.getElementById('autoCheck');
+		if (autoCheck) autoCheck.addEventListener('change', function() { toggleAuto(this.checked); });
+
+		// D-pad: register mouse + passive touch events
+		var dpadButtons = document.querySelectorAll('.dpad-button[data-direction]');
+		Array.prototype.forEach.call(dpadButtons, function(btn) {
+			var dir = btn.getAttribute('data-direction');
+			btn.addEventListener('mousedown', function() { startMove(dir); });
+			btn.addEventListener('mouseup', stopMove);
+			btn.addEventListener('mouseleave', stopMove);
+			btn.addEventListener('touchstart', function() { startMove(dir); }, { passive: true });
+			btn.addEventListener('touchend', stopMove, { passive: true });
+		});
+
+		// D-pad center button (stop)
+		var centerBtn = document.getElementById('dpadCenterBtn');
+		if (centerBtn) centerBtn.addEventListener('click', stopMove);
+	});
+
+	// Exposer les fonctions au scope global (pour les onclick inline restants)
+	window.navigateTo = navigateTo;
+	window.toggleCamera = toggleCamera;
+	window.toggleAuto = toggleAuto;
+	window.startMove = startMove;
+	window.stopMove = stopMove;
 
 	</script>
-	</body></html>
-	"""
-
-	# Remplacer uniquement le titre sans interpréter les autres accolades
-	return html.replace("{title}", title)
-
-
+    </body></html>
+    """
+    return html.replace("{title}", title)

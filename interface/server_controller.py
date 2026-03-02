@@ -4,11 +4,12 @@
 # ------------------
 """Contrôleur backend pour les routes Flask.
 
-Centralise la logique des endpoints; `flask_router.py` ne fait que lier les routes
-à ces méthodes.
+    Centralise la logique des endpoints; `flask_router.py` ne fait que lier les routes
+    à ces méthodes.
 """
+import requests  # <--- IMPORTANT : Pour communiquer avec le pont
+import os, uuid, time, cv2, itertools, numpy as np
 
-import os, uuid, time, cv2, numpy as np
 from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
 from interface.onglet_acceuil import render_accueil_tab
@@ -94,14 +95,12 @@ def format_detection_result(results, detector_name="Détecteur"):
 # --- Variables pour le contrôle des moteurs ---
 DRIVE_SPEED = 20
 TURN_SPEED = 15
-
-# --- Variables pour le Watchdog ---
-WATCHDOG_TIMEOUT_SECONDS = 0.8 # S'arrête si aucune commande en 0.8s
+WATCHDOG_TIMEOUT_SECONDS = 0.8
 
 class controller:
     def __init__(self, zumi):
         self.app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-        self.robot = zumi # référence au robot Zumi a remplacer plus tard par la classe robot
+        self.robot = zumi
         self.vision_pipeline = None
         self.last_move_time = time.time()
         self.watchdog_active = False
@@ -119,21 +118,21 @@ class controller:
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
+        
+        # --- CONFIGURATION DU PONT ---
+        # ⚠️ REMPLACE CECI PAR L'IP QUE TON ARDUINO A AFFICHÉE
+        self.BRIDGE_IP = "192.168.0.158" 
+        self.BRIDGE_URL = "http://{}".format(self.BRIDGE_IP)
         # Index du détecteur sélectionné côté serveur
         self.selected_detector_index = 0
         # Dernière image capturée (nom de fichier) pour la détection à la demande
         self.last_captured_filename = None
 
-    # Attache le pipeline de vision
     def attach_pipeline_vision(self, pipeline):
         pipeline.attach_capture_dir(self.CAPTURE_DIR)
         self.vision_pipeline = pipeline
 
-# ----------------------------------------------------------------------------
-#                       Navigation entre onglets
-# ----------------------------------------------------------------------------
-
-    # Pages
+    # --- Navigation ---
     def home(self):
         return render_accueil_tab("Accueil")
 
@@ -141,69 +140,30 @@ class controller:
         return render_vision_tab("Vision du Zumi")
 
     def onglet_template(self):
-        return render_template_tab("Mon onglet perso")
+        return render_template_tab("Template")
     
-# ----------------------------------------------------------------------------
-#                       fonctions utilitaires
-# ----------------------------------------------------------------------------
-    # Arrêt du serveur
+    # --- Système ---
     def exit_server(self):
-        vp = self.vision_pipeline
-        try:
-            if vp and vp.is_running():
-                vp.stop()
-        except Exception:
-            pass
-
         func = request.environ.get('werkzeug.server.shutdown')
-        if func is None:
-            return jsonify({"error": "shutdown unavailable"}), 500
-        self.app.logger.info("Arrêt du serveur Flask demandé via /exit")
-        func()  # Le serveur s'arrêtera après cette requête
+        if func is None: return jsonify({"error": "shutdown unavailable"}), 500
+        func()
         return ('', 204)
     
     def motor_watchdog(self):
-        """
-        Thread qui s'exécute en arrière-plan.
-        Arrête les moteurs si la dernière commande de mouvement
-        est trop ancienne (ex: le client s'est déconnecté).
-        """
-        print("[Watchdog] Démarré (en attente d'activation).")
-        
+        print("[Watchdog] Démarré.")
         while True:
-            # Ne pas s'activer avant la première commande de mouvement
-            if not self.watchdog_active:
-                time.sleep(0.5)
-                continue
-            
-            # Calculer le temps écoulé
-            time_since_last_move = time.time() - self.last_move_time
-            
-            if time_since_last_move > WATCHDOG_TIMEOUT_SECONDS:
-                try:
-                    # S'assurer que zumi existe avant de l'appeler
-                    if self.robot: 
-                        self.robot.stop()
-                    # Réinitialiser pour ne pas 'spammer' la commande stop
-                    self.last_move_time = time.time() 
-                except Exception as e:
-                    pass # Erreur silencieuse (ex: zumi déconnecté)
-            
-            time.sleep(0.5) # Vérifier 2x par seconde
+            if self.watchdog_active:
+                if time.time() - self.last_move_time > WATCHDOG_TIMEOUT_SECONDS:
+                    try:
+                        if self.robot: self.robot.stop()
+                        self.last_move_time = time.time()
+                    except: pass
+            time.sleep(0.5)
 
-
-# ----------------------------------------------------------------------------
-#            Fonctions de callback pour les actions de vision
-# ----------------------------------------------------------------------------
-
-    # Téléchargement d'une image capturée
+    # --- Vision ---
     def download_image(self, filename):
-        full_path = os.path.join(self.CAPTURE_DIR, filename)
-        if not os.path.exists(full_path):
-            return "File not found", 404
         return send_from_directory(self.CAPTURE_DIR, filename, as_attachment=True)
 
-    # Capture d'image
     def capture_image(self):
         vp = self.vision_pipeline
         if vp is None or not vp.is_running():
@@ -235,12 +195,9 @@ class controller:
         self.last_captured_filename = filename
         return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url})
 
-    # Statut
     def status(self):
         vp = self.vision_pipeline
-        return jsonify({
-            "camera_running": bool(vp and vp.is_running())
-        })
+        return jsonify({"camera_running": bool(vp and vp.is_running())})
 
     # Liste des détecteurs disponibles + index sélectionné
     def detectors(self):
@@ -360,11 +317,7 @@ class controller:
     # Flux vidéo
     def video_feed(self):
         vp = self.vision_pipeline
-        if not vp or not vp.is_running():
-            return "Camera not running", 503
-        if vp.get_camera() is None:
-            return "Camera not running", 503
-
+        if not vp or not vp.is_running(): return "Camera OFF", 503
         def generate():
             while vp.is_running():
                 try:
@@ -381,80 +334,37 @@ class controller:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
                 time.sleep(0.05)
-
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-    # Caméra: stop/start
     def close_camera(self):
-        vp = self.vision_pipeline
-        if not vp or not vp.is_running():
-            return ("", 204)
-        vp.stop()
+        if self.vision_pipeline: self.vision_pipeline.stop()
         return ("", 204)
 
     def start_camera(self):
-        vp = self.vision_pipeline
-        if vp and vp.is_running():
-            return ("", 204)
-        vp.start()
+        if self.vision_pipeline: self.vision_pipeline.start()
         return ("", 204)
     
-# ----------------------------------------------------------------------------
-#          Fonctions de callback pour les actions moteur du robot
-# ----------------------------------------------------------------------------
-    
+    # --- Moteurs Zumi ---
     def forward(self): 
-        self.last_move_time = time.time()              
-        self.watchdog_active = True                    
-        print("[HTTP] /zumi/forward reçu") 
-        try: 
-            self.robot.control_motors(DRIVE_SPEED, DRIVE_SPEED) 
-            print("[ACTION] zumi.control_motors({}, {}) exécuté".format(DRIVE_SPEED, DRIVE_SPEED)) 
-            return "ok" 
-        except Exception as e: 
-            print("[ERREUR] zumi.control_motors(forward):", e) 
-            return "error", 500 
+        self.last_move_time = time.time(); self.watchdog_active = True
+        self.robot.control_motors(DRIVE_SPEED, DRIVE_SPEED)
+        return "ok"
 
-    
     def reverse(self): 
-        self.last_move_time = time.time()              
-        self.watchdog_active = True                    
-        print("[HTTP] /zumi/reverse reçu") 
-        try: 
-            self.robot.control_motors(-DRIVE_SPEED, -DRIVE_SPEED) 
-            print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-DRIVE_SPEED, -DRIVE_SPEED)) 
-            return "ok" 
-        except Exception as e: 
-            print("[ERREUR] zumi.control_motors(reverse):", e) 
-            return "error", 500 
+        self.last_move_time = time.time(); self.watchdog_active = True
+        self.robot.control_motors(-DRIVE_SPEED, -DRIVE_SPEED)
+        return "ok"
         
-    
     def left(self): 
-        self.last_move_time = time.time()              
-        self.watchdog_active = True                    
-        print("[HTTP] /zumi/left reçu") 
-        try: 
-            self.robot.control_motors(-TURN_SPEED, TURN_SPEED)  
-            print("[ACTION] zumi.control_motors({}, {}) exécuté".format(-TURN_SPEED, TURN_SPEED)) 
-            return "ok" 
-        except Exception as e: 
-            print("[ERREUR] zumi.control_motors(left):", e) 
-            return "error", 500 
+        self.last_move_time = time.time(); self.watchdog_active = True
+        self.robot.control_motors(-TURN_SPEED, TURN_SPEED)
+        return "ok"
         
-    
     def right(self): 
-        self.last_move_time = time.time()              
-        self.watchdog_active = True                    
-        print("[HTTP] /zumi/right reçu") 
-        try: 
-            self.robot.control_motors(TURN_SPEED, -TURN_SPEED) 
-            print("[ACTION] zumi.control_motors({}, {}) exécuté".format(TURN_SPEED, -TURN_SPEED)) 
-            return "ok" 
-        except Exception as e: 
-            print("[ERREUR] zumi.control_motors(right):", e) 
-            return "error", 500 
+        self.last_move_time = time.time(); self.watchdog_active = True
+        self.robot.control_motors(TURN_SPEED, -TURN_SPEED)
+        return "ok"
         
-    
     def stop(self): 
         print("[HTTP] /zumi/stop reçu") 
         try: 
@@ -464,6 +374,7 @@ class controller:
         except Exception as e: 
             print("[ERREUR] zumi.stop():", e) 
             return "error", 500
+      
 
     def manual_turn(self):
         """
@@ -953,3 +864,42 @@ class controller:
             'left_speed': self.last_left_speed,
             'right_speed': self.last_right_speed
         })
+    # --- PONT (Nouvelles fonctions) ---
+    def bridge_open(self):
+        try:
+            requests.get("{}/ouvrir".format(self.BRIDGE_URL), timeout=1)
+            return ("", 204)
+        except Exception as e:
+            print("Erreur Pont:", e)
+            return ("Erreur", 500)
+        
+
+    def bridge_close(self):
+        try:
+            requests.get("{}/fermer".format(self.BRIDGE_URL), timeout=1)
+            return ("", 204)
+        except Exception as e:
+            print("Erreur Pont:", e)
+            return ("Erreur", 500)
+            
+    def bridge_green(self):
+        try:
+            requests.get("{}/vert".format(self.BRIDGE_URL), timeout=1)
+            return ("", 204)
+        except: return ("", 500)
+
+    def bridge_red(self):
+        try:
+            requests.get("{}/rouge".format(self.BRIDGE_URL), timeout=1)
+            return ("", 204)
+        except: return ("", 500)
+   
+    def bridge_mode_auto(self, etat):
+        # etat doit être '1' (true) ou '0' (false)
+        try:
+            # On appelle l'URL du pont: http://192.168.X.X/majAutoMoteur?etat=1
+            requests.get("{}/majAutoMoteur?etat={}".format(self.BRIDGE_URL, etat), timeout=1)
+            return ("", 204)
+        except Exception as e:
+            print("Erreur Pont Mode Auto:", e)
+            return ("Erreur", 500)
