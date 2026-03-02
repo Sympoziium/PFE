@@ -636,7 +636,7 @@ class controller:
             return jsonify({'error': 'pipeline vision non initialisé'}), 400
         if vp._passive_running: # éviter de lancer plusieurs fois le mode passif
             return ("", 204)
-        vp.start_passive_detection(detector_index=self.selected_detector_index)
+        vp.start_passive_detection()
         return ("", 204)
     
     def stop_passive_detection(self):
