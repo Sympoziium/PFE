@@ -102,6 +102,24 @@ class ZumiCamera(CameraBase):
             print("Erreur lors de la capture d'une image avec ZumiCamera: {}".format(e))
             raise e
 
+    def reconfigure(self, width: int, height: int):
+        """
+        Reconfigure ZumiCamera à la résolution demandée.
+        Ferme l'ancienne instance Camera et en crée une nouvelle.
+        """
+        self._default_w = width
+        self._default_h = height
+        try:
+            self.camera.close()
+        except Exception as e:
+            print("[ZumiCamera] Avertissement fermeture avant reconfiguration: {}".format(e))
+        try:
+            self.camera = Camera(image_w=self._default_w, image_h=self._default_h)
+            print("[ZumiCamera] Reconfigurée: {}x{}".format(self._default_w, self._default_h))
+        except Exception as e:
+            print("Erreur lors de la reconfiguration de ZumiCamera: {}".format(e))
+            raise e
+
     def capture_hires(self, width=640, height=480):
         """
         Capture une image à haute résolution temporairement.

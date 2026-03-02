@@ -238,11 +238,10 @@ class VisionPipeline:
         # Créer une nouvelle instance de caméra à la résolution demandée
         # On utilise le même type de caméra que l'instance originale
         try:
-            cam_class = type(self.camera)
-            self.camera = cam_class(image_w=width, image_h=height)
+            self.camera.reconfigure(width, height)
             print("[VisionPipeline] Résolution caméra changée: {}x{}".format(width, height))
         except Exception as e:
-            print("[VisionPipeline] ERREUR création caméra: {}".format(e))
+            print("[VisionPipeline] ERREUR reconfiguration caméra: {}".format(e))
             raise
 
 # ----------------------------------------
