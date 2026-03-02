@@ -415,9 +415,6 @@ class VisionPipeline:
         S'endort entre chaque détection pour ne pas saturer le CPU.
         Si le mining est activé, les crops des détections sont sauvegardés.
         """
-        # fait la liste des détecteurs assigné à la détection passive
-        nb_detectors = len(self._passive_detectors)
-        detector_index = 0
         while self._passive_running:
             # attend si le mode pause est activé
             self._passive_pause_event.wait()
@@ -446,7 +443,7 @@ class VisionPipeline:
             # Interval de détection passive
             time.sleep(self._passive_interval)
 
-    def start_passive_detection(self, interval=1.0, detector_index=0):
+    def start_passive_detection(self, interval=1.0):
         """Démarre le thread de détection passive avec l'intervalle spécifié."""
         if self._passive_thread and self._passive_thread.is_alive():
             return  # déjà actif
