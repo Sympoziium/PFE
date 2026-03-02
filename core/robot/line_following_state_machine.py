@@ -526,17 +526,17 @@ class StepByStepStateMachine:
             self.line_lost_count += 1
             print("[STEP_MACHINE WARNING] Ligne non détectée en WAITING_APPROVAL ({}/{} avant recherche)".format(
                 self.line_lost_count, self.line_lost_threshold))
-            if self.line_lost_count >= self.line_lost_threshold:
-                print("[STEP_MACHINE] Ligne perdue - Passage en mode recherche (SEARCH_SPIN)")
+            # Passage immédiat en mode recherche après quelques frames perdues
+            if self.line_lost_count >= 5:  # Seuil réduit à 5 frames (~0.25s) au lieu de 15
+                print("[STEP_MACHINE] Ligne non détectée - Passage en mode RECENTER pour rotation")
                 self._display_message("Recherche ligne...")
-                self.state = StepState.SEARCH_SPIN
-                self.search_attempts = 0
-                self.frames_to_skip_after_rotation = 0
-                # Afficher l'action à venir
-                self._display_message("Tournera 10deg")
-                return {'state': self.state.name, 'line_offset': None}
-            # Si on n'a pas encore dépassé le seuil, rester en attente avec un message
-            self._display_message("Ligne faible...")
+                # Passer en RECENTER automatique pour tourner sur place et retrouver la ligne
+                self.state = StepState.RECENTER
+                self.recenter_attempts = 0
+                self.auto_recenter = True  # Mode automatique
+                return {'state': self.state.name, 'line_offset': None, 'searching': True}
+            # Si on n'a pas encore dépassé le seuil, continuer à chercher la ligne
+            self._display_message("Recherche...")
             return {
                 'state': self.state.name,
                 'line_offset': None,
@@ -889,24 +889,64 @@ class StepByStepStateMachine:
         """
         Gère l'état de recentrage sur la ligne.
         Utilise le PID en mode rotation pour aligner le robot avec la ligne de manière fluide.
+        Si la ligne n'est pas visible, tourne lentement pour la retrouver.
         """
-        # Vérifier que la ligne est toujours visible
+        # Vérifier que la ligne est visible
         line_result = self.line_detector.process(frame.copy())
         line_offset = line_result.get('value')
         
         if line_offset is None:
-            # Ligne perdue pendant le recentrage
-            print("[STEP_MACHINE] Ligne perdue pendant le recentrage - Retour à SEARCH_SPIN")
-            self._display_message("Ligne perdue!")
-            # Remettre le PID en mode avance
-            self.pid_controller.update_params(rotation_mode=False)
-            self.state = StepState.SEARCH_SPIN
-            self.search_attempts = 0
+            # Ligne non visible - tourner lentement pour la retrouver
+            print("[STEP_MACHINE] Ligne non visible en RECENTER - Rotation lente pour recherche")
+            
+            # Vérifier si on a trop tourné
+            if self.recenter_attempts >= self.max_recenter_attempts * 3:  # Plus de tentatives en mode recherche
+                print("[STEP_MACHINE] Trop de tentatives sans trouver la ligne - Passage à SEARCH_SPIN")
+                self._display_message("Ligne perdue!")
+                # Remettre le PID en mode avance
+                self.pid_controller.update_params(rotation_mode=False)
+                self.state = StepState.SEARCH_SPIN
+                self.search_attempts = 0
+                return {
+                    'state': self.state.name,
+                    'line_lost_during_recenter': True
+                }
+            
+            # Attendre l'approbation de l'utilisateur (sauf si auto_recenter)
+            if not self.approved_to_move and not self.auto_recenter:
+                self._display_message("Tourner? Appuyez")
+                return {
+                    'state': self.state.name,
+                    'waiting_approval': True,
+                    'line_offset': None,
+                    'searching': True
+                }
+            
+            # Reset de l'approbation
+            self.approved_to_move = False
+            self.recenter_attempts += 1
+            
+            print("[STEP_MACHINE] Rotation lente pour retrouver ligne (tentative {})".format(self.recenter_attempts))
+            self._display_message("Tourne lent...")
+            
+            # Tourner lentement sur place (mode rotation PID avec offset simulé pour tourner)
+            # Tourner à gauche de quelques degrés
+            slow_rotation_speed = 8
+            rotation_duration = 0.3  # 300ms de rotation lente
+            
+            self.robot.control_motors(-slow_rotation_speed, slow_rotation_speed)
+            time.sleep(rotation_duration)
+            self.robot.stop()
+            time.sleep(0.2)  # Stabilisation
+            
+            # Rester en RECENTER pour vérifier au prochain cycle
             return {
                 'state': self.state.name,
-                'line_lost_during_recenter': True
+                'searching_line': True,
+                'recenter_attempt': self.recenter_attempts
             }
         
+        # Ligne visible - procéder au recentrage normal
         self.last_line_offset = line_offset
         
         # Vérifier si on est suffisamment centré
@@ -960,7 +1000,7 @@ class StepByStepStateMachine:
         print("[STEP_MACHINE] Recentrage PID - Offset: {}px (tentative {}/{})".format(
             line_offset, self.recenter_attempts, self.max_recenter_attempts))
         
-        self._display_message("Centrage PID...".format(line_offset))
+        self._display_message("Centrage PID...")
         
         # Activer le PID en mode rotation
         self.pid_controller.update_params(rotation_mode=True)
