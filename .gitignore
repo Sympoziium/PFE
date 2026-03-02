@@ -10,3 +10,6 @@ zumi_prepare.sh
 *.txt
 *.vec
 stage_*.xml
+oli readme.md
+.vscode/
+.DS_Store
