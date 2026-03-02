@@ -3,3 +3,6 @@ __pycache__/
 *.jpg
 TODO.md
 zumi_prepare.sh
+oli readme.md
+.vscode/
+.DS_Store
