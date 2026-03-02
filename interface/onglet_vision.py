@@ -237,6 +237,25 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		white-space: pre-wrap; word-wrap: break-word;
 	}
 
+	/* --- Toast notifications --- */
+	.toast-container {
+		position: fixed; top: 20px; right: 20px; z-index: 9999;
+		display: flex; flex-direction: column; gap: 8px;
+	}
+	.toast {
+		padding: 12px 20px; border-radius: 8px;
+		color: #fff; font-size: 14px; font-family: Arial, sans-serif;
+		box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+		opacity: 0; transform: translateX(80px);
+		transition: opacity 0.3s, transform 0.3s;
+		max-width: 380px; word-wrap: break-word;
+	}
+	.toast.show { opacity: 1; transform: translateX(0); }
+	.toast.warning { background: #e67e22; }
+	.toast.error { background: #e74c3c; }
+	.toast.info { background: #3498db; }
+	.toast.success { background: #27ae60; }
+
 	</style>
 	</head>
 	<body>
@@ -295,6 +314,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		</div>
 	</div>
 
+	<!-- Toast container -->
+	<div class='toast-container' id='toastContainer'></div>
+
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
 	<script>
@@ -345,6 +367,25 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		if (error && error.stack) { lines.push('Stack: ' + error.stack); }
 		appendTerminalLines(lines);
 		console.error('[UI]', context, error, extra || '');
+	}
+
+	// --- Toast notification system ---
+	function showToast(message, type, duration) {
+		type = type || 'warning';
+		duration = duration || 4000;
+		var container = document.getElementById('toastContainer');
+		if (!container) return;
+		var toast = document.createElement('div');
+		toast.className = 'toast ' + type;
+		toast.textContent = message;
+		container.appendChild(toast);
+		// Trigger animation
+		setTimeout(function() { toast.classList.add('show'); }, 10);
+		// Auto-dismiss
+		setTimeout(function() {
+			toast.classList.remove('show');
+			setTimeout(function() { container.removeChild(toast); }, 350);
+		}, duration);
 	}
 
 	// Global error hooks for maximum visibility
@@ -557,7 +598,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					sel.value = String(selected);
 					SELECTED_DETECTOR_NAME = DETECTORS_MAP[selected] || null;
 					console.log('[DEBUG loadDetectors] Selected detector:', selected, SELECTED_DETECTOR_NAME);
-					updateStopUIPanelVisibility();
+					updateDiagnosticPanelVisibility();
 				}
 			})
 			.catch(function(err) { logError('loadDetectors: /detectors', err); });
@@ -587,7 +628,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		}).catch(function(err) { logError('onDetectorChange: /detector', err, { index: idx }); });
 		SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
 		console.log('[DEBUG onDetectorChange] SELECTED_DETECTOR_NAME set to:', SELECTED_DETECTOR_NAME);
-		updateStopUIPanelVisibility();
+		updateDiagnosticPanelVisibility();
 	}
 
 	function runDetection() {
@@ -595,7 +636,24 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		var indicator = document.getElementById('stopDetectIndicator');
 		clearTerminal();
 		fetch('/run_detection', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText); return r.json(); })
+			.then(function(r) {
+				if (!r.ok) {
+					return r.json().then(function(body) {
+						var msg = (body && body.error) ? body.error : 'run_detection failed';
+						if (msg.indexOf('capture') !== -1 || msg.indexOf('captured') !== -1) {
+							showToast('\u26a0\ufe0f Veuillez capturer une image avant de lancer la detection.', 'warning');
+						} else {
+							showToast('Erreur: ' + msg, 'error');
+						}
+						throw new Error(msg);
+					}).catch(function(parseErr) {
+						if (parseErr.message && parseErr.message.indexOf('capture') !== -1) throw parseErr;
+						showToast('Erreur serveur (' + r.status + ')', 'error');
+						throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText);
+					});
+				}
+				return r.json();
+			})
 			.then(function(res) {
 				if (res.logs && Array.isArray(res.logs)) {
 					appendTerminalLines(res.logs);
@@ -609,10 +667,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 					imageCapturedCallback(res.source_file_url);
 				}
 
-				// Utiliser Object_detected au lieu de Stop_detected
 				if (res.Object_detected) {
 					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
+					indicator.textContent = 'Objet detecte';
 				} else {
 					indicator.classList.add('off');
 					indicator.textContent = 'Aucune detection';
@@ -620,92 +677,75 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			})
 			.catch(function(err) {
 				logError('runDetection: /run_detection', err);
-				var terminal = document.getElementById('stopDetectTerminal');
-				terminal.style.display = 'block';
 				appendTerminalLines('Erreur: ' + err);
 			});
 	}
 
-	function updateStopUIPanelVisibility() {
+	function updateDiagnosticPanelVisibility() {
 		var panel = document.getElementById('stopDetectPanel');
+		// Afficher le panneau diagnostic pour tout détecteur sélectionné
 		if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
-		// Afficher pour tout détecteur de stop (Zumi ou CV)
-		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetector') !== -1) ? 'block' : 'none';
+		panel.style.display = 'block';
 	}
 
-	function runStopDiagnostics() {
+	function runDiagnostics() {
+		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
+		console.log('[DEBUG runDiagnostics] Lancement diagnostic pour:', detectorName);
+
 		var indicator = document.getElementById('stopDetectIndicator');
 		var terminal = document.getElementById('stopDetectTerminal');
 		indicator.classList.remove('on', 'off');
 		indicator.textContent = 'Diagnostic en cours...';
-		appendTerminalLines('Execution du balayage des parametres...');
-		fetch('/diagnose_stop', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_stop failed: ' + r.status + ' ' + r.statusText); return r.json(); })
+		appendTerminalLines('Execution du diagnostic pour ' + detectorName + '...');
+
+		fetch('/diagnose_detector', { method: 'POST' })
+			.then(function(r) {
+				if (!r.ok) {
+					return r.json().then(function(body) {
+						var msg = (body && body.error) ? body.error : 'diagnose_detector failed';
+						if (msg.indexOf('capture') !== -1 || msg.indexOf('captured') !== -1) {
+							showToast('\u26a0\ufe0f Veuillez capturer une image avant de lancer le diagnostic.', 'warning');
+						} else {
+							showToast('Erreur: ' + msg, 'error');
+						}
+						throw new Error(msg);
+					}).catch(function(parseErr) {
+						if (parseErr.message && parseErr.message.indexOf('capture') !== -1) throw parseErr;
+						showToast('Erreur serveur (' + r.status + ')', 'error');
+						throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText);
+					});
+				}
+				return r.json();
+			})
 			.then(function(payload) {
+				// Afficher les logs dans le terminal
 				if (payload.logs && Array.isArray(payload.logs)) {
 					appendTerminalLines(payload.logs);
 				} else {
 					appendTerminalLines(JSON.stringify(payload, null, 2));
 				}
-				var best = payload.best || {};
-				var imgUrl = best.file_url || payload.source_file_url;
-				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				if (best.bbox) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
-			})
-			.catch(function(err) {
-				logError('runStopDiagnostics: /diagnose_stop', err);
-				indicator.classList.remove('on');
-				indicator.classList.add('off');
-				indicator.textContent = 'Erreur';
-			});
-	}
 
-	function runGenericDiagnostics() {
-		console.log('[DEBUG runGenericDiagnostics] Function called, fetching /diagnose_detector');
-		var indicator = document.getElementById('stopDetectIndicator');
-		var terminal = document.getElementById('stopDetectTerminal');
-		indicator.classList.remove('on', 'off');
-		indicator.textContent = 'Diagnostic en cours...';
-		appendTerminalLines('Exécution du diagnostic...');
-		fetch('/diagnose_detector', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText); return r.json(); })
-			.then(function(payload) {
-				// logs
-				if (payload.logs && Array.isArray(payload.logs)) {
-					appendTerminalLines(payload.logs);
-				} else { appendTerminalLines(JSON.stringify(payload, null, 2)); }
-				// Stop detecté - utiliser Object_detected
+				// Mettre à jour l'indicateur de détection
 				if (payload.Object_detected) {
 					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
+					indicator.textContent = 'Objet detecte';
 				} else {
 					indicator.classList.add('off');
 					indicator.textContent = 'Aucune detection';
 				}
 
-				// best bbox overlay - utiliser annotated_url
-				var imgUrl = (payload.steps && payload.steps.length) ? payload.steps[payload.steps.length - 1].url : payload.source_file_url;
+				// Afficher la dernière image annotée ou source
+				var imgUrl = payload.annotated_url
+					|| (payload.steps && payload.steps.length ? payload.steps[payload.steps.length - 1].url : null)
+					|| payload.source_file_url;
 				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				// enleve le draw de la bbox on le fait directement dans le backend sur une copie de l'image qu'on affiche ensuite
-				if (payload.detection_box) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
-				// open gallery in new tab
+
+				// Ouvrir la galerie des étapes dans un nouvel onglet (si disponible)
 				if (payload.steps && payload.steps.length) {
 					var w = window.open('', '_blank');
 					if (w) {
 						var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Diagnostic Gallery</title></head><body style="font-family:Arial; padding:12px;">';
-						html += '<h3>Etapes du diagnostic</h3>';
+						html += '<h3>Etapes du diagnostic - ' + detectorName + '</h3>';
 						for (var i = 0; i < payload.steps.length; i++) {
 							var s = payload.steps[i];
 							html += '<div style="margin-bottom:12px;"><div><b>' + s.name + '</b></div><img style="max-width:100%;border:1px solid #ccc" src="' + s.url + '"></div>';
@@ -717,29 +757,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				}
 			})
 			.catch(function(err) {
-				logError('runGenericDiagnostics: /diagnose_detector', err);
+				logError('runDiagnostics: /diagnose_detector', err);
 				indicator.classList.remove('on');
 				indicator.classList.add('off');
 				indicator.textContent = 'Erreur';
 			});
-	}
-
-	function runDiagnostics() {
-		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
-		console.log('[DEBUG runDiagnostics] SELECTED_DETECTOR_NAME:', detectorName);
-
-		if (detectorName === 'StopDetectorZumi') {
-			// Détecteur Zumi spécifique avec balayage de paramètres
-			console.log('[DEBUG runDiagnostics] Matched "StopDetectorZumi", calling runStopDiagnostics');
-			runStopDiagnostics();
-		} else if (detectorName.indexOf('StopDetector') !== -1) {
-			// Tous les autres détecteurs de stop (CV, Matt, etc.) utilisent la route générique
-			console.log('[DEBUG runDiagnostics] Matched detector containing "StopDetector", calling runGenericDiagnostics');
-			runGenericDiagnostics();
-		} else {
-			console.log('[DEBUG runDiagnostics] No match, showing alert');
-			alert('Aucun diagnostique disponible pour le détecteur sélectionné : ' + detectorName);
-		}
 	}
 
 	// Charger la liste des détecteurs au chargement de la page et lier les événements

@@ -17,15 +17,17 @@ from core.robot.robot_zumi import RobotZumi
 # Import du pipeline de vision et des détecteurs
 from core.vision.vision_pipeline import VisionPipeline
 from core.vision.detectors.Luminosity import LuminosityDetector
-from core.vision.detectors.Stop_detector_zumi import StopDetector
+from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
 from core.vision.detectors.Stop_detector_cv import StopDetectorCV
 from core.vision.detectors.Stop_detector_matt import StopDetectorMatt
+from core.vision.detectors.Haar_classifier import HaarDetector
 
 # Import pour le serveur web (Flask)
 from interface import server_controller as controller_module
 from interface import flask_router as routes
 
 # Import utilitaire
+import os
 import threading
 
 
@@ -38,16 +40,24 @@ zumi = RobotZumi()
 
 # Initialisation du pipeline de vision
 Lum_detector = LuminosityDetector()
-stop_detector = StopDetector()
+stop_detector = StopDetectorZumi()
 stop_detector_cv = StopDetectorCV(min_area=400, aspect_tol=0.4, poly_min=6, poly_max=10)
 stop_detector_matt = StopDetectorMatt(min_area=400, min_score=0.35)
+haar_classifier = HaarDetector()
 vision_pipeline = VisionPipeline(camera=zumi.camera)
+
+# Dossier contenant les modèles .xml pour les classificateurs de Haar       
+MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'vision', 'detectors', 'models')
+
+# config du classificateur de Haar pour l'ajout de détecteurs
+haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'stop_sign_classifier_2.xml'))
 
 # On ajoute le détecteur au pipeline de vision
 vision_pipeline.add_detectors(Lum_detector)
 vision_pipeline.add_detectors(stop_detector)
 vision_pipeline.add_detectors(stop_detector_cv)
 vision_pipeline.add_detectors(stop_detector_matt)
+vision_pipeline.add_detectors(haar_classifier)
 # Initialisation du contrôleur (serveur Flask)
 ctrl = controller_module.controller(zumi)
 routes.register_routes(ctrl) # on enregistre les routes sur l'instance Flask du contrôleur (build du serveur)

@@ -8,244 +8,218 @@
 # choix de scénarios et les boutons de contrôle du pont levis.
 
 def render_accueil_tab(title: str = "Accueil") -> str:
-    html = """<!DOCTYPE html><html lang='fr'>
-    <head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <title>{title}</title>
+	"""Retourne la page HTML complète de l'onglet d'accueil.
+	"""
+
+	html = """<!DOCTYPE html><html lang='fr'>
+	<head>
+	<meta charset='UTF-8'>
+	<meta name='viewport' content='width=device-width, initial-scale=1'>
+	<title>{title}</title>
+	<link rel='icon' href='data:,'>
+	<style>
     <style>
-    body { margin: 0; padding: 0; width: 100vw; height: 100vh; font-family: Arial; background: linear-gradient(135deg, #40E0D0, #00BFFF); color: #333; display: flex; flex-direction: column; }
-    .container { display: flex; justify-content: center; padding: 20px; height: calc(100vh - 40px); }
-    .tab-shell { background: rgba(255,255,255,0.95); border-radius: 16px; padding: 18px; width: min(980px, 100%); display:flex; flex-direction:column;}
-    .tab-header { display: flex; align-items: center; margin-bottom: 15px; }
-    .tab-nav { margin-left: auto; display: flex; gap: 5px; }
-    .tab-content { display: flex; gap: 20px; flex: 1; min-height:0; }
-    
-    .left-panel, .right-panel { background: #f8f9fa; border-radius: 12px; padding: 15px; flex: 1; display:flex; flex-direction:column; align-items:center; border: 1px solid #ddd; overflow-y: auto;}
-    
-    /* Boutons */
-    .primary-btn { background: #007acc; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-    .command-button { margin: 5px; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color:white; width: 120px; transition: all 0.3s ease;}
-    .btn-green { background: #28a745; }
-    .btn-red { background: #dc3545; }
-    .btn-blue { background: #007bff; }
-    
-    /* SWITCH CSS */
-    .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
-    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
-    input:checked + .slider { background-color: #2196F3; }
-    input:checked + .slider:before { transform: translateX(26px); }
-    
-    /* --- CLASSE POUR DÉSACTIVER LES BOUTONS --- */
-    .disabled { 
-        background-color: #cccccc !important; 
-        color: #666666 !important; 
-        cursor: not-allowed; 
-        pointer-events: none; 
-        box-shadow: none;
-    }
+    body {
+		margin: 0; padding: 0;
+		width: 100vw; height: 100vh;
+		font-family: 'Segoe UI', Arial, sans-serif;
+		/* Ton background préféré rose et bleu pastel */
+		background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
+		color: #333; display: flex; flex-direction: column;
+		overflow: hidden;
+	}
 
-    .left-panel {
-        margin-right: 20px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
+	.container {
+		display: flex; justify-content: center; align-items: flex-start;
+		padding: 2vh; height: 96vh;
+	}
 
-    .right-panel { overflow-y: auto; }
+	.tab-shell {
+		/* Un blanc très légèrement bleuté pour la douceur */
+		background: rgba(247, 253, 255, 0.95);
+		border-radius: 20px;
+		padding: 2%;
+		box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+		width: 90%; 
+		max-width: 1100px;
+		height: 85%;
+		display: flex;
+		flex-direction: column;
+	}
 
-    /* Boite d'entête */
-    .tab-header {
+	.tab-header {
 		display: flex; align-items: center;
-		margin-bottom: 12px;
+		margin-bottom: 2vh;
+		padding-bottom: 1vh;
+		border-bottom: 2px solid #e0f4ff;
 	}
 
-    /* Boite de boutons de navigation entre onglets */
-    .tab-nav {
+	.tab-nav {
 		display: flex; align-items: center;
-		gap: 4px;
-		margin-left: auto; /* pousse la nav à droite */
+		gap: 8px;
+		margin-left: auto;
 	}
 
-    /* Boite de contenu, contour pointillé */
-    .tab-content {
-		border: 2px dashed #bcdffb;
-		border-radius: 12px;
-		padding: 16px;
-		min-height: 200px;
-		background: #f7fbff;
+	.tab-content {
+		/* Bordure bleue plus douce et fond jaune crème très léger */
+		border: 3px dashed #B5FFFC;
+		border-radius: 15px;
+		padding: 3%;
+		flex-grow: 1;
+		background: #FFFDF0; 
+		display: flex;
+		gap: 3%;
+		overflow-y: auto;
 	}
 
-    /* Ligne horizontale pour agencer des éléments */
-    .tab-row {
-		display: flex; align-items: flex-start; gap: 12px;
+	.left-panel, .right-panel {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
-
-	/* --- Styles pour les différents types de texte --- */
 	
-    /* Boite de texte format titre */
-    .tab-title {
-		font-size: 22px; font-weight: bold; margin: 0;
-	}
-
-    /* Boite de texte format sous-titre */
-    .tab-subtitle {
-		font-size: 18px; font-weight: bold; margin: 0;
-	}
-
-    /* Boite de texte format texte normal */
-    .tab-text {
-		font-size: 16px; font-weight: normal; margin: 0;
-	}
-
-	/* --- Déclarations des différents styles de widgets --- */
-
-	/* style bouton cliquable principal */
-    .primary-btn {
-		background: #007acc; color: white; border: none;
-		padding: 10px 18px; border-radius: 10px;
-		cursor: pointer; font-size: 15px;
-	}
-
-    .primary-btn:hover { background: #005fa3; }
-
-	/* état actif pour le bouton d'onglet courant */
-    .primary-btn.active {
-		background: #00528a;
-		box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
-	}
-
-	/* style bouton toggle */
-    .toggle-btn {
-        background: #007acc; 
-        color: white; 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 10px; 
-        cursor: pointer; 
-        margin-top: 15px; 
-        font-size: 15px;
-    }
-
-    .toggle-btn:hover { background: #005fa3; } 
-
-	/* --- definition des elements de controle du robot --- */
-	.command-button {
-        margin: 5px;
-        padding: 10px 15px;
-        border: none;
-        border-radius: 8px;
+	    #log-box {
+        background: #FFFFFF; 
+        border-radius: 15px;
+        padding: 15px;
+        width: 85%; /* Occupe presque toute la largeur du panneau */
+		
+		height: 60px;          /* On force une hauteur fixe */
+        display: flex;         /* Utilise Flexbox pour centrer le texte */
+        align-items: center;   /* Centre le texte verticalement */
+        justify-content: center; /* Centre le texte horizontalement */
+        overflow: hidden;      /* Empêche le texte de dépasser si c'est trop long */
+        
+        margin-bottom: 2vh;
+        text-align: center;
+        font-size: 1.1rem;
         font-weight: bold;
-        cursor: pointer;
+        border: 3px solid #87C7F1; 
+        box-shadow: 0 4px 0 #D0D0D0;
+        color: #555;
     }
 
-        .driving-mode {
-            background-color: #e0f7fa;
-            padding: 15px;
-            border-radius: 15px;
-            text-align: center;
-            margin-top: 20px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            align-items: center; /* Centre le D-pad */
-        }
-
-        .driving-mode h3 {
-            margin-bottom: 10px;
-        }
-
-        /* Conteneur principal pour le D-pad */
-        .dpad-container {
-            display: grid;
-            /* Définit la disposition en 3x3 */
-            grid-template-areas:
-                ".     up     ."
-                "left  center right"
-                ".     down   .";
-            grid-gap: 8px; /* Espace entre les boutons */
-            width: 180px;  /* Taille réduite pour s'adapter */
-            height: 180px; /* Taille réduite pour s'adapter */
-        }
-
-        .dpad-button {
-            background-color: #e0e0e0; /* Gris clair */
-            border: none;
-            border-radius: 20px; /* Coins arrondis */
-            cursor: pointer;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: all 0.15s ease-out;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 
-                        inset 0 1px 1px rgba(255, 255, 255, 0.7);
-            user-select: none; /* Empêche la sélection de texte/icône */
-        }
-
-        .dpad-button:hover {
-            background-color: #d0d0d0;
-        }
-
-        /* Effet d'enfoncement au clic/toucher */
-        .dpad-button:active {
-            background-color: #c0c0c0;
-            transform: scale(0.95);
-            box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Icônes SVG pour les flèches (couleur #555) */
-        .dpad-button svg {
-            width: 50%;
-            height: 50%;
-            stroke: #555;
-            stroke-width: 12;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            fill: none;
-        }
-
-        /* Assignation aux zones de la grille */
-        .dpad-up { grid-area: up; }
-        .dpad-down { grid-area: down; }
-        .dpad-left { grid-area: left; }
-        .dpad-right { grid-area: right; }
-
-        .dpad-center {
-            grid-area: center;
-            background-color: #ffffff; /* Centre blanc */
-            border: 3px solid #e0e0e0;
-        }
-        .dpad-center:hover { background-color: #f0f0f0; }
-        .dpad-center:active { background-color: #e0e0e0; }
-
-
-	/* --- Styles pour le live feed vidéo --- */
-
-    .live-feed {
-        display: none; 
-        width: 100%; 
-        margin-top: 20px; 
-        padding: 10px; 
-        background-color: #f0f8ff; 
-        border-radius: 20px; 
-        box-shadow: 0 0 10px rgba(0,0,0,0.15); 
-        text-align: center; 
-    }
-
-    .live-feed img {
-        width: 50%; 
-        max-width: 650px; 
-        height: auto; 
-        border-radius: 8px; 
-        border: 4px solid #00BFFF; 
-        margin-top: 10px; 
-    }
-
+	/* --- Styles pour les textes --- */
 	
-	/* --- Arrangements des éléments de l'interface --- */
-	
+	.tab-title {
+		font-size: 1.8rem; font-weight: bold; color: #5A99C7; margin: 0;
+	}
+
+	.tab-subtitle {
+		font-size: 1.3rem; font-weight: bold; color: #666; margin-bottom: 15px;
+	}
+
+	.tab-text {
+		font-size: 1.1rem; color: #444;
+	}
+
+	/* --- Boutons Pastels --- */
+
+	.primary-btn {
+		/* Bleu ciel doux */
+		background: #87C7F1; color: white; border: none;
+		padding: 12px 20px; border-radius: 12px;
+		cursor: pointer; font-size: 1rem; font-weight: bold;
+		transition: transform 0.2s, background 0.2s;
+		box-shadow: 0 4px 0 #6BAED6; /* Effet 3D léger */
+	}
+
+	.primary-btn:hover { 
+		background: #76B9E4; 
+		transform: translateY(-2px);
+	}
+
+	.primary-btn:active {
+		transform: translateY(2px);
+		box-shadow: 0 2px 0 #6BAED6;
+	}
+
+	.primary-btn.active {
+		background: #5A99C7;
+		box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+	}
+
+	.toggle-btn {
+		background: #FFB7D5; /* Rose pastel pour la caméra */
+		color: white; border: none; 
+		padding: 12px 24px; border-radius: 12px; 
+		cursor: pointer; font-weight: bold;
+		box-shadow: 0 4px 0 #E896B9;
+	}
+
+	.toggle-btn:hover { background: #FFA3C8; }
+
+	/* --- Le D-Pad (Contrôle Robot) --- */
+
+	.driving-mode {
+		background-color: #E0F7FA;
+		padding: 20px;
+		border-radius: 20px;
+		width: 80%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+	}
+
+	/* --- Le D-Pad en Croix (Étoile) --- */
+	.dpad-container {
+		display: grid;
+		/* Ici on définit la grille 3x3 pour faire la croix */
+		grid-template-areas: 
+			".     up     ."
+			"left  center right"
+			".     down   .";
+		grid-gap: 12px;
+		width: 25vh; 
+		height: 25vh;
+	}
+
+	.dpad-button {
+		background: #FFFFFF; 
+		border-radius: 15px;
+		border: none; 
+		cursor: pointer;
+		box-shadow: 0 4px 0 #D0D0D0;
+		display: flex; 
+		justify-content: center; 
+		align-items: center;
+		transition: all 0.1s;
+	}
+
+	/* Assignation des boutons aux zones de la grille */
+	.dpad-up    { grid-area: up; }
+	.dpad-down  { grid-area: down; }
+	.dpad-left  { grid-area: left; }
+	.dpad-right { grid-area: right; }
+	.dpad-center { 
+		grid-area: center; 
+		background: #FFF; /* Le bouton STOP au milieu */
+		border: 2px dashed #87C7F1;
+	}
+	.dpad-button:hover { background: #F9F9F9; }
+	.dpad-button:active { transform: translateY(3px); box-shadow: 0 1px 0 #D0D0D0; }
+	.dpad-button svg { width: 50%; height: 50%; stroke: #87C7F1; stroke-width: 10; }
+
+	/* --- Live Feed --- */
+
+	.live-feed {
+		display: none; 
+		width: 90%; 
+		margin-top: 2vh; 
+		padding: 10px; 
+		background: white;
+		border-radius: 20px; 
+		border: 4px solid #B5FFFC;
+		text-align: center; 
+	}
+
+	.live-feed img {
+		width: 100%; border-radius: 10px;
+	}
+</style>
+
 	</style>
 	</head>
 	<body>
@@ -265,7 +239,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 			<div class='tab-content'>
 				<!-- AJOUTER VOS BOUTONS ICI -->
 				<div class='left-panel'>
-					<button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
+					<button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>🎥 Allume la caméra !</button>
 					<div id='zone-resultats'>
 						<!-- Conteneur du flux vidéo en direct -->
 						<div class='live-feed' id='liveFeed' style = 'display:none;'>
@@ -275,8 +249,11 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 </div>
 
 				<div class='right-panel'>
-					<div class='driving-mode'>
-						<h3>Contrôle du Zumi</h3>
+                    <div class='driving-mode'>
+                        <h3>Contrôle du Zumi</h3>
+                        <!-- La boîte apparaît grâce à cette ligne -->
+                        <div id="log-box">Coucou ! Je suis prêt à rouler ! 🤖</div>
+						
 						<div class="dpad-container">
 							<!-- HAUT -->
 							<button class="dpad-button dpad-up" data-direction="forward">
@@ -335,27 +312,43 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 		Array.prototype.forEach.call(btns, function(btn) {
 			var p = norm(btn.getAttribute('data-path'));
 			if (p === here) btn.classList.add('active');
-		});
-	})();
+        });
+    })();
 
-	// --- Unified error logging (console) ---
-	function nowTS() { return new Date().toISOString(); }
-	function logError(context, error, extra) {
-		var msg = (error && error.message) ? error.message : String(error);
-		console.error('[UI][' + nowTS() + '] ' + context + ': ' + msg, extra || '');
-	}
+    function toggleCamera() { 
+        console.log("toggleCamera() appelée"); // pour debug
 
-	// Global error hooks for visibility
-	window.addEventListener('error', function(e) {
-		logError('window.onerror', e.error || e.message);
-	});
-	window.addEventListener('unhandledrejection', function(e) {
-		logError('window.unhandledrejection', e.reason);
-	});
+        const liveFeed = document.getElementById('liveFeed'); 
+        const btn = document.getElementById('cameraToggleBtn'); 
+        const img = liveFeed.querySelector('img'); 
 
-	// État global : état caméra
-	var CAMERA_ACTIVE = false;
+        const isActive = liveFeed.style.display === 'block';
 
+        if (!isActive) {
+            // 1. Affiche le conteneur et change le bouton (pour la réactivité)  
+            btn.textContent = '⏹️ Éteint la caméra'; 
+
+            // 2. Envoie la commande de démarrage au serveur 
+            fetch('/start_camera', { method: 'POST' }) 
+                .then(() => {
+                // 3. ATTEND que le serveur ait confirmé le démarrage avant de demander le flux vidéo. 
+                liveFeed.style.display = 'block';
+                img.src = '/video?' + new Date().getTime(); 
+            }); 
+        
+        } else {
+            // 1. Cache le conteneur et change le bouton 
+            liveFeed.style.display = 'none'; 
+            btn.textContent = '🎥 Allume la caméra !'; 
+            
+            // 2. Vide la source de l'image (arrête le flux gelé) 
+            img.src = "";  
+            
+            // 3. Envoie la commande d'arrêt au serveur 
+            fetch('/close_camera', { method: 'POST' }); 
+        }
+    }
+	
 	// Navigation helper: close camera feed if active before redirecting
 	function navigateTo(path) {
 		try {
@@ -374,38 +367,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 		}
 	}
 
-	function toggleCamera() {
-		var liveFeed = document.getElementById('liveFeed');
-		var img = document.getElementById('videoStream');
-		var btn = document.getElementById('cameraToggleBtn');
-		var isActive = CAMERA_ACTIVE && liveFeed.style.display === 'block';
-
-		if (!isActive) {
-			// Démarrer la caméra
-			btn.textContent = '⛔ Stop Camera';
-			fetch('/start_camera', { method: 'POST' })
-				.then(function(response) {
-					if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
-					liveFeed.style.display = 'block';
-					img.src = '/video?' + new Date().getTime();
-					CAMERA_ACTIVE = true;
-				})
-				.catch(function(err) {
-					logError('toggleCamera: /start_camera', err);
-					btn.textContent = '▶️ Start Camera';
-					CAMERA_ACTIVE = false;
-				});
-		} else {
-			// Arrêter la caméra
-			liveFeed.style.display = 'none';
-			btn.textContent = '▶️ Start Camera';
-			img.src = '';
-			CAMERA_ACTIVE = false;
-			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
-		}
-	}
-
-	// --- MODE AUTO ET GESTION UI ---
+  // --- MODE AUTO ET GESTION UI ---
 	function toggleAuto(isAuto) {
 		var val = isAuto ? '1' : '0';
 		fetch('/bridge/mode_auto/' + val, { method: 'POST' })
@@ -422,6 +384,81 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 			btnClose.classList.remove('disabled');
 		}
 	}
+		
+		
+		
+		
+		
+		
+		// --- NOUVEAU : Texte affiche pour etat du robot ---
+		//document.getElementById('log-box').innerText = "🤖 État : " + direction;
+		
+		const log = document.getElementById('log-box');
+        log.style.color = "#000000"; // Couleur de texte par défaut (noir)
+
+        // Logique pour afficher le message approprié
+        switch (direction)
+		{
+            case 'forward':
+                log.innerText = "En avant ! 🚀";
+                log.style.color = "#28a745"; // Vert pour avancer
+                break;
+            case 'reverse':
+                log.innerText = "En arrière ! ⏪";
+                log.style.color = "#dc3545"; // Rouge pour reculer
+                break;
+            case 'left':
+                log.innerText = "À gauche toute ! ↪️";
+                log.style.color = "#007bff"; // Bleu pour tourner
+                break;
+            case 'right':
+                log.innerText = "À droite ! ↩️";
+                log.style.color = "#007bff"; // Bleu pour tourner
+                break;
+        }
+
+				
+        // Fonction interne pour envoyer la commande
+        const sendMoveCommand = () => {
+            fetch('/zumi/' + direction)
+                .then(response => {
+                    if (!response.ok) console.error('Error starting move: ' + direction);
+                })
+                .catch(error => console.error('Fetch error:', error));
+        };
+
+        // 1. Envoyer la commande 1x immédiatement pour la réactivité
+        sendMoveCommand(); 
+        
+        // 2. Démarrer un intervalle qui 'nourrit' le watchdog 4x par seconde (250ms)
+        moveInterval = setInterval(sendMoveCommand, 250);
+    }
+
+    function stopMove() {
+        if (!isMoving) return; // Évite les 'stop' inutiles
+        isMoving = false;
+        
+		
+		// --- NOUVEAU : Ajout du message d'arret ---
+		const log = document.getElementById('log-box');
+        log.innerText = "Ouf, je fais une pause. 🛑";
+        log.style.color = "#6c757d"; // Gris neutre pour la pause
+		
+		
+        // 1. Arrêter l'envoi de commandes en continu
+        if (moveInterval) {
+            clearInterval(moveInterval);
+            moveInterval = null;			
+        }
+        
+        // 2. Envoyer la commande d'arrêt explicite
+        fetch('/zumi/stop')
+            .then(response => {
+                if (!response.ok) console.error('Error stopping move');
+            })
+            .catch(error => console.error('Fetch error:', error));
+    }
+    // --- FIN DES MODIFICATIONS WATCHDOG ---
 
 	// --- FONCTIONS DE MOUVEMENT ---
 	var isMoving = false;

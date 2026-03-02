@@ -9,6 +9,7 @@
 """
 import requests  # <--- IMPORTANT : Pour communiquer avec le pont
 import os, uuid, time, cv2, itertools, numpy as np
+
 from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
 from interface.onglet_acceuil import render_accueil_tab
@@ -32,11 +33,13 @@ def format_detection_result(results, detector_name="Détecteur"):
     lines.append('RÉSULTATS DE DÉTECTION - {}'.format(detector_name))
     lines.append('=' * 60)
 
-    # Détection générale
-    detected = results.get('Stop_detected', results.get('Object detected', False))
+    # Détection générale (clé standardisée + fallbacks legacy)
+    detected = results.get('Object_detected',
+        results.get('Stop_detected',
+        results.get('Object detected', False)))
     lines.append('Objet détecté: {}'.format('OUI' if detected else 'NON'))
 
-    # Boîte de détection
+    # Boîte de détection (clé standardisée + fallback legacy)
     bbox = results.get('detection_box') or results.get('Object coordinates')
     if bbox:
         if len(bbox) == 4:  # (x, y, w, h)
@@ -112,7 +115,7 @@ class controller:
         self.last_captured_filename = None
 
     def attach_pipeline_vision(self, pipeline):
-        pipeline.atach_capture_dir(self.CAPTURE_DIR)
+        pipeline.attach_capture_dir(self.CAPTURE_DIR)
         self.vision_pipeline = pipeline
 
     # --- Navigation ---
@@ -226,12 +229,9 @@ class controller:
     # Exécuter la détection sur la dernière image capturée
     def run_detection(self):
         """
-        Cette fonction exécute le détecteur sélectionné elle devrait servir à
-        - charger le détecteur sélectionné
-        - charger la dernière image capturée
-
-        
-        :param self: Description
+        Exécute le détecteur sélectionné sur la dernière image capturée.
+        Le détecteur se charge de l'annotation et retourne un payload
+        standardisé (Object_detected, detection_box, annotated_url, etc.).
         """
         vp = self.vision_pipeline
         if vp is None:
@@ -258,159 +258,19 @@ class controller:
             detector_name = vp.get_detectors()[self.selected_detector_index].name if hasattr(vp.get_detectors()[self.selected_detector_index], 'name') else 'Unknown'
             print(format_detection_result(results, detector_name))
 
-            # Si détection, créer et sauvegarder une version annotée
-            annotated_url = None
-            annotated_filename = None
-            if results and results.get('Object detected'):
-                coords = results.get('Object coordinates')
-                size = results.get('Object size')
-                if coords and size:
-                    x, y = int(coords[0]), int(coords[1])
-                    w, h = int(size[0]), int(size[1])
-                    # Dessiner sur une copie pour ne pas modifier l'originale
-                    annotated = frame_bgr.copy()
-                    cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    cv2.putText(annotated, 'STOP', (x, max(0, y - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-                    base, ext = os.path.splitext(filename)
-                    annotated_filename = '{}_det{}'.format(base, ext or '.jpg')
-                    annotated_path = os.path.join(self.CAPTURE_DIR, annotated_filename)
-                    cv2.imwrite(annotated_path, annotated)
-                    annotated_url = url_for('static', filename='captured_images/{}'.format(annotated_filename))
-
             # Inclure les URLs utiles pour l'interface
             source_url = url_for('static', filename='captured_images/{}'.format(filename))
             payload = dict(results)
-            payload.update({
-                'source_filename': filename,
-                'source_file_url': source_url,
-                'annotated_filename': annotated_filename,
-                'annotated_file_url': annotated_url,
-            })
+            payload['source_filename'] = filename
+            # S'assurer que les clés standardisées sont présentes
+            if 'source_file_url' not in payload:
+                payload['source_file_url'] = source_url
+
             return jsonify(payload)
         except IndexError:
             return jsonify({'error': 'invalid detector index'}), 400
         except Exception as e:
             return jsonify({'error': 'processing failed', 'details': str(e)}), 500
-
-    # Diagnostic stop: balayage des paramètres et sauvegarde d'overlays
-    def diagnose_stop(self):
-        vp = self.vision_pipeline
-        if vp is None:
-            return jsonify({'error': 'Video pipeline not initialized'}), 400
-
-        # Récupérer l'image capturée la plus récente depuis le disque
-        filename = getattr(self, 'last_captured_filename', None)
-        if not filename:
-            return jsonify({'error': 'no captured image available. Please capture an image first.'}), 400
-
-        img_path = os.path.join(self.CAPTURE_DIR, filename)
-        if not os.path.exists(img_path):
-            return jsonify({'error': 'last captured image not found on server'}), 404
-
-        # Dossier diagnostics
-        diag_dir = os.path.join(self.CAPTURE_DIR, 'diagnostics')
-        os.makedirs(diag_dir, exist_ok=True)
-
-        try:
-            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
-            if frame_bgr is None:
-                return jsonify({'error': 'failed to read captured image'}), 500
-
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-
-            # Paramètres à balayer
-            scale_factors = [1.03, 1.05, 1.08, 1.12, 1.15, 1.20]
-            min_neighbors = [5, 7, 8, 10, 12]
-            min_sizes = [24, 32, 40, 56, 80]
-
-            detector = vp.get_detectors()[self.selected_detector_index]
-
-            logs = []
-            detections = []
-            best = {"space": None, "sf": None, "mn": None, "ms": None, "bbox": None, "area": 0, "file_url": None}
-
-            def normalize(det):
-                if det is None:
-                    return None
-                # list/tuple single bbox
-                if isinstance(det, (list, tuple)):
-                    if len(det) >= 4 and all(isinstance(v, (int, float)) for v in det[:4]):
-                        return [int(det[0]), int(det[1]), int(det[2]), int(det[3])]
-                    # list of bboxes
-                    if len(det) > 0 and isinstance(det[0], (list, tuple)) and len(det[0]) >= 4:
-                        cands = [[int(d[0]), int(d[1]), int(d[2]), int(d[3])] for d in det if len(d) >= 4]
-                        if cands:
-                            return max(cands, key=lambda b: b[2]*b[3])
-                        return None
-                # dict formats
-                if isinstance(det, dict):
-                    for keys in (("x","y","w","h"), ("left","top","width","height")):
-                        if all(k in det for k in keys):
-                            return [int(det[keys[0]]), int(det[keys[1]]), int(det[keys[2]]), int(det[keys[3]])]
-                    rects = det.get("rects")
-                    if isinstance(rects, (list, tuple)) and rects:
-                        cands = [[int(d[0]), int(d[1]), int(d[2]), int(d[3])] for d in rects if len(d) >= 4]
-                        if cands:
-                            return max(cands, key=lambda b: b[2]*b[3])
-                return None
-
-            def draw_and_save(img, bbox, label, fname_base):
-                x, y, w, h = [int(v) for v in bbox]
-                overlay = img.copy()
-                cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(overlay, label, (x, max(0, y - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                # Sauvegarde en BGR
-                save_bgr = overlay if label.startswith('BGR') else cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR)
-                out_name = '{}.jpg'.format(fname_base)
-                out_path = os.path.join(diag_dir, out_name)
-                cv2.imwrite(out_path, save_bgr)
-                out_url = url_for('static', filename='captured_images/diagnostics/{}'.format(out_name))
-                return out_url
-
-            # Balayage
-            for sf, mn, ms in itertools.product(scale_factors, min_neighbors, min_sizes):
-                for space_tag, img in (("BGR", frame_bgr), ("RGB", frame_rgb)):
-                    try:
-                        # Forcer paramètres du détecteur courant sans modifier l'instance définitivement
-                        # On appelle directement la fonction Vision si disponible (dans StopDetector)
-                        det_raw = None
-                        if hasattr(detector, 'zumi_vision'):
-                            det_raw = detector.zumi_vision.find_stop_sign(
-                                img,
-                                scale_factor=sf,
-                                min_neighbors=mn,
-                                min_size=(ms, ms),
-                            )
-                        else:
-                            # Fallback: utiliser detector.process si pas d'accès direct
-                            # (dans ce cas, on ne peut pas forcer les paramètres)
-                            det_raw = detector.process(img)
-                        bbox = normalize(det_raw)
-                        logs.append("{} sf={} mn={} ms={} -> {}".format(space_tag, sf, mn, ms, "bbox" if bbox else "None"))
-                        entry = {"space": space_tag, "sf": sf, "mn": mn, "ms": ms, "bbox": bbox, "area": 0, "file_url": None}
-                        if bbox:
-                            area = int(bbox[2]) * int(bbox[3])
-                            entry["area"] = area
-                            base = 'stop_{}_sf{}_mn{}_ms{}_a{}'.format(space_tag, str(sf).replace('.', '_'), mn, ms, area)
-                            entry["file_url"] = draw_and_save(img, bbox, '{} STOP'.format(space_tag), base)
-                            if area > best["area"]:
-                                best.update({"space": space_tag, "sf": sf, "mn": mn, "ms": ms, "bbox": bbox, "area": area, "file_url": entry["file_url"]})
-                        detections.append(entry)
-                    except Exception as e:
-                        logs.append("ERROR {} sf={} mn={} ms={}: {}".format(space_tag, sf, mn, ms, str(e)))
-
-            source_url = url_for('static', filename='captured_images/{}'.format(filename))
-            payload = {
-                "source_filename": filename,
-                "source_file_url": source_url,
-                "best": best,
-                "detections": detections,
-                "logs": logs,
-            }
-            return jsonify(payload)
-        except Exception as e:
-            return jsonify({'error': 'diagnostics failed', 'details': str(e)}), 500
 
     # Diagnostic générique: appelle la méthode diagnostique_detecteur() du détecteur sélectionné
     def diagnose_detector(self):
