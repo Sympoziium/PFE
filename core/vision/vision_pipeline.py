@@ -32,8 +32,6 @@ class VisionPipeline:
         # Buffer de la dernière image et protection de concurrence
         self._lock = threading.Lock()
         self._last_frame = None
-        # Fonction optionnelle de capture haute résolution (injectée depuis l'extérieur)
-        self._hires_capture_fn = None
         # threads pour la détection passive
         self._passive_thread = None         # instance du thread
         self._passive_running = False       # Flag pour contrôler l'exécution du thread
@@ -161,53 +159,9 @@ class VisionPipeline:
             except Exception:
                 return self._last_frame
 
-    def set_hires_capture_fn(self, fn):
-        """
-        Injecte une fonction de capture haute résolution.
-        
-        La fonction doit avoir la signature : fn(width, height) -> np.ndarray (BGR)
-        Elle sera appelée par capture_hires_frame() pour obtenir une image à
-        résolution supérieure sans que le pipeline ait besoin de connaître les
-        détails de la caméra sous-jacente (modularité).
-        
-        :param fn: callable(width: int, height: int) -> np.ndarray
-        """
-        self._hires_capture_fn = fn
-
-    def capture_hires_frame(self, width=640, height=480):
-        """
-        Capture une image haute résolution via la fonction injectée.
-        
-        Si aucune fonction hires n'a été injectée, retombe sur la capture
-        normale (get_last_frame ou capture_frame).
-        
-        Note : pendant la capture hires, le flux vidéo normal est brièvement
-        interrompu (la caméra est fermée et rouverte). C'est normal.
-        
-        :param width: Largeur souhaitée pour la capture hires
-        :param height: Hauteur souhaitée pour la capture hires
-        :return: np.ndarray BGR ou None
-        """
-        if self._hires_capture_fn is not None:
-            try:
-                frame = self._hires_capture_fn(width, height)
-                if frame is not None:
-                    return frame
-                print("[VisionPipeline] Hires capture returned None, falling back to normal")
-            except Exception as e:
-                print("[VisionPipeline] Hires capture failed: {}, falling back".format(e))
-        
-        # Fallback : capture normale
-        frame = self.get_last_frame()
-        if frame is not None:
-            return frame
-        if self.running:
-            return self.capture_frame()
-        return None
-
-    def has_hires_capture(self):
-        """Vérifie si la capture haute résolution est disponible."""
-        return self._hires_capture_fn is not None
+    # SUPPRIMÉ: set_hires_capture_fn, capture_hires_frame, has_hires_capture
+    # Utiliser change_camera_resolution(width, height) à la place pour un flux vidéo continu
+    # à la résolution désirée
 
     def change_camera_resolution(self, width, height):
         """
@@ -304,7 +258,7 @@ class VisionPipeline:
         hauteur_reelle_cm = {
             'pieton': 4.5,
             'camion_pompier': 7.0,
-            'stop':   4.5
+            'stop_sign':   4.5
         }
 
         f_pixels = 594.0674603  # focale en pixels calculé depuis excel par essai sur des captures a distances fixes de 15 et 30 cm

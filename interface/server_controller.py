@@ -208,108 +208,32 @@ class controller:
         if vp is None or not vp.is_running():
             return jsonify({'error': 'camera not running'}), 400
 
-        # ── Mode haute résolution (optionnel) ──
-        # Si ?hires=1 est passé en query param, on capture en haute résolution
-        # pour améliorer la qualité de détection (surtout pour les petits objets).
-        # La résolution par défaut est 320×240 mais peut être personnalisée via
-        # ?hires_w=640&hires_h=480
-        use_hires = request.args.get('hires', '0') == '1'
-        
-        if use_hires and vp.has_hires_capture():
-            hires_w = int(request.args.get('hires_w', '320'))
-            hires_h = int(request.args.get('hires_h', '240'))
-            frame = vp.capture_hires_frame(width=hires_w, height=hires_h)
-            if frame is None:
-                return jsonify({'error': 'hires capture failed, try normal capture'}), 500
-        else:
-            # 1. Récupération de l'image actuelle sans ré-entrer dans le générateur
-            #    Si le flux vidéo tourne, on utilise le dernier frame mis en buffer.
-            frame = vp.get_last_frame()
-            if frame is None:
-                return jsonify({'error': 'Activer la camera car le flux est pas encore disponible'}), 400
+        # Récupération de l'image actuelle sans ré-entrer dans le générateur
+        # Si le flux vidéo tourne, on utilise le dernier frame mis en buffer.
+        frame = vp.get_last_frame()
+        if frame is None:
+            return jsonify({'error': 'Activer la camera car le flux est pas encore disponible'}), 400
 
         frame_to_save = frame.copy()  # Toujours en BGR
 
-        # 2. Génération d'un nom de fichier unique
+        # Génération d'un nom de fichier unique
         ts = time.strftime("%Y%m%d-%H%M%S")
-        hires_tag = '_hires' if use_hires else ''
-        filename = '{}{}_{}.jpg'.format(ts, hires_tag, uuid.uuid4().hex[:6])
+        filename = '{}_{}.jpg'.format(ts, uuid.uuid4().hex[:6])
         save_path = os.path.join(self.CAPTURE_DIR, filename)
 
-        # 3. Sauvegarde directe en BGR (format natif OpenCV)
+        # Sauvegarde directe en BGR (format natif OpenCV)
         ok = cv2.imwrite(save_path, frame_to_save)
         if not ok:
             return jsonify({'error': 'write failed'}), 500
 
-        # 4. URL de téléchargement
+        # URL de téléchargement
         file_url = url_for('static', filename='captured_images/{}'.format(filename))
         download_url = '/download_image/{}'.format(filename)
         # Mémoriser la dernière image capturée pour une détection à la demande
         self.last_captured_filename = filename
-        hires_info = {'hires': True, 'resolution': '{}x{}'.format(hires_w, hires_h)} if use_hires else {'hires': False}
-        return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url, **hires_info})
+        return jsonify({'filename': filename, 'file_url': file_url, 'download_url': download_url})
 
-    def capture_image_hires(self):
-        """
-        Capture dédiée en haute résolution.
-        
-        Interrompt brièvement le flux vidéo pour capturer une seule image
-        à résolution supérieure (défaut 640×480). L'image est sauvegardée
-        et prête pour la détection.
-        
-        Query params optionnels :
-        - hires_w : largeur (défaut 640)
-        - hires_h : hauteur (défaut 480)
-        """
-        vp = self.vision_pipeline
-        if vp is None:
-            return jsonify({'error': 'pipeline not initialized'}), 400
-
-        if not vp.has_hires_capture():
-            return jsonify({'error': 'hires capture not available on this camera'}), 400
-
-        hires_w = int(request.args.get('hires_w', '640'))
-        hires_h = int(request.args.get('hires_h', '480'))
-
-        # Stopper le flux vidéo pour libérer la caméra
-        was_running = vp.is_running()
-        if was_running:
-            vp.stop()
-            import time as _t
-            _t.sleep(0.2)
-
-        frame = vp.capture_hires_frame(width=hires_w, height=hires_h)
-
-        # NE PAS relancer le flux vidéo ici.
-        # Le JS affiche une image statique après la capture, donc la caméra
-        # n'a pas besoin de tourner. Elle sera redémarrée quand l'utilisateur
-        # clique "Return to Livefeed" (via /start_camera).
-
-        if frame is None:
-            return jsonify({'error': 'hires capture returned no image'}), 500
-
-        frame_to_save = frame.copy()
-
-        ts = time.strftime("%Y%m%d-%H%M%S")
-        filename = '{}_hires_{}x{}_{}.jpg'.format(ts, hires_w, hires_h, uuid.uuid4().hex[:6])
-        save_path = os.path.join(self.CAPTURE_DIR, filename)
-
-        ok = cv2.imwrite(save_path, frame_to_save)
-        if not ok:
-            return jsonify({'error': 'write failed'}), 500
-
-        file_url = url_for('static', filename='captured_images/{}'.format(filename))
-        download_url = '/download_image/{}'.format(filename)
-        self.last_captured_filename = filename
-
-        h_actual, w_actual = frame_to_save.shape[:2]
-        return jsonify({
-            'filename': filename,
-            'file_url': file_url,
-            'download_url': download_url,
-            'hires': True,
-            'resolution': '{}x{}'.format(w_actual, h_actual)
-        })
+    # SUPPRIMÉ: capture_image_hires() - utiliser set_resolution() pour changer la résolution caméra
 
     # Statut
     def status(self):
