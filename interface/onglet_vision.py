@@ -17,16 +17,16 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	<style>
 		body {
 		margin: 0; padding: 0;
-		width: 100vw; height: 100vh;
+		width: 100vw; min-height: 100vh;
 		font-family: 'Segoe UI', Arial, sans-serif;
 		background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
 		color: #333; display: flex; flex-direction: column;
-		overflow: hidden;
+		overflow: auto;
 	}
 
 	.container {
 		display: flex; justify-content: center; align-items: flex-start;
-		padding: 2vh; height: 96vh;
+		padding: 2vh; min-height: 96vh;
 	}
 
 	.tab-shell {
@@ -35,7 +35,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 		padding: 2%;
 		box-shadow: 0 8px 20px rgba(0,0,0,0.08);
 		width: 92%; max-width: 1150px;
-		height: 88%;
+		min-height: fit-content;
+		margin-bottom: 4vh;
 		display: flex; flex-direction: column;
 	}
 
@@ -163,10 +164,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	</style>
 	</head>
 	<body>
-<div class='container'>
+	<div class='container'>
 		<div class='tab-shell'>
 			<div class='tab-header'>
 				<h2 class='tab-title'>{title}</h2>
+				<!-- Boutons de navigation entre onglets -->
 				<div class='tab-nav'>
 					<button class='primary-btn' data-path="/">Accueil</button>
 					<button class='primary-btn' data-path="/vision">Vision</button>
@@ -174,39 +176,51 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 				</div>
 			</div>
 
-			<!-- Section Capture : Boutons à gauche, Image à droite -->
-			<div class='tab-content'>
-				<div class="button-column">
-					<h3 class='tab-subtitle'>Capture image</h3>
-					<button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
-					<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
-					<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'>💾 Off</button>
-				</div>
-
-				<div class='image-viewer' id='mainImageDisplay'>
-					<img id='mainImage' alt='Image principale'>
-				</div>
+		<div class='tab-content'>
+			<div class='tab-header'>
+				<h3 class='tab-subtitle'>Capture image</h3>
+			</div>
+			
+			<!-- Les boutons sont maintenant superposés et alignés à gauche -->
+			<div class="button-row">
+				<button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
+				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
+				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn'>💾 Off</button>
 			</div>
 
-			<!-- Section Détection : Sélecteur à gauche, Diagnostic à droite -->
-			<div class='detection-row'>
-				<div class='tab-btn-group'>
-					<h3 class='tab-subtitle'>Image Detection</h3>
-					<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
-					<select id='detectorSelect' class='select-detector'></select>
-					<button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
-					<button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
-				</div>
+			<!-- Le cadre blanc "Viewer" apparaîtra sous les boutons -->
+			<div class='image-viewer' id='mainImageDisplay'>
+				<img id='mainImage' alt='Vue du robot'>
+			</div>
+		</div>
 
-				<div class='stop-detect-panel' id='stopDetectPanel'>
-					<div class='tab-subtitle'>Diagnostic Stop</div>
-					<div id='stopDetectIndicator' class='detect-indicator' style="padding:10px; border-radius:10px; margin-bottom:10px; text-align:center; font-weight:bold; color:white; background:#bdc3c7;">Aucune détection</div>
-					<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
+			<div class='tab-content'>
+				<div class='tab-header'>
+					<h3 class='tab-subtitle'>Image Detection</h3>
+				</div>
+				<!-- AJOUT DES FONCTIONS DE DÉTECTION -->
+				<div class='tab-row'>
+					<div class='tab-btn-group'>
+						<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
+						<select id='detectorSelect' class='select-detector'>
+							<!-- options remplies dynamiquement -->
+						</select>
+						<button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
+						<button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
+					</div>
+					<!-- Stop detection diagnostic panel -->
+					<div class='stop-detect-panel' id='stopDetectPanel'>
+						<div class='tab-subtitle'>Diagnostic Stop</div>
+						<div class='indicator-and-terminal'>
+							<div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
+							<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
+						</div>
+					</div>
+					<!-- ajouter la dernière image capturée -->
 				</div>
 			</div>
 		</div>
 	</div>
-
 
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
