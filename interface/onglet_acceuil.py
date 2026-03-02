@@ -18,7 +18,6 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	<title>{title}</title>
 	<link rel='icon' href='data:,'>
 	<style>
-    <style>
     body {
 		margin: 0; padding: 0;
 		width: 100vw; height: 100vh;
