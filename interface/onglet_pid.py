@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # onglet_pid.py
 # ------------------
@@ -310,7 +310,7 @@ def render_pid_tab(title="Asservissement PID"):
                     </div>
                 </div>
                 
-                <button class='primary-btn' id='updateParamsBtn'>📝 Mettre à jour les paramètres</button>
+                <button class='primary-btn' id='updateParamsBtn'>🔍 Mettre à jour les paramètres</button>
             </div>
 
             <!-- Paramètres du détecteur de ligne -->
@@ -333,7 +333,7 @@ def render_pid_tab(title="Asservissement PID"):
                         <small style='color: #666;'>0.6 = cherche dans les 40% inférieurs</small>
                     </div>
                 </div>
-                <button class='primary-btn' id='updateLineDetectorBtn'>📝 Mettre à jour le détecteur</button>
+                <button class='primary-btn' id='updateLineDetectorBtn'>🔍 Mettre à jour le détecteur</button>
             </div>
 
             <!-- Contrôle Manuel de Rotation -->
@@ -474,7 +474,9 @@ def render_pid_tab(title="Asservissement PID"):
             <div class='tab-content'>
                 <h3 class='tab-subtitle'>Flux vidéo</h3>
                 <div class='live-feed'>
-                    <img id='videoFeed' src='/video' alt='Flux vidéo'>
+                    <p id='videoPlaceholder' style='color:#888; font-style:italic;'>Caméra inactive — démarrez le PID ou le mode Step pour activer le flux.</p>
+                    <img id='videoFeed' src='' alt='Flux vidéo' style='display:none;'
+                         onerror="this.style.display='none'; document.getElementById('videoPlaceholder').style.display='block';">
                 </div>
             </div>
         </div>
@@ -487,6 +489,20 @@ def render_pid_tab(title="Asservissement PID"):
     var pidRunning = false;
     var statusInterval = null;
     var rotationMode = true;
+
+    // Rafraîchir le flux vidéo (après démarrage caméra)
+    function refreshVideoFeed() {{
+        var img = document.getElementById('videoFeed');
+        var placeholder = document.getElementById('videoPlaceholder');
+        if (img) {{
+            // Petit délai pour laisser la caméra s'initialiser
+            setTimeout(function() {{
+                img.src = '/video?' + Date.now();
+                img.style.display = '';
+                if (placeholder) placeholder.style.display = 'none';
+            }}, 500);
+        }}
+    }}
 
     // Toast notifications
     function showToast(message, type, duration) {{
@@ -602,6 +618,7 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('pidStatus').style.color = '#28a745';
             appendLog('PID démarré');
             showToast('PID démarré!', 'success');
+            refreshVideoFeed();
             startStatusPolling();
         }})
         .catch(function(err) {{
@@ -687,6 +704,7 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('approveStepBtn').disabled = false;
             appendLog('Mode Step-by-Step démarré');
             showToast('Mode Step activé!', 'success');
+            refreshVideoFeed();
             startStepStatusPolling();
         }})
         .catch(function(err) {{
@@ -908,6 +926,17 @@ def render_pid_tab(title="Asservissement PID"):
         .catch(function(err) {{
             appendLog('Impossible de charger les paramètres du détecteur: ' + err.message);
         }});
+
+        // Vérifier si la caméra tourne déjà (ex: PID actif avant navigation)
+        fetch('/status')
+        .then(function(r) {{ return r.json(); }})
+        .then(function(data) {{
+            if (data.camera_running) {{
+                refreshVideoFeed();
+                appendLog('Caméra déjà active');
+            }}
+        }})
+        .catch(function(err) {{ /* ignore */ }});
     }});
 
     // Cleanup on page unload
