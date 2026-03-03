@@ -801,8 +801,13 @@ class controller:
             print("[DEBUG] pid_start() appelé")
 
             vp = self.vision_pipeline
-            if not vp or not vp.is_running():
-                return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
+            if not vp:
+                return jsonify({'error': 'Vision pipeline not initialized'}), 400
+            # Auto-start caméra si nécessaire
+            if not vp.is_running():
+                print("[INFO] pid_start: caméra inactive, démarrage automatique...")
+                vp.start()
+                time.sleep(0.3)  # laisser le temps à la caméra de s'initialiser
 
             # --- Via ControlManager (nouvelle architecture) ---
             if self.control_manager is not None:
@@ -989,6 +994,13 @@ class controller:
     
     def state_machine_start(self):
         """Démarre la machine à états."""
+        # Auto-start caméra si nécessaire
+        vp = self.vision_pipeline
+        if vp and not vp.is_running():
+            print("[INFO] state_machine_start: caméra inactive, démarrage automatique...")
+            vp.start()
+            time.sleep(0.3)
+
         # --- Via ControlManager ---
         if self.control_manager is not None:
             if self.control_manager.state_machine is None:
@@ -1044,8 +1056,13 @@ class controller:
             print("[DEBUG] pid_step_start() appelé")
 
             vp = self.vision_pipeline
-            if not vp or not vp.is_running():
-                return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
+            if not vp:
+                return jsonify({'error': 'Vision pipeline not initialized'}), 400
+            # Auto-start caméra si nécessaire
+            if not vp.is_running():
+                print("[INFO] pid_step_start: caméra inactive, démarrage automatique...")
+                vp.start()
+                time.sleep(0.3)
 
             # --- Via ControlManager ---
             if self.control_manager is not None:

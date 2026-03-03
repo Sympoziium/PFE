@@ -120,40 +120,59 @@ class ControlManager:
             return self._mode
 
     # ------------------------------------------------------------------
-    #  Boucle de contrôle principale
+    #  Démarrage de la vision (sans boucle de contrôle)
     # ------------------------------------------------------------------
 
-    def start(self):
-        """Démarre la boucle de contrôle dans un thread daemon."""
+    def start_vision(self):
+        """Démarre le pipeline de vision (caméra) sans lancer la boucle de contrôle.
+
+        La boucle de contrôle ne démarre que via ``activate(mode)`` et
+        s'arrête automatiquement via ``deactivate()``.  Cela évite de
+        consommer du CPU tant qu'aucun mode n'est actif.
+        """
+        self.vision_pipeline.start()
+
+    # ------------------------------------------------------------------
+    #  Boucle de contrôle (démarre/s'arrête avec activate/deactivate)
+    # ------------------------------------------------------------------
+
+    def _start_loop(self):
+        """Démarre le thread de la boucle de contrôle (usage interne)."""
         if self._running:
             return
-        self.vision_pipeline.start()
         self._running = True
         self._thread = threading.Thread(target=self._control_loop, name="ControlLoop", daemon=True)
         self._thread.start()
 
-    def stop(self):
-        """Arrête la boucle de contrôle et tous les modes actifs."""
+    def _stop_loop(self):
+        """Arrête le thread de la boucle de contrôle (usage interne)."""
         self._running = False
-        self.deactivate()
         if self._thread is not None:
             self._thread.join(timeout=3.0)
             self._thread = None
 
+    def stop(self):
+        """Arrête tout : boucle de contrôle + modes actifs."""
+        self.deactivate()
+        self._stop_loop()
+
     def _control_loop(self):
         """
-        Boucle de contrôle principale.
+        Boucle de contrôle.
 
-        À chaque itération :
-        1. Exécute ``vision_pipeline.step()`` pour capturer + détecter.
-        2. Extrait l'offset de ligne des résultats de détection.
-        3. Stocke l'offset dans ``vision_pipeline.last_line_offset``
-           (pour rétro-compatibilité avec le pid_loop existant).
-        4. Délègue l'action moteur au mode actif.
+        Tourne uniquement tant qu'un mode est actif (``_running == True``).
+        Quand le mode retombe en IDLE, la boucle se termine d'elle-même.
         """
+        print("[ControlManager] Boucle de contrôle démarrée.")
         while self._running:
             try:
-                # --- Vision ---
+                current_mode = self.mode
+
+                # Si on retombe en IDLE, la boucle n'a plus de raison de tourner
+                if current_mode == MODE_IDLE:
+                    break
+
+                # --- Mode actif : capture + détection ---
                 results = self.vision_pipeline.step()
 
                 # Extraire l'offset de ligne
@@ -169,8 +188,6 @@ class ControlManager:
                 self.vision_pipeline.last_line_offset = line_val
 
                 # --- Dispatch du mode actif ---
-                current_mode = self.mode
-
                 if current_mode == MODE_PID:
                     self._tick_pid(line_val)
 
@@ -180,13 +197,15 @@ class ControlManager:
                 elif current_mode == MODE_STEP_BY_STEP:
                     self._tick_step_machine()
 
-                # MODE_IDLE : pas d'action moteur
-
             except Exception as e:
                 print("[ControlManager] Erreur dans la boucle de contrôle: {}".format(e))
                 import traceback
                 traceback.print_exc()
                 time.sleep(0.1)
+
+        self._running = False
+        self._thread = None
+        print("[ControlManager] Boucle de contrôle arrêtée.")
 
     # ------------------------------------------------------------------
     #  Tick – exécution d'un cycle pour chaque mode
@@ -287,7 +306,7 @@ class ControlManager:
             if self._step_machine is None:
                 self._create_step_machine()
 
-        # Désactiver le mode courant
+        # Désactiver le mode courant (arrête la boucle si elle tourne)
         self.deactivate()
 
         # Activer le nouveau mode
@@ -307,8 +326,11 @@ class ControlManager:
             self._step_machine.start()
             print("[ControlManager] Mode StepByStep activé.")
 
+        # Lancer la boucle de contrôle (si pas déjà en cours)
+        self._start_loop()
+
     def deactivate(self):
-        """Désactive le mode courant et arrête les moteurs."""
+        """Désactive le mode courant, arrête la boucle de contrôle et les moteurs."""
         with self._mode_lock:
             prev_mode = self._mode
             self._mode = MODE_IDLE
@@ -323,6 +345,9 @@ class ControlManager:
         elif prev_mode == MODE_STEP_BY_STEP:
             if self._step_machine and self._step_machine.is_running():
                 self._step_machine.stop()
+
+        # Arrêter la boucle de contrôle (le thread se termine car mode == IDLE)
+        self._stop_loop()
 
         self.robot.stop()
 

@@ -102,8 +102,10 @@ zumi.clear_screen()
 
 
 if __name__ == '__main__':
-    # La boucle de contrôle est maintenant gérée par le ControlManager
-    control_manager.start()
+    # Au boot : seul le serveur Flask démarre.
+    # La caméra, les détecteurs et les contrôleurs ne s'activent
+    # qu'à la demande depuis l'interface web (bouton Start Camera,
+    # activation PID, etc.).
 
     watchdog_thread = threading.Thread(target=ctrl.motor_watchdog)
     watchdog_thread.daemon = True

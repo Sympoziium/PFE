@@ -310,7 +310,7 @@ def render_pid_tab(title="Asservissement PID"):
                     </div>
                 </div>
                 
-                <button class='primary-btn' id='updateParamsBtn'>ðŸ“ Mettre Ã  jour les paramÃ¨tres</button>
+                <button class='primary-btn' id='updateParamsBtn'>ðŸ“ Mettre à jour les paramÃ¨tres</button>
             </div>
 
             <!-- ParamÃ¨tres du dÃ©tecteur de ligne -->
@@ -333,7 +333,7 @@ def render_pid_tab(title="Asservissement PID"):
                         <small style='color: #666;'>0.6 = cherche dans les 40% infÃ©rieurs</small>
                     </div>
                 </div>
-                <button class='primary-btn' id='updateLineDetectorBtn'>ðŸ“ Mettre Ã  jour le dÃ©tecteur</button>
+                <button class='primary-btn' id='updateLineDetectorBtn'>ðŸ“ Mettre à jour le dÃ©tecteur</button>
             </div>
 
             <!-- ContrÃ´le Manuel de Rotation -->
@@ -353,10 +353,10 @@ def render_pid_tab(title="Asservissement PID"):
                         </div>
                         <div style='display: flex; gap: 10px;'>
                             <button class='control-btn' id='turnLeftBtn' style='background: #17a2b8;'>
-                                â†º Tourner Ã  gauche
+                                â†º Tourner à gauche
                             </button>
                             <button class='control-btn' id='turnRightBtn' style='background: #17a2b8;'>
-                                â†» Tourner Ã  droite
+                                â†» Tourner à droite
                             </button>
                         </div>
                     </div>
@@ -388,7 +388,7 @@ def render_pid_tab(title="Asservissement PID"):
             <div class='tab-content' style='border: 3px solid #ffc107; background: #fffbf0;'>
                 <h3 class='tab-subtitle' style='color: #856404;'>ðŸš¶ Mode AvancÃ©: Step-by-Step</h3>
                 <p class='tab-text' style='margin-bottom: 15px; color: #856404;'>
-                    <strong>Mode pas Ã  pas :</strong> Le robot avance par Ã©tapes, s'arrÃªte pour que l'image soit nette, 
+                    <strong>Mode pas à pas :</strong> Le robot avance par Ã©tapes, s'arrÃªte pour que l'image soit nette, 
                     puis attend votre autorisation pour continuer. Si la ligne est perdue, il la cherche automatiquement.
                 </p>
                 
@@ -427,7 +427,7 @@ def render_pid_tab(title="Asservissement PID"):
                         âœ… AUTORISER LA PROCHAINE Ã‰TAPE
                     </button>
                     <p style='margin-top: 10px; color: #fff; font-size: 14px;'>
-                        Cliquez pour permettre au robot d'avancer Ã  la prochaine position
+                        Cliquez pour permettre au robot d'avancer à la prochaine position
                     </p>
                     <div id='stepWaitingIndicator' style='margin-top: 10px; color: #fff; font-weight: bold; display: none;'>
                         â¸ï¸ En attente de votre autorisation...
@@ -470,11 +470,13 @@ def render_pid_tab(title="Asservissement PID"):
                 <div class='log-terminal' id='logTerminal'>Terminal PID...</div>
             </div>
 
-            <!-- Flux vidÃ©o -->
+            <!-- Flux vidéo -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Flux vidÃ©o</h3>
+                <h3 class='tab-subtitle'>Flux vidéo</h3>
                 <div class='live-feed'>
-                    <img id='videoFeed' src='/video' alt='Flux vidÃ©o'>
+                    <p id='videoPlaceholder' style='color:#888; font-style:italic;'>Caméra inactive" démarrez le PID ou le mode Step pour activer le flux.</p>
+                    <img id='videoFeed' src='' alt='Flux vidéo' style='display:none;'
+                         onerror="this.style.display='none'; document.getElementById('videoPlaceholder').style.display='block';">
                 </div>
             </div>
         </div>
@@ -487,6 +489,20 @@ def render_pid_tab(title="Asservissement PID"):
     var pidRunning = false;
     var statusInterval = null;
     var rotationMode = true;
+
+    // Rafraîchir le flux vidéo (après démarrage caméra)
+    function refreshVideoFeed() {{
+        var img = document.getElementById('videoFeed');
+        var placeholder = document.getElementById('videoPlaceholder');
+        if (img) {{
+            // Petit délai pour laisser la caméra s'initialiser
+            setTimeout(function() {{
+                img.src = '/video?' + Date.now();
+                img.style.display = '';
+                if (placeholder) placeholder.style.display = 'none';
+            }}, 500);
+        }}
+    }}
 
     // Toast notifications
     function showToast(message, type, duration) {{
@@ -534,7 +550,7 @@ def render_pid_tab(title="Asservissement PID"):
         showToast('Mode Avance activÃ©', 'info');
     }}
 
-    // Mettre Ã  jour les paramÃ¨tres PID
+    // Mettre à jour les paramÃ¨tres PID
     function updateParams() {{
         var params = {{
             kp: parseFloat(document.getElementById('kpInput').value),
@@ -556,19 +572,19 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
             var mode = rotationMode? 'ROTATION' : 'AVANCE';
-            appendLog('ParamÃ¨tres mis Ã  jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
+            appendLog('ParamÃ¨tres mis à jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
             if (rotationMode) {{
                 appendLog('  Angle: scale=' + params.angle_scale + ', max=' + params.max_angle + 'Â°, min=' + params.min_angle_threshold + 'Â°');
             }}
-            showToast('ParamÃ¨tres PID mis Ã  jour!', 'success');
+            showToast('ParamÃ¨tres PID mis à jour!', 'success');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de la mise Ã  jour', 'error');
+            showToast('Erreur lors de la mise à jour', 'error');
         }});
     }}
 
-    // Mettre Ã  jour les paramÃ¨tres du dÃ©tecteur de ligne
+    // Mettre à jour les paramÃ¨tres du dÃ©tecteur de ligne
     function updateLineDetectorParams() {{
         var params = {{
             white_threshold: parseInt(document.getElementById('whiteThresholdInput').value),
@@ -583,16 +599,16 @@ def render_pid_tab(title="Asservissement PID"):
         }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            appendLog('DÃ©tecteur de ligne mis Ã  jour: Seuil=' + params.white_threshold + ', Aire=' + params.min_area);
-            showToast('ParamÃ¨tres du dÃ©tecteur mis Ã  jour!', 'success');
+            appendLog('Détecteur de ligne mis à jour: Seuil=' + params.white_threshold + ', Aire=' + params.min_area);
+            showToast('Paramètres du détecteur mis à jour!', 'success');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de la mise Ã  jour', 'error');
+            showToast('Erreur lors de la mise à jour', 'error');
         }});
     }}
 
-    // DÃ©marrer le PID
+    // Démarrer le PID
     function startPid() {{
         fetch('/pid/start', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
@@ -600,31 +616,32 @@ def render_pid_tab(title="Asservissement PID"):
             pidRunning = true;
             document.getElementById('pidStatus').textContent = 'Actif';
             document.getElementById('pidStatus').style.color = '#28a745';
-            appendLog('PID dÃ©marrÃ©');
-            showToast('PID dÃ©marrÃ©!', 'success');
+            appendLog('PID démarré');
+            showToast('PID démarré!', 'success');
+            refreshVideoFeed();
             startStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors du dÃ©marrage', 'error');
+            showToast('Erreur lors du démarrage', 'error');
         }});
     }}
 
-    // ArrÃªter le PID
+    // Arrêter le PID
     function stopPid() {{
         fetch('/pid/stop', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
             pidRunning = false;
-            document.getElementById('pidStatus').textContent = 'ArrÃªtÃ©';
+            document.getElementById('pidStatus').textContent = 'Arrêté';
             document.getElementById('pidStatus').style.color = '#dc3545';
-            appendLog('PID arrÃªtÃ©');
-            showToast('PID arrÃªtÃ©', 'info');
+            appendLog('PID arrêté');
+            showToast('PID arrêté', 'info');
             stopStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l arrÃªt', 'error');
+            showToast('Erreur lors de l arrêt', 'error');
         }});
     }}
 
@@ -633,12 +650,12 @@ def render_pid_tab(title="Asservissement PID"):
         fetch('/pid/reset', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            appendLog('PID rÃ©initialisÃ©');
-            showToast('PID rÃ©initialisÃ©', 'info');
+            appendLog('PID réinitialisé');
+            showToast('PID réinitialisé', 'info');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de la rÃ©initialisation', 'error');
+            showToast('Erreur lors de la réinitialisation', 'error');
         }});
     }}
 
@@ -685,13 +702,14 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('stepModeStatus').textContent = 'Actif';
             document.getElementById('stepModeStatus').style.color = '#28a745';
             document.getElementById('approveStepBtn').disabled = false;
-            appendLog('Mode Step-by-Step dÃ©marrÃ©');
-            showToast('Mode Step activÃ©!', 'success');
+            appendLog('Mode Step-by-Step démarré');
+            showToast('Mode Step activé!', 'success');
+            refreshVideoFeed();
             startStepStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors du dÃ©marrage', 'error');
+            showToast('Erreur lors du démarrage', 'error');
         }});
     }}
 
@@ -700,17 +718,17 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
             stepModeRunning = false;
-            document.getElementById('stepModeStatus').textContent = 'ArrÃªtÃ©';
+            document.getElementById('stepModeStatus').textContent = 'Arrêté';
             document.getElementById('stepModeStatus').style.color = '#6c757d';
             document.getElementById('approveStepBtn').disabled = true;
             document.getElementById('stepWaitingIndicator').style.display = 'none';
-            appendLog('Mode Step-by-Step arrÃªtÃ©');
-            showToast('Mode Step arrÃªtÃ©', 'info');
+            appendLog('Mode Step-by-Step arrêté');
+            showToast('Mode Step arrêté', 'info');
             stopStepStatusPolling();
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
-            showToast('Erreur lors de l arrÃªt', 'error');
+            showToast('Erreur lors de l arrêt', 'error');
         }});
     }}
 
@@ -718,8 +736,8 @@ def render_pid_tab(title="Asservissement PID"):
         fetch('/pid/step_mode/approve', {{ method: 'POST' }})
         .then(function(r) {{ if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); }})
         .then(function(data) {{
-            appendLog('âœ“ Prochaine Ã©tape autorisÃ©e');
-            showToast('Ã‰tape autorisÃ©e!', 'success');
+            appendLog('✓ Prochaine étape autorisée');
+            showToast('Étape autorisée!', 'success');
         }})
         .catch(function(err) {{
             appendLog('ERREUR: ' + err.message);
@@ -733,14 +751,14 @@ def render_pid_tab(title="Asservissement PID"):
             fetch('/pid/step_mode/status')
             .then(function(r) {{ return r.json(); }})
             .then(function(data) {{
-                // Mettre Ã  jour l'Ã©tat de la machine
+                // Mettre à jour l'état de la machine
                 var state = data.state || 'IDLE';
                 document.getElementById('stepMachineState').textContent = state;
                 
-                // Mettre Ã  jour le compteur d'Ã©tapes
+                // Mettre à jour le compteur d'étapes
                 document.getElementById('stepCount').textContent = data.step_count || 0;
                 
-                // Afficher l'indicateur d'attente si nÃ©cessaire
+                // Afficher l'indicateur d'attente si nécessaire
                 if (data.waiting_approval) {{
                     document.getElementById('stepWaitingIndicator').style.display = 'block';
                     document.getElementById('approveStepBtn').style.animation = 'pulse 1.5s infinite';
@@ -749,7 +767,7 @@ def render_pid_tab(title="Asservissement PID"):
                     document.getElementById('approveStepBtn').style.animation = 'none';
                 }}
                 
-                // Mettre Ã  jour les valeurs de debug
+                // Mettre à jour les valeurs de debug
                 if (data.line_offset !== undefined) {{
                     document.getElementById('currentError').textContent = parseFloat(data.line_offset).toFixed(1);
                 }}
@@ -771,9 +789,9 @@ def render_pid_tab(title="Asservissement PID"):
         }}
     }}
 
-    // ContrÃ´le manuel de rotation
+    // Contrôle manuel de rotation
     function manualTurn(angle) {{
-        appendLog('Rotation manuelle: ' + angle + 'Â° demandÃ©e...');
+        appendLog('Rotation manuelle: ' + angle + '° demandée...');
         
         fetch('/zumi/turn', {{
             method: 'POST',
@@ -785,8 +803,8 @@ def render_pid_tab(title="Asservissement PID"):
             return r.json(); 
         }})
         .then(function(data) {{
-            var msg = data.message || 'Rotation complÃ©tÃ©e';
-            appendLog('âœ“ ' + msg);
+            var msg = data.message || 'Rotation complétée';
+            appendLog('✓ ' + msg);
             showToast(msg, 'success');
         }})
         .catch(function(err) {{
@@ -806,7 +824,7 @@ def render_pid_tab(title="Asservissement PID"):
 
     function turnRight() {{
         var angle = parseFloat(document.getElementById('manualAngleInput').value) || 90;
-        manualTurn(-Math.abs(angle));  // NÃ©gatif = droite
+        manualTurn(-Math.abs(angle));  // Négatif = droite
     }}
 
     // Navigation
@@ -844,7 +862,7 @@ def render_pid_tab(title="Asservissement PID"):
 
     // Event listeners
     window.addEventListener('DOMContentLoaded', function() {{
-        // Boutons de contrÃ´le
+        // Boutons de contrôle
         document.getElementById('updateParamsBtn').addEventListener('click', updateParams);
         document.getElementById('startPidBtn').addEventListener('click', startPid);
         document.getElementById('stopPidBtn').addEventListener('click', stopPid);
@@ -866,7 +884,7 @@ def render_pid_tab(title="Asservissement PID"):
         document.getElementById('stopStepModeBtn').addEventListener('click', stopStepMode);
         document.getElementById('approveStepBtn').addEventListener('click', approveNextStep);
 
-        // Charger les paramÃ¨tres initiaux
+        // Charger les paramètres initiaux
         fetch('/pid/get_params')
         .then(function(r) {{ return r.json(); }})
         .then(function(data) {{
@@ -876,7 +894,7 @@ def render_pid_tab(title="Asservissement PID"):
             document.getElementById('baseSpeedInput').value = data.base_speed || 20;
             document.getElementById('maxCorrectionInput').value = data.max_correction || 30;
             
-            // Charger les paramÃ¨tres d'angle
+            // Charger les paramètres d'angle
             document.getElementById('angleScaleInput').value = data.angle_scale || 0.3;
             document.getElementById('maxAngleInput').value = data.max_angle || 45;
             document.getElementById('minAngleThresholdInput').value = data.min_angle_threshold || 2;
@@ -890,24 +908,35 @@ def render_pid_tab(title="Asservissement PID"):
                 document.getElementById('driveModeBtn').style.background = '#28a745';
             }}
             
-            appendLog('ParamÃ¨tres chargÃ©s depuis le serveur');
+            appendLog('Paramètres chargés depuis le serveur');
         }})
         .catch(function(err) {{
-            appendLog('Impossible de charger les paramÃ¨tres: ' + err.message);
+            appendLog('Impossible de charger les paramètres: ' + err.message);
         }});
         
-        // Charger les paramÃ¨tres du dÃ©tecteur
+        // Charger les paramètres du détecteur
         fetch('/line_detector/get_params')
         .then(function(r) {{ return r.json(); }})
         .then(function(data) {{
             document.getElementById('whiteThresholdInput').value = data.white_threshold || 200;
             document.getElementById('minAreaInput').value = data.min_area || 300;
             document.getElementById('offsetRatioInput').value = data.offset_ratio || 0.6;
-            appendLog('ParamÃ¨tres du dÃ©tecteur chargÃ©s');
+            appendLog('Paramètres du détecteur chargés');
         }})
         .catch(function(err) {{
-            appendLog('Impossible de charger les paramÃ¨tres du dÃ©tecteur: ' + err.message);
+            appendLog('Impossible de charger les paramètres du détecteur: ' + err.message);
         }});
+
+        // Vérifier si la caméra tourne déjà (ex: PID actif avant navigation)
+        fetch('/status')
+        .then(function(r) {{ return r.json(); }})
+        .then(function(data) {{
+            if (data.camera_running) {{
+                refreshVideoFeed();
+                appendLog('Caméra déjà active');
+            }}
+        }})
+        .catch(function(err) {{ /* ignore */ }});
     }});
 
     // Cleanup on page unload
