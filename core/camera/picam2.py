@@ -10,10 +10,12 @@ import time
 
 
 class PiCam2(CameraBase):
-    def __init__(self):
+    def __init__(self, image_w=640, image_h=480):
+        self._width = image_w
+        self._height = image_h
         try: 
             self.picam2 = Picamera2()
-            self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'BGR888', "size": (640, 480)}))
+            self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'BGR888', "size": (self._width, self._height)}))
         except Exception as e:
             print("Erreur lors de l'initialisation de PiCam2: {}".format(e))
             raise e
@@ -39,3 +41,22 @@ class PiCam2(CameraBase):
             print("Erreur lors de la capture d'une image avec PiCam2: {}".format(e))
             raise e
         return frame
+
+    def reconfigure(self, width: int, height: int):
+        """
+        Reconfigure PiCam2 à la résolution demandée.
+        Ferme et recrée l'instance Picamera2 avec la nouvelle configuration.
+        """
+        self._width = width
+        self._height = height
+        try:
+            self.picam2.close()
+        except Exception as e:
+            print("[PiCam2] Avertissement fermeture avant reconfiguration: {}".format(e))
+        try:
+            self.picam2 = Picamera2()
+            self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'BGR888', "size": (self._width, self._height)}))
+            print("[PiCam2] Reconfigurée: {}x{}".format(self._width, self._height))
+        except Exception as e:
+            print("Erreur lors de la reconfiguration de PiCam2: {}".format(e))
+            raise e
