@@ -238,7 +238,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
             <div class='tab-content'>
                 <!-- AJOUTER VOS BOUTONS ICI -->
                 <div class='left-panel'>
-                    <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>ðŸŽ¥ Allume la caméra !</button>
+                    <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>🎥 Allume la caméra !</button>
                     <div id='zone-resultats'>
                         <!-- Conteneur du flux vidéo en direct -->
                         <div class='live-feed' id='liveFeed' style = 'display:none;'>
@@ -251,7 +251,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                     <div class='driving-mode'>
                         <h3>Contrôle du Zumi</h3>
                         <!-- La boîte apparaît grâces à cette ligne -->
-                        <div id="log-box">Coucou ! Je suis prêt à rouler ! ðŸ¤–</div>
+                        <div id="log-box">Coucou ! Je suis prêt à rouler ! 🤖</div>
                         
                         <div class="dpad-container">
                             <!-- HAUT -->
@@ -276,7 +276,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                     </div>
                     <hr style="width:100%; margin: 20px 0; border: 1px solid #ccc;">
 
-                    <h3>ðŸŒ‰ Pont Levis</h3>
+                    <h3>🌉 Pont Levis</h3>
 
                     <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
                         <span style="font-weight:bold;">Mode Auto:</span>
@@ -291,8 +291,8 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                         <button class='command-button btn-red' onclick="fetch('/bridge/red', {method:'POST'})">Feu Rouge</button>
                     </div>
                     <div>
-                        <button id="btnOpen" class='command-button btn-blue disabled' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir â¬†ï¸</button>
-                        <button id="btnClose" class='command-button btn-blue disabled' onclick="fetch('/bridge/close', {method:'POST'})">Fermer â¬‡ï¸</button>
+                        <button id="btnOpen" class='command-button btn-blue disabled' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
+                        <button id="btnClose" class='command-button btn-blue disabled' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
                     </div>
                 </div>    
             </div>
@@ -325,7 +325,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 
         if (!isActive) {
             // 1. Affiche le conteneur et change le bouton (pour la réactivité)  
-            btn.textContent = 'â¹ï¸ Éteint la caméra'; 
+            btn.textContent = '⏹️ Éteint la caméra'; 
 
             // 2. Envoie la commande de démarrage au serveur 
             fetch('/start_camera', { method: 'POST' }) 
@@ -338,7 +338,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         } else {
             // 1. Cache le conteneur et change le bouton 
             liveFeed.style.display = 'none'; 
-            btn.textContent = 'ðŸŽ¥ Allume la caméra !'; 
+            btn.textContent = '🎥 Allume la caméra !'; 
             
             // 2. Vide la source de l'image (arrête le flux gelé) 
             img.src = "";  
@@ -352,16 +352,16 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     function navigateTo(path) {
         try {
             var liveFeed = document.getElementById('liveFeed');
-            var isActive = CAMERA_ACTIVE && liveFeed && liveFeed.style.display === 'block';
+            var isActive = liveFeed && liveFeed.style.display === 'block';
             if (isActive) {
                 fetch('/close_camera', { method: 'POST' })
                     .then(function() { location.href = path; })
-                    .catch(function(err) { logError('navigateTo: /close_camera', err, { path: path }); location.href = path; });
+                    .catch(function() { location.href = path; });
             } else {
                 location.href = path;
             }
         } catch (e) {
-            logError('navigateTo', e, { path: path });
+            console.error('navigateTo error:', e);
             location.href = path;
         }
     }
@@ -371,7 +371,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         var val = isAuto ? '1' : '0';
         fetch('/bridge/mode_auto/' + val, { method: 'POST' })
             .then(function() { console.log('Mode auto changé: ' + val); })
-            .catch(function(err) { logError('toggleAuto', err, { val: val }); });
+            .catch(function(err) { console.error('toggleAuto error:', err); });
 
         var btnOpen = document.getElementById('btnOpen');
         var btnClose = document.getElementById('btnClose');
@@ -393,7 +393,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         isMoving = true;
            
         // --- NOUVEAU : Texte affiche pour etat du robot ---
-        //document.getElementById('log-box').innerText = "ðŸ¤– État : " + direction;
+        //document.getElementById('log-box').innerText = "🤖 État : " + direction;
         
         const log = document.getElementById('log-box');
         log.style.color = "#000000"; // Couleur de texte par défaut (noir)
@@ -402,19 +402,19 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         switch (direction)
         {
             case 'forward':
-                log.innerText = "En avant ! ðŸš€";
+                log.innerText = "En avant ! 🚀";
                 log.style.color = "#28a745"; // Vert pour avancer
                 break;
             case 'reverse':
-                log.innerText = "En arrière ! âª";
+                log.innerText = "En arrière ! ⏪";
                 log.style.color = "#dc3545"; // Rouge pour reculer
                 break;
             case 'left':
-                log.innerText = "Ã€ gauche toute ! â†ªï¸";
+                log.innerText = "À gauche toute ! ↪️";
                 log.style.color = "#007bff"; // Bleu pour tourner
                 break;
             case 'right':
-                log.innerText = "Ã€ droite ! â†©ï¸";
+                log.innerText = "À droite ! ↩️";
                 log.style.color = "#007bff"; // Bleu pour tourner
                 break;
         }
@@ -443,7 +443,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         
         // --- NOUVEAU : Ajout du message d'arret ---
         const log = document.getElementById('log-box');
-        log.innerText = "Ouf, je fais une pause. ðŸ›‘";
+        log.innerText = "Ouf, je fais une pause. 🛑";
         log.style.color = "#6c757d"; // Gris neutre pour la pause
         
         

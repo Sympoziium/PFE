@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 # onglet_pid.py
 # ------------------
-"""Page web pour le contrÃ´le PID du suivi de ligne."""
+"""Page web pour le contrôle PID du suivi de ligne."""
 
 def render_pid_tab(title="Asservissement PID"):
-    """Retourne une page HTML complète pour le contrÃ´le PID."""
+    """Retourne une page HTML complète pour le contrôle PID."""
 
     html = """<!DOCTYPE html><html lang='fr'>
     <head>
@@ -242,17 +242,17 @@ def render_pid_tab(title="Asservissement PID"):
             <div class='tab-content'>
                 <h3 class='tab-subtitle'>Paramètres PID</h3>
                 
-                <!-- Mode de contrÃ´le -->
+                <!-- Mode de contrôle -->
                 <div style='margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 10px;'>
                     <label style='font-weight: bold; font-size: 16px; display: block; margin-bottom: 10px;'>
-                        Mode de contrÃ´le
+                        Mode de contrôle
                     </label>
                     <div style='display: flex; gap: 10px;'>
                         <button class='control-btn' id='rotationModeBtn' style='flex: 1;'>
-                            ðŸ”„ Mode Rotation (Tuning)
+                            🔄 Mode Rotation (Tuning)
                         </button>
                         <button class='control-btn' id='driveModeBtn' style='flex: 1; background: #6c757d;'>
-                            âž¡ï¸ Mode Avance (Suivi)
+                            ➡️ Mode Avance (Suivi)
                         </button>
                     </div>
                     <p style='margin-top: 10px; font-size: 13px; color: #666;'>
@@ -287,15 +287,15 @@ def render_pid_tab(title="Asservissement PID"):
                 
                 <!-- Paramètres de calcul d'angle pour le mode rotation -->
                 <div style='margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 10px; border: 2px solid #ffc107;'>
-                    <h4 style='margin: 0 0 10px 0; color: #856404;'>âš™ï¸ Paramètres de rotation (Mode Rotation uniquement)</h4>
+                    <h4 style='margin: 0 0 10px 0; color: #856404;'>⚙️ Paramètres de rotation (Mode Rotation uniquement)</h4>
                     <p style='font-size: 13px; color: #856404; margin-bottom: 15px;'>
-                        Ces paramètres contrÃ´lent le calcul de l'angle lorsque le mode rotation est activé.
+                        Ces paramètres contrôlent le calcul de l'angle lorsque le mode rotation est activé.
                     </p>
                     <div class='param-grid'>
                         <div class='param-item'>
                             <label class='param-label'>Échelle d'angle (angle_scale)</label>
                             <input type='number' step='0.01' class='param-input' id='angleScaleInput' value='0.3'>
-                            <small style='color: #666;'>Conversion erreur â†’ angle (0.3 = 100px â†’ 30Â°)</small>
+                            <small style='color: #666;'>Conversion erreur → angle (0.3 = 100px → 30°)</small>
                         </div>
                         <div class='param-item'>
                             <label class='param-label'>Angle maximal (degrés)</label>
@@ -310,7 +310,7 @@ def render_pid_tab(title="Asservissement PID"):
                     </div>
                 </div>
                 
-                <button class='primary-btn' id='updateParamsBtn'>ðŸ“ Mettre à jour les paramètres</button>
+                <button class='primary-btn' id='updateParamsBtn'>🔍 Mettre à jour les paramètres</button>
             </div>
 
             <!-- Paramètres du détecteur de ligne -->
@@ -333,12 +333,12 @@ def render_pid_tab(title="Asservissement PID"):
                         <small style='color: #666;'>0.6 = cherche dans les 40% inférieurs</small>
                     </div>
                 </div>
-                <button class='primary-btn' id='updateLineDetectorBtn'>ðŸ“ Mettre à jour le détecteur</button>
+                <button class='primary-btn' id='updateLineDetectorBtn'>🔍 Mettre à jour le détecteur</button>
             </div>
 
-            <!-- ContrÃ´le Manuel de Rotation -->
+            <!-- Contrôle Manuel de Rotation -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>ðŸŽ® ContrÃ´le Manuel de Rotation</h3>
+                <h3 class='tab-subtitle'>🎮 Contrôle Manuel de Rotation</h3>
                 <p class='tab-text' style='margin-bottom: 15px; color: #666;'>
                     Utilisez la fonction turn() du Zumi pour effectuer des rotations précises avec le gyroscope.
                 </p>
@@ -353,10 +353,10 @@ def render_pid_tab(title="Asservissement PID"):
                         </div>
                         <div style='display: flex; gap: 10px;'>
                             <button class='control-btn' id='turnLeftBtn' style='background: #17a2b8;'>
-                                â†º Tourner à gauche
+                                ↺ Tourner à gauche
                             </button>
                             <button class='control-btn' id='turnRightBtn' style='background: #17a2b8;'>
-                                â†» Tourner à droite
+                                ↻ Tourner à droite
                             </button>
                         </div>
                     </div>
@@ -365,28 +365,28 @@ def render_pid_tab(title="Asservissement PID"):
                 <div style='margin-top: 15px;'>
                     <p class='param-label' style='margin-bottom: 8px;'>Rotations rapides :</p>
                     <div style='display: flex; gap: 8px; flex-wrap: wrap;'>
-                        <button class='primary-btn' onclick='quickTurn(45)'>â†º 45Â° G</button>
-                        <button class='primary-btn' onclick='quickTurn(90)'>â†º 90Â° G</button>
-                        <button class='primary-btn' onclick='quickTurn(180)'>â†º 180Â°</button>
-                        <button class='primary-btn' onclick='quickTurn(-90)'>â†» 90Â° D</button>
-                        <button class='primary-btn' onclick='quickTurn(-45)'>â†» 45Â° D</button>
+                        <button class='primary-btn' onclick='quickTurn(45)'>↺ 45° G</button>
+                        <button class='primary-btn' onclick='quickTurn(90)'>↺ 90° G</button>
+                        <button class='primary-btn' onclick='quickTurn(180)'>↺ 180°</button>
+                        <button class='primary-btn' onclick='quickTurn(-90)'>↻ 90° D</button>
+                        <button class='primary-btn' onclick='quickTurn(-45)'>↻ 45° D</button>
                     </div>
                 </div>
             </div>
 
-            <!-- ContrÃ´les -->
+            <!-- Contrôles -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>ContrÃ´le</h3>
+                <h3 class='tab-subtitle'>Contrôle</h3>
                 <div style='text-align: center;'>
-                    <button class='control-btn' id='startPidBtn'>â–¶ï¸ Démarrer PID</button>
-                    <button class='control-btn stop' id='stopPidBtn'>â›” Arrêter PID</button>
-                    <button class='primary-btn' id='resetPidBtn'>ðŸ”„ Réinitialiser PID</button>
+                    <button class='control-btn' id='startPidBtn'>▶️ Démarrer PID</button>
+                    <button class='control-btn stop' id='stopPidBtn'>⛔ Arrêter PID</button>
+                    <button class='primary-btn' id='resetPidBtn'>🔄 Réinitialiser PID</button>
                 </div>
             </div>
 
             <!-- Mode Step-by-Step (Avancé) -->
             <div class='tab-content' style='border: 3px solid #ffc107; background: #fffbf0;'>
-                <h3 class='tab-subtitle' style='color: #856404;'>ðŸš¶ Mode Avancé: Step-by-Step</h3>
+                <h3 class='tab-subtitle' style='color: #856404;'>🚶 Mode Avancé: Step-by-Step</h3>
                 <p class='tab-text' style='margin-bottom: 15px; color: #856404;'>
                     <strong>Mode pas à pas :</strong> Le robot avance par étapes, s'arrête pour que l'image soit nette, 
                     puis attend votre autorisation pour continuer. Si la ligne est perdue, il la cherche automatiquement.
@@ -410,10 +410,10 @@ def render_pid_tab(title="Asservissement PID"):
                     
                     <div style='display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;'>
                         <button class='control-btn' id='startStepModeBtn' style='background: #ffc107; color: #000;'>
-                            â–¶ï¸ Démarrer Mode Step
+                            ▶️ Démarrer Mode Step
                         </button>
                         <button class='control-btn stop' id='stopStepModeBtn'>
-                            â›” Arrêter Mode Step
+                            ⛔ Arrêter Mode Step
                         </button>
                     </div>
                 </div>
@@ -424,13 +424,13 @@ def render_pid_tab(title="Asservissement PID"):
                             style='background: #fff; color: #28a745; font-size: 20px; font-weight: bold; 
                                    padding: 20px 40px; border: 4px solid #28a745; cursor: pointer;'
                             disabled>
-                        âœ… AUTORISER LA PROCHAINE ÉTAPE
+                        ✅ AUTORISER LA PROCHAINE ÉTAPE
                     </button>
                     <p style='margin-top: 10px; color: #fff; font-size: 14px;'>
                         Cliquez pour permettre au robot d'avancer à la prochaine position
                     </p>
                     <div id='stepWaitingIndicator' style='margin-top: 10px; color: #fff; font-weight: bold; display: none;'>
-                        â¸ï¸ En attente de votre autorisation...
+                        ⏸️ En attente de votre autorisation...
                     </div>
                 </div>
             </div>
@@ -474,7 +474,7 @@ def render_pid_tab(title="Asservissement PID"):
             <div class='tab-content'>
                 <h3 class='tab-subtitle'>Flux vidéo</h3>
                 <div class='live-feed'>
-                    <p id='videoPlaceholder' style='color:#888; font-style:italic;'>Caméra inactive" démarrez le PID ou le mode Step pour activer le flux.</p>
+                    <p id='videoPlaceholder' style='color:#888; font-style:italic;'>Caméra inactive — démarrez le PID ou le mode Step pour activer le flux.</p>
                     <img id='videoFeed' src='' alt='Flux vidéo' style='display:none;'
                          onerror="this.style.display='none'; document.getElementById('videoPlaceholder').style.display='block';">
                 </div>
@@ -574,7 +574,7 @@ def render_pid_tab(title="Asservissement PID"):
             var mode = rotationMode? 'ROTATION' : 'AVANCE';
             appendLog('Paramètres mis à jour: Kp=' + params.kp + ', Ki=' + params.ki + ', Kd=' + params.kd + ', Mode=' + mode);
             if (rotationMode) {{
-                appendLog('  Angle: scale=' + params.angle_scale + ', max=' + params.max_angle + 'Â°, min=' + params.min_angle_threshold + 'Â°');
+                appendLog('  Angle: scale=' + params.angle_scale + ', max=' + params.max_angle + '°, min=' + params.min_angle_threshold + '°');
             }}
             showToast('Paramètres PID mis à jour!', 'success');
         }})

@@ -276,21 +276,21 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 </div>
                 <!-- AJOUT DES FONCTIONS DE CAPTURE -->
                 <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;'>
-                    <button class='toggle-btn' id='cameraToggleBtn'>â–¶ï¸ Start Camera</button>
-                    <button class='primary-btn' id='captureImageBtn'>ðŸ“¸ Capture Image</button>
-                    <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> ðŸ’¾ Off</button>
+                    <button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
+                    <button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
+                    <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
                     <select id='resolutionSelect' class='select-detector' title='Résolution caméra'>
-                        <option value='160x128' selected>QQVGA 160Ã—128</option>
-                        <option value='176x144'>QCIF 176Ã—144</option>
-                        <option value='320x240'>QVGA 320Ã—240</option>
-                        <option value='640x480'>VGA 640Ã—480</option>
+                        <option value='160x128' selected>QQVGA 160×128</option>
+                        <option value='176x144'>QCIF 176×144</option>
+                        <option value='320x240'>QVGA 320×240</option>
+                        <option value='640x480'>VGA 640×480</option>
                     </select>
                 </div>
                 <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center;'>
                     <button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
-                    <button class='remoteDL-toggle-btn off' id='toggleMiningBtn' aria-pressed='false'>â›ï¸ Mining Off</button>
+                    <button class='remoteDL-toggle-btn off' id='toggleMiningBtn' aria-pressed='false'>⛏️ Mining Off</button>
                     <span id='miningBadge' style='display:none; background:#8e44ad; color:#fff; padding:4px 10px; border-radius:8px; font-size:13px; font-weight:bold;'>0 crops</span>
-                    <button class='primary-btn' id='downloadMiningBtn' style='display:none;'>ðŸ“¦ Download Crops</button>
+                    <button class='primary-btn' id='downloadMiningBtn' style='display:none;'>📦 Download Crops</button>
                 </div>
                 <div id='zone-resultats'></div>
                 <!-- Conteneur unifié pour livefeed et image capturée -->
@@ -442,7 +442,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
         if (!isActive) {
             // Démarrer la caméra
-            btn.textContent = 'â›” Stop Camera';
+            btn.textContent = '⛔ Stop Camera';
             fetch('/start_camera', { method: 'POST' })
                 .then(function(response) {
                     if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
@@ -450,21 +450,21 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     mainImage.src = '/video?' + new Date().getTime();
                     DISPLAY_MODE = 'livefeed';
                     CAMERA_ACTIVE = true;
-                    captureBtn.textContent = 'ðŸ“¸ Capture Image';
+                    captureBtn.textContent = '📸 Capture Image';
                 })
                 .catch(function(err) {
                     logError('toggleCamera: /start_camera', err);
-                    btn.textContent = 'â–¶ï¸ Start Camera';
+                    btn.textContent = '▶️ Start Camera';
                     CAMERA_ACTIVE = false;
                 });
         } else {
             // Arrêter la caméra
             mainDisplay.style.display = 'none';
-            btn.textContent = 'â–¶ï¸ Start Camera';
+            btn.textContent = '▶️ Start Camera';
             mainImage.src = "";
             DISPLAY_MODE = 'livefeed';
             CAMERA_ACTIVE = false;
-            captureBtn.textContent = 'ðŸ“¸ Capture Image';
+            captureBtn.textContent = '📸 Capture Image';
             fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
         }
     }
@@ -476,7 +476,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         var h = parseInt(parts[1], 10);
         console.log('onResolutionChange:', w, 'x', h);
 
-        showToast('Changement de résolution: ' + w + 'Ã—' + h + 'â€¦', 'info', 2000);
+        showToast('Changement de résolution: ' + w + '×' + h + '…', 'info', 2000);
 
         fetch('/set_resolution', {
             method: 'POST',
@@ -532,7 +532,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
         btn.classList.toggle('on', nextActive);
         btn.classList.toggle('off', !nextActive);
-        btn.textContent = nextActive ? ' ðŸ’¾ On' : ' ðŸ’¾ Off';
+        btn.textContent = nextActive ? ' 💾 On' : ' 💾 Off';
     }
 
     function captureImage() {
@@ -575,7 +575,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 mainDisplay.style.display = 'block';
                 DISPLAY_MODE = 'captured';
                 CAMERA_ACTIVE = false; // La caméra a été stoppée par le serveur pour la capture hires
-                captureBtn.textContent = 'â†©ï¸ Return to Livefeed';
+                captureBtn.textContent = '↩️ Return to Livefeed';
 
                 // Mise à jour de la dernière image capturée (pour diagnostic)
                 imageCapturedCallback(file_url);
@@ -596,11 +596,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
             // Caméra déjà active, juste basculer vers le livestream
             mainImage.src = '/video?' + new Date().getTime();
             DISPLAY_MODE = 'livefeed';
-            captureBtn.textContent = 'ðŸ“¸ Capture Image';
+            captureBtn.textContent = '📸 Capture Image';
         } else {
             // Caméra pas active, la redémarrer
             var btn = document.getElementById('cameraToggleBtn');
-            btn.textContent = 'â›” Stop Camera';
+            btn.textContent = '⛔ Stop Camera';
             fetch('/start_camera', { method: 'POST' })
                 .then(function(response) {
                     if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
@@ -608,11 +608,11 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     mainImage.src = '/video?' + new Date().getTime();
                     DISPLAY_MODE = 'livefeed';
                     CAMERA_ACTIVE = true;
-                    captureBtn.textContent = 'ðŸ“¸ Capture Image';
+                    captureBtn.textContent = '📸 Capture Image';
                 })
                 .catch(function(err) {
                     logError('returnToLivefeed: /start_camera', err);
-                    btn.textContent = 'â–¶ï¸ Start Camera';
+                    btn.textContent = '▶️ Start Camera';
                     CAMERA_ACTIVE = false;
                     alert('Erreur: impossible de redémarrer la caméra. Utilisez le bouton Start Camera.');
                 });
@@ -849,7 +849,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
             btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
             btn.classList.toggle('on', nextActive);
             btn.classList.toggle('off', !nextActive);
-            btn.textContent = nextActive ? 'â›ï¸ Mining On' : 'â›ï¸ Mining Off';
+            btn.textContent = nextActive ? '⛏️ Mining On' : '⛏️ Mining Off';
             showToast(nextActive ? 'Hard positive mining activé' : 'Mining désactivé', nextActive ? 'success' : 'info', 2000);
 
             if (nextActive) {
@@ -909,7 +909,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     }
 
     function downloadMiningCrops() {
-        showToast('Préparation du ZIP â€¦', 'info', 2000);
+        showToast('Préparation du ZIP …', 'info', 2000);
         // Déclencher le téléchargement via un lien caché
         var link = document.createElement('a');
         link.href = '/download_mining_crops';
@@ -926,7 +926,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         // Camera toggle
         var camBtn = document.getElementById('cameraToggleBtn');
         if (camBtn) camBtn.addEventListener('click', toggleCamera);
-        // Capture image â€” dispatche selon le mode d'affichage courant
+        // Capture image — dispatche selon le mode d'affichage courant
         var capBtn = document.getElementById('captureImageBtn');
         if (capBtn) capBtn.addEventListener('click', function() {
             if (DISPLAY_MODE === 'captured') {

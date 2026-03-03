@@ -6,7 +6,7 @@
 # Procédure pour l'utiliser dans le serveur Flask :
 # 1) Importer `render_template_tab` et appeler la fonction pour obtenir une string HTML complète (page autonome).
 # 2) Coller/retourner cette string dans un endpoint (ex.: `return render_template_tab("Vision")`).
-# 3) Remplacer la zone marquée "<!-- AJOUTER VOS BOUTONS ICI -->" par vos boutons/contrÃ´les spécifiques.
+# 3) Remplacer la zone marquée "<!-- AJOUTER VOS BOUTONS ICI -->" par vos boutons/contrôles spécifiques.
 # 4) Reprendre le style du serveur existant (fond dégradé, boutons bleus) déjà inclus ci-dessous.
 # 5) Si vous voulez plusieurs onglets, vous pouvez dupliquer ce fichier avec d'autres noms ou composer plusieurs blocs dans un template parent.
 
@@ -15,7 +15,7 @@ def render_template_tab(title: str = "Onglet générique") -> str:
     """Retourne une page HTML complète avec un onglet vide et le style existant.
 
     Le HTML est autonome : styles, structure et JS minimal pour cliquer sur des boutons si ajoutés.
-    La page est volontairement vide de contrÃ´les; insérez vos boutons à l'endroit indiqué.
+    La page est volontairement vide de contrôles; insérez vos boutons à l'endroit indiqué.
     """
 
     html = """<!DOCTYPE html><html lang='fr'>
