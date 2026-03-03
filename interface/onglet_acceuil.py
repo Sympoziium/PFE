@@ -348,7 +348,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
     
-    // Navigation helper: close camera feed if active before redirecting
+    // Helper de navigation pour fermer la caméra avant de changer d'onglet
     function navigateTo(path) {
         try {
             var liveFeed = document.getElementById('liveFeed');
@@ -366,7 +366,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
 
-      // --- MODE AUTO ET GESTION UI ---
+    // --- MODE AUTO ET GESTION UI ---
     function toggleAuto(isAuto) {
         var val = isAuto ? '1' : '0';
         fetch('/bridge/mode_auto/' + val, { method: 'POST' })
@@ -384,11 +384,14 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
         
-        
-        
-        
-        
-        
+    // --- FONCTIONS DE MOUVEMENT ---
+    var isMoving = false;
+    var moveInterval = null;
+
+    function startMove(direction) {
+        if (isMoving) return;
+        isMoving = true;
+           
         // --- NOUVEAU : Texte affiche pour etat du robot ---
         //document.getElementById('log-box').innerText = "ðŸ¤– État : " + direction;
         
@@ -456,36 +459,6 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 if (!response.ok) console.error('Error stopping move');
             })
             .catch(error => console.error('Fetch error:', error));
-    }
-    // --- FIN DES MODIFICATIONS WATCHDOG ---
-
-    // --- FONCTIONS DE MOUVEMENT ---
-    var isMoving = false;
-    var moveInterval = null;
-
-    function startMove(direction) {
-        if (isMoving) return;
-        isMoving = true;
-
-        var sendMoveCommand = function() {
-            fetch('/zumi/' + direction)
-                .then(function(response) {
-                    if (!response.ok) logError('startMove', new Error('move failed'), { direction: direction });
-                })
-                .catch(function(error) { logError('startMove: fetch', error, { direction: direction }); });
-        };
-
-        sendMoveCommand();
-        moveInterval = setInterval(sendMoveCommand, 250);
-    }
-
-    function stopMove() {
-        if (!isMoving) return;
-        isMoving = false;
-        if (moveInterval) {
-            clearInterval(moveInterval);
-            moveInterval = null;
-        }
     }
 
     // --- Charger les événements au DOMContentLoaded ---
