@@ -2,7 +2,7 @@
 
 > **Projet de fin d'études** — École de technologie supérieure (ÉTS), Département de génie de la production automatisée  
 > **Session** : Hiver 2026 — GPA 793  
-> **Équipe** : 4 étudiants
+> **Équipe** : Cédric Senécal ; François Gagné ; Olivier Poitras ; Alycia-Rose Sévigny
 
 ---
 
