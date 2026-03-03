@@ -8,8 +8,9 @@ from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
 from core.vision.detectors.Stop_detector_cv import StopDetectorCV
 from core.vision.detectors.Haar_classifier import HaarDetector
 from core.vision.detectors.Line_detector import LineDetector
-from core.robot.pid_controller import PIDController
-from core.robot.line_following_state_machine import LineFollowingStateMachine, State
+from core.control.pid_controller import PIDController
+from core.control.line_following_state_machine import LineFollowingStateMachine, State
+from core.control.control_manager import ControlManager
 
 from interface import server_controller as controller_module
 from interface import flask_router as routes
@@ -82,51 +83,31 @@ ctrl = controller_module.controller(zumi)
 routes.register_routes(ctrl)
 ctrl.attach_pipeline_vision(vision_pipeline)
 
-# Attacher la state machine au contrôleur pour l'interface web
+# ---------------------------------------------------------------------------
+#  Orchestrateur de contrôle (ControlManager)
+# ---------------------------------------------------------------------------
+control_manager = ControlManager(robot=zumi, vision_pipeline=vision_pipeline)
+control_manager.register_pid(pid_controller)
+control_manager.register_state_machine(state_machine)
+control_manager.register_line_detector(line_detector)
+
+# Attacher le ControlManager au serveur web
+# (le server_controller délèguera les actions PID/step/state_machine au manager)
+ctrl.attach_control_manager(control_manager)
+
+# Rétro-compatibilité : la state_machine reste accessible directement
 ctrl.state_machine = state_machine
 
 zumi.clear_screen()
 
-def control_loop():
-    vision_pipeline.start()
-    
-    while True:
-        try:
-            results = vision_pipeline.step()
-            
-            # Stocker l'offset pour le PID
-            line_val = None
-            for res in results:
-                if res.get("detector") == "line":
-                    line_val = res.get("value")
-            
-            vision_pipeline.last_line_offset = line_val
-            
-            # Exécuter la machine à états si active
-            if state_machine.is_running():
-                frame = vision_pipeline.get_last_frame()
-                if frame is not None:
-                    state_info = state_machine.step(frame)
-                    if state_info.get('state') == 'COMPLETED':
-                        print("[MAIN] Séquence terminée!")
-            
-            if line_val is not None:
-                print("Offset ligne: {}".format(line_val))
-                
-        except Exception as e:
-            print("Erreur dans control_loop: {}".format(e))
-            import traceback
-            traceback.print_exc()
-            time.sleep(0.1)
 
 if __name__ == '__main__':
+    # La boucle de contrôle est maintenant gérée par le ControlManager
+    control_manager.start()
+
     watchdog_thread = threading.Thread(target=ctrl.motor_watchdog)
     watchdog_thread.daemon = True
     watchdog_thread.start()
-    
-    control_thread = threading.Thread(target=control_loop)
-    control_thread.daemon = True
-    control_thread.start()
 
     print("Flask server démarré")
     ctrl.app.run(host='0.0.0.0', port=5000, threaded=True)

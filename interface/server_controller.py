@@ -15,8 +15,9 @@ from flask import Flask, Response, request, jsonify, send_from_directory, url_fo
 from interface.onglet_acceuil import render_accueil_tab
 from interface.onglet_vision import render_vision_tab
 from interface.onglet_template import render_template_tab  # Exemple d'onglet template générique
-from core.robot.pid_controller import PIDController
-from core.robot.line_following_state_machine import StepByStepStateMachine
+from core.control.pid_controller import PIDController
+from core.control.line_following_state_machine import StepByStepStateMachine
+from core.control.control_manager import ControlManager, MODE_IDLE, MODE_PID, MODE_STATE_MACHINE, MODE_STEP_BY_STEP
 
 # --- Fonction helper pour formater les résultats de détection ---
 def format_detection_result(results, detector_name="Détecteur"):
@@ -110,8 +111,11 @@ class controller:
         self.app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
         self.robot = zumi
         self.vision_pipeline = None
+        self.control_manager = None  # Initialisé via attach_control_manager()
         self.last_move_time = time.time()
         self.watchdog_active = False
+        # Rétro-compatibilité : pid_controller local utilisé seulement
+        # quand aucun ControlManager n'est attaché.
         self.pid_controller = PIDController()
         self.pid_active = False
         self.pid_thread = None
@@ -119,7 +123,7 @@ class controller:
         self.last_correction = 0
         self.last_left_speed = 0
         self.last_right_speed = 0
-        # Mode step-by-step
+        # Mode step-by-step (rétro-compatibilité)
         self.step_machine = None
         self.step_mode_active = False
         self.step_mode_thread = None
@@ -139,6 +143,17 @@ class controller:
     def attach_pipeline_vision(self, pipeline):
         pipeline.attach_capture_dir(self.CAPTURE_DIR)
         self.vision_pipeline = pipeline
+
+    def attach_control_manager(self, control_manager):
+        """Attache le ControlManager (orchestrateur de contrôle).
+
+        Quand un ControlManager est attaché, les routes PID/step délèguent
+        au manager plutôt que de gérer les threads en interne.
+        """
+        self.control_manager = control_manager
+        # Utiliser le PID du ControlManager comme référence unique
+        if control_manager.pid_controller is not None:
+            self.pid_controller = control_manager.pid_controller
 
     # --- Navigation ---
     def home(self):
@@ -784,128 +799,74 @@ class controller:
         """Démarre le contrôle PID."""
         try:
             print("[DEBUG] pid_start() appelé")
-            
-            # Vérifier si un PID est déjà actif
+
+            vp = self.vision_pipeline
+            if not vp or not vp.is_running():
+                return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
+
+            # --- Via ControlManager (nouvelle architecture) ---
+            if self.control_manager is not None:
+                if self.control_manager.mode != MODE_IDLE:
+                    return jsonify({'error': 'Un autre mode est déjà actif: {}'.format(self.control_manager.mode)}), 400
+                self.control_manager.activate(MODE_PID)
+                self.pid_active = True
+                return jsonify({'status': 'started'})
+
+            # --- Fallback legacy (sans ControlManager) ---
             if self.pid_active:
-                print("[WARNING] PID déjà actif")
                 return jsonify({'error': 'PID already running'}), 400
-            
-            # Vérifier si un thread PID existe encore
+
             if self.pid_thread and self.pid_thread.is_alive():
                 print("[WARNING] Thread PID encore actif, arrêt forcé")
                 self.pid_active = False
                 self.pid_thread.join(timeout=2.0)
                 self.pid_thread = None
-            
-            vp = self.vision_pipeline
-            print("[DEBUG] Vision pipeline: {}".format(vp))
-            
-            if not vp:
-                print("[DEBUG] Vision pipeline est None")
-                return jsonify({'error': 'Vision pipeline not initialized'}), 400
-                
-            if not vp.is_running():
-                print("[DEBUG] Vision pipeline n'est pas en cours d'exécution")
-                return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
-            
-            print("[DEBUG] Vérification du PID controller")
-            if not hasattr(self, 'pid_controller') or self.pid_controller is None:
-                print("[ERROR] pid_controller n'existe pas!")
-                return jsonify({'error': 'PID controller not initialized'}), 500
-            
-            print("[DEBUG] Réinitialisation du PID")
+
             self.pid_controller.reset()
             self.pid_active = True
-            
-            print("[DEBUG] Création du thread PID")
+
             import threading
             def pid_loop():
-                print("[PID_LOOP] Démarrage du pid_loop")
                 loop_count = 0
                 while self.pid_active:
                     try:
-                        loop_count += 1
-                        
-                        # CHANGEMENT: Récupérer l'offset déjà calculé par control_loop
                         line_offset = getattr(vp, 'last_line_offset', None)
-                        
                         if line_offset is None:
-                            # Pas de ligne détectée, arrêter les moteurs
                             self.robot.stop()
                             time.sleep(0.05)
                             continue
-                        
-                        # Debug tous les 20 cycles
-                        if loop_count % 20 == 0:
-                            print("[PID_LOOP] Offset: {}, PID actif: {}, Mode: {}".format(
-                                line_offset, self.pid_active, 
-                                "ROTATION" if self.pid_controller.rotation_mode else "AVANCE"))
-                        
-                        # Choix du mode selon rotation_mode
+
                         if self.pid_controller.rotation_mode:
-                            # MODE ROTATION: Calculer l'angle et utiliser turn()
                             angle = self.pid_controller.compute_rotation_angle(line_offset)
-                            
                             if angle is not None:
-                                # Angle suffisamment grand pour tourner
-                                if loop_count % 20 == 0:
-                                    print("[PID_LOOP] Rotation de {:.1f}° (erreur: {:.1f})".format(angle, line_offset))
-                                
                                 self.robot.turn(angle)
-                                
-                                # Sauvegarder pour l'affichage
                                 self.last_line_offset = line_offset
-                                self.last_correction = angle  # En mode rotation, la correction est l'angle
-                                self.last_left_speed = 0
-                                self.last_right_speed = 0
+                                self.last_correction = angle
                             else:
-                                # Angle trop petit, ligne centrée
-                                if loop_count % 20 == 0:
-                                    print("[PID_LOOP] Ligne centrée (erreur: {:.1f})".format(line_offset))
-                                
                                 self.robot.stop()
-                                
                                 self.last_line_offset = line_offset
                                 self.last_correction = 0
-                                self.last_left_speed = 0
-                                self.last_right_speed = 0
-                            
-                            # Délai plus long en mode rotation (pour laisser le temps de tourner)
                             time.sleep(0.2)
                         else:
-                            # MODE AVANCE: Calculer les vitesses et utiliser control_motors()
                             left_speed, right_speed = self.pid_controller.compute(line_offset)
-                            
-                            # Appliquer aux moteurs
                             self.robot.control_motors(left_speed, right_speed)
-                            
-                            # Sauvegarder pour l'affichage
                             self.last_line_offset = line_offset
                             self.last_correction = self.pid_controller.correction_history[-1] if self.pid_controller.correction_history else 0
                             self.last_left_speed = left_speed
                             self.last_right_speed = right_speed
-                            
-                            time.sleep(0.05)  # 20 Hz
-                        
+                            time.sleep(0.05)
+
                     except Exception as e:
-                        print("[ERROR] Erreur dans pid_loop: {}".format(e))
-                        import traceback
-                        traceback.print_exc()
+                        print("[ERROR] pid_loop: {}".format(e))
                         time.sleep(0.1)
-                
-                print("[PID_LOOP] Arrêt du pid_loop (loops effectués: {})".format(loop_count))
-                # Arrêter les moteurs à la fin
                 self.robot.stop()
-            
-            self.pid_thread = threading.Thread(target=pid_loop)
-            self.pid_thread.daemon = True
+
+            self.pid_thread = threading.Thread(target=pid_loop, daemon=True)
             self.pid_thread.start()
-            
-            print("[DEBUG] PID démarré avec succès, thread ID: {}".format(self.pid_thread.ident))
             return jsonify({'status': 'started'})
-            
+
         except Exception as e:
-            print("[ERROR] Exception dans pid_start(): {}".format(e))
+            print("[ERROR] pid_start(): {}".format(e))
             import traceback
             traceback.print_exc()
             self.pid_active = False
@@ -914,27 +875,25 @@ class controller:
     def pid_stop(self):
         """Arrête le contrôle PID."""
         print("[DEBUG] pid_stop() appelé")
-        print("[DEBUG] pid_active avant arrêt: {}".format(self.pid_active))
-        
-        # Marquer le PID comme inactif
+
+        # --- Via ControlManager ---
+        if self.control_manager is not None and self.control_manager.mode == MODE_PID:
+            self.control_manager.deactivate()
+            self.pid_active = False
+            self.last_line_offset = 0
+            self.last_correction = 0
+            self.last_left_speed = 0
+            self.last_right_speed = 0
+            return jsonify({'status': 'stopped'})
+
+        # --- Fallback legacy ---
         self.pid_active = False
-        
-        # Attendre que le thread se termine
+
         if self.pid_thread and self.pid_thread.is_alive():
-            print("[DEBUG] Attente de la fin du thread PID...")
-            self.pid_thread.join(timeout=2.0)  # Augmenté à 2 secondes
-            if self.pid_thread.is_alive():
-                print("[WARNING] Le thread PID n'a pas terminé dans le délai")
-            else:
-                print("[DEBUG] Thread PID terminé proprement")
-        
-        # Nettoyer le thread
+            self.pid_thread.join(timeout=2.0)
         self.pid_thread = None
-        
-        # Arrêter les moteurs
+
         self.robot.stop()
-        
-        # Réinitialiser les valeurs affichées
         self.last_line_offset = 0
         self.last_correction = 0
         self.last_left_speed = 0
@@ -954,6 +913,21 @@ class controller:
 
     def pid_status(self):
         """Retourne le statut actuel du PID."""
+        # --- Via ControlManager ---
+        if self.control_manager is not None:
+            cm = self.control_manager
+            with cm._data_lock:
+                return jsonify({
+                    'active': cm.mode == MODE_PID,
+                    'mode': cm.mode,
+                    'error': cm.last_line_offset,
+                    'correction': cm.last_correction,
+                    'left_speed': cm.last_left_speed,
+                    'right_speed': cm.last_right_speed,
+                    'debug': self.pid_controller.get_debug_info()
+                })
+
+        # --- Fallback legacy ---
         return jsonify({
             'active': self.pid_active,
             'error': self.last_line_offset,
@@ -1015,30 +989,51 @@ class controller:
     
     def state_machine_start(self):
         """Démarre la machine à états."""
+        # --- Via ControlManager ---
+        if self.control_manager is not None:
+            if self.control_manager.state_machine is None:
+                return jsonify({'error': 'State machine not registered in ControlManager'}), 400
+            if self.control_manager.mode != MODE_IDLE:
+                return jsonify({'error': 'Un autre mode est déjà actif: {}'.format(self.control_manager.mode)}), 400
+            self.control_manager.activate(MODE_STATE_MACHINE)
+            return jsonify({'status': 'started', 'state': self.control_manager.state_machine.get_state().name})
+
+        # --- Fallback legacy ---
         if not hasattr(self, 'state_machine'):
             return jsonify({'error': 'State machine not initialized'}), 400
-        
         self.state_machine.start()
         return jsonify({'status': 'started', 'state': self.state_machine.get_state().name})
 
     def state_machine_stop(self):
         """Arrête la machine à états."""
+        # --- Via ControlManager ---
+        if self.control_manager is not None and self.control_manager.mode == MODE_STATE_MACHINE:
+            self.control_manager.deactivate()
+            return jsonify({'status': 'stopped'})
+
+        # --- Fallback legacy ---
         if not hasattr(self, 'state_machine'):
             return jsonify({'error': 'State machine not initialized'}), 400
-        
         self.state_machine.stop()
         return jsonify({'status': 'stopped'})
 
     def state_machine_status(self):
         """Retourne le statut de la machine à états."""
-        if not hasattr(self, 'state_machine'):
+        # --- Via ControlManager ---
+        sm = None
+        if self.control_manager is not None and self.control_manager.state_machine is not None:
+            sm = self.control_manager.state_machine
+        elif hasattr(self, 'state_machine'):
+            sm = self.state_machine
+
+        if sm is None:
             return jsonify({'error': 'State machine not initialized'}), 400
-        
+
         return jsonify({
-            'running': self.state_machine.is_running(),
-            'state': self.state_machine.get_state().name,
-            'photos_taken': len(self.state_machine.photos_taken),
-            'rotation_count': self.state_machine.rotation_count
+            'running': sm.is_running(),
+            'state': sm.get_state().name,
+            'photos_taken': len(sm.photos_taken),
+            'rotation_count': sm.rotation_count
         })
     
     # ===== MODE STEP-BY-STEP =====
@@ -1047,85 +1042,71 @@ class controller:
         """Démarre le mode step-by-step."""
         try:
             print("[DEBUG] pid_step_start() appelé")
-            
-            # Vérifier si un mode est déjà actif
-            if self.step_mode_active:
-                print("[WARNING] Mode step déjà actif")
-                return jsonify({'error': 'Step mode already running'}), 400
-            
-            if self.pid_active:
-                print("[WARNING] PID normal actif, arrêter d'abord")
-                return jsonify({'error': 'Normal PID is running. Stop it first.'}), 400
-            
+
             vp = self.vision_pipeline
             if not vp or not vp.is_running():
                 return jsonify({'error': 'Camera not running. Please start camera first.'}), 400
-            
+
+            # --- Via ControlManager ---
+            if self.control_manager is not None:
+                if self.control_manager.mode != MODE_IDLE:
+                    return jsonify({'error': 'Un autre mode est déjà actif: {}'.format(self.control_manager.mode)}), 400
+                self.control_manager.activate(MODE_STEP_BY_STEP)
+                self.step_mode_active = True
+                # Garder une référence locale pour les routes status/approve
+                self.step_machine = self.control_manager.step_machine
+                return jsonify({'status': 'started'})
+
+            # --- Fallback legacy ---
+            if self.step_mode_active:
+                return jsonify({'error': 'Step mode already running'}), 400
+            if self.pid_active:
+                return jsonify({'error': 'Normal PID is running. Stop it first.'}), 400
+
             # Trouver le détecteur de ligne
             line_detector = None
             for detector in vp.get_detectors():
                 if hasattr(detector, 'white_threshold'):
                     line_detector = detector
                     break
-            
             if not line_detector:
                 return jsonify({'error': 'Line detector not found'}), 404
-            
-            # Créer la machine à états si nécessaire
+
             if self.step_machine is None:
-                print("[DEBUG] Création de la machine step-by-step")
                 self.step_machine = StepByStepStateMachine(
                     robot=self.robot,
                     camera=vp.camera,
                     pid_controller=self.pid_controller,
                     line_detector=line_detector
                 )
-            
-            # Démarrer la machine
-            print("[DEBUG] Démarrage de la machine step-by-step")
+
             self.step_machine.start()
             self.step_mode_active = True
-            
-            # Créer le thread de contrôle
+
             import threading
             def step_loop():
-                print("[STEP_LOOP] Démarrage du step_loop")
                 while self.step_mode_active:
                     try:
-                        # Récupérer l'image actuelle
                         frame = vp.get_last_frame()
                         if frame is None:
                             time.sleep(0.05)
                             continue
-                        
-                        # Exécuter un cycle de la machine à états
                         result = self.step_machine.step(frame)
-                        
-                        # Sauvegarder les infos pour l'affichage
                         self.last_line_offset = result.get('line_offset', 0)
                         self.last_left_speed = result.get('left_speed', 0)
                         self.last_right_speed = result.get('right_speed', 0)
-                        
-                        time.sleep(0.05)  # 20 Hz
-                        
+                        time.sleep(0.05)
                     except Exception as e:
-                        print("[ERROR] Erreur dans step_loop: {}".format(e))
-                        import traceback
-                        traceback.print_exc()
+                        print("[ERROR] step_loop: {}".format(e))
                         time.sleep(0.1)
-                
-                print("[STEP_LOOP] Arrêt du step_loop")
                 self.robot.stop()
-            
-            self.step_mode_thread = threading.Thread(target=step_loop)
-            self.step_mode_thread.daemon = True
+
+            self.step_mode_thread = threading.Thread(target=step_loop, daemon=True)
             self.step_mode_thread.start()
-            
-            print("[DEBUG] Mode step-by-step démarré avec succès")
             return jsonify({'status': 'started'})
-            
+
         except Exception as e:
-            print("[ERROR] Exception dans pid_step_start(): {}".format(e))
+            print("[ERROR] pid_step_start(): {}".format(e))
             import traceback
             traceback.print_exc()
             self.step_mode_active = False
@@ -1134,61 +1115,86 @@ class controller:
     def pid_step_stop(self):
         """Arrête le mode step-by-step."""
         print("[DEBUG] pid_step_stop() appelé")
-        
+
+        # --- Via ControlManager ---
+        if self.control_manager is not None and self.control_manager.mode == MODE_STEP_BY_STEP:
+            self.control_manager.deactivate()
+            self.step_mode_active = False
+            self.last_line_offset = 0
+            self.last_correction = 0
+            self.last_left_speed = 0
+            self.last_right_speed = 0
+            return jsonify({'status': 'stopped'})
+
+        # --- Fallback legacy ---
         if self.step_machine:
             self.step_machine.stop()
-        
         self.step_mode_active = False
-        
-        # Attendre que le thread se termine
+
         if self.step_mode_thread and self.step_mode_thread.is_alive():
-            print("[DEBUG] Attente de la fin du thread step...")
             self.step_mode_thread.join(timeout=2.0)
-            if self.step_mode_thread.is_alive():
-                print("[WARNING] Le thread step n'a pas terminé dans le délai")
-            else:
-                print("[DEBUG] Thread step terminé proprement")
-        
         self.step_mode_thread = None
+
         self.robot.stop()
-        
-        # Réinitialiser les valeurs affichées
         self.last_line_offset = 0
         self.last_correction = 0
         self.last_left_speed = 0
         self.last_right_speed = 0
-        
-        print("[DEBUG] Mode step-by-step arrêté")
         return jsonify({'status': 'stopped'})
     
     def pid_step_approve(self):
         """Approuve la prochaine étape."""
-        print("[DEBUG] pid_step_approve() appelé")
-        
-        if not self.step_mode_active or not self.step_machine:
+        # Via ControlManager ou référence locale
+        sm = None
+        if self.control_manager is not None and self.control_manager.step_machine is not None:
+            sm = self.control_manager.step_machine
+        elif self.step_machine:
+            sm = self.step_machine
+
+        if sm is None or not (self.step_mode_active or
+                              (self.control_manager and self.control_manager.mode == MODE_STEP_BY_STEP)):
             return jsonify({'error': 'Step mode not running'}), 400
-        
-        self.step_machine.approve_next_step()
-        
+
+        sm.approve_next_step()
         return jsonify({'status': 'approved'})
-    
+
     def pid_step_status(self):
         """Retourne le statut du mode step-by-step."""
-        if not self.step_machine:
+        # Via ControlManager ou référence locale
+        sm = None
+        active = False
+        if self.control_manager is not None and self.control_manager.step_machine is not None:
+            sm = self.control_manager.step_machine
+            active = self.control_manager.mode == MODE_STEP_BY_STEP
+        elif self.step_machine:
+            sm = self.step_machine
+            active = self.step_mode_active
+
+        if sm is None:
             return jsonify({
                 'active': False,
                 'state': 'IDLE',
                 'waiting_approval': False
             })
-        
+
+        # Lire les données depuis le ControlManager si disponible
+        line_offset = self.last_line_offset
+        left_speed = self.last_left_speed
+        right_speed = self.last_right_speed
+        if self.control_manager is not None:
+            with self.control_manager._data_lock:
+                line_offset = self.control_manager.last_line_offset or 0
+                left_speed = self.control_manager.last_left_speed
+                right_speed = self.control_manager.last_right_speed
+
         return jsonify({
-            'active': self.step_mode_active,
-            'state': self.step_machine.get_state().name,
-            'waiting_approval': self.step_machine.is_waiting_approval(),
-            'step_count': self.step_machine.step_count,
-            'line_offset': self.last_line_offset,
-            'left_speed': self.last_left_speed,
-            'right_speed': self.last_right_speed
+            'active': active,
+            'state': sm.get_state().name,
+            'waiting_approval': sm.is_waiting_approval(),
+            'step_count': sm.step_count,
+            'line_offset': line_offset,
+            'left_speed': left_speed,
+            'right_speed': right_speed
         })
     # --- PONT (Nouvelles fonctions) ---
     def bridge_open(self):

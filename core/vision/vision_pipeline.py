@@ -67,8 +67,50 @@ class VisionPipeline:
         except Exception as e:
             if self.debug:
                 print("Erreur lors du demarrage du pipeline de vision: {}".format(e))
-            
-        
+
+    def step(self):
+        """
+        Exécute un cycle complet du pipeline de vision :
+        1. Capture une image depuis la caméra
+        2. Met à jour le buffer interne (last_frame)
+        3. Passe l'image à chaque détecteur enregistré
+        4. Retourne la liste agrégée des résultats
+
+        Returns:
+            list[dict]: Liste de résultats, un par détecteur.
+                        Chaque dict contient au minimum la clé 'detector'.
+                        En cas d'erreur de capture, retourne une liste vide.
+        """
+        if not self.running:
+            return []
+
+        # 1. Capture
+        try:
+            frame = self.camera.capture()
+        except Exception as e:
+            if self.debug:
+                print("[VisionPipeline.step] Erreur capture: {}".format(e))
+            return []
+
+        if frame is None:
+            return []
+
+        # 2. Mise à jour du buffer (thread-safe)
+        self.update_last_frame(frame)
+
+        # 3. Exécution des détecteurs
+        results = []
+        for detector in self.detectors:
+            try:
+                detection = detector.process(frame.copy())
+                if detection is not None:
+                    results.append(detection)
+            except Exception as e:
+                if self.debug:
+                    print("[VisionPipeline.step] Erreur détecteur {}: {}".format(detector, e))
+
+        return results
+
     def stop(self):
         """ appeler pour arrêter le pipeline de vision """
         # Signaler l'arrêt AVANT de fermer la caméra
