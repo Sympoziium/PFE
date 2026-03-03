@@ -2,40 +2,51 @@
 # -*- coding: utf-8 -*-
 # detector_base.py
 # ------------------
-# ce module défini la classe de base pour les détecteurs de vision
-# il servira de base pour l'implémentation du CNN
+# Ce module définit la classe de base pour les détecteurs de vision.
+# Il servira de base pour l'implémentation du CNN.
+#
+# IMPORTANT — Convention de sortie standardisée :
+# Les détecteurs ne font QUE de la détection.  L'annotation des images
+# (dessin de bboxes, sauvegarde d'images annotées) est gérée de façon
+# centralisée par le VisionPipeline / server_controller.
 
 from abc import ABC, abstractmethod
+
 
 class BaseDetector(ABC):
     @abstractmethod
     def process(self, frame, filename=None):
         """
-        Analyse une image et retourne un résultat standardisé.
+        Analyse une image et retourne un résultat de détection **sans annotation**.
+
+        Le détecteur ne doit PAS dessiner sur l'image ni sauvegarder d'image
+        annotée — c'est la responsabilité du pipeline / contrôleur.
 
         Args:
-            frame: Image BGR (format OpenCV natif)
-            filename: Nom du fichier image capturé (optionnel, pour nouveaux détecteurs)
+            frame: Image BGR (format OpenCV natif).
+            filename: Nom du fichier image capturé (optionnel).
 
         Returns:
-            dict: Résultat de détection avec les clés standardisées suivantes:
-            {
-                'Object_detected': bool,           # True si objet détecté, False sinon
-                'detection_box': tuple or None,    # (x, y, w, h) coordonnées bbox, None si pas de détection
-                'confidence': float or None,       # Score de confiance [0.0-1.0], None si pas de détection
-                'area': int or None,               # Aire du contour en pixels, None si pas de détection
-                'logs': list,                      # Liste de messages de debug pour terminal (optionnel)
-                'steps': list,                     # Liste d'étapes de diagnostic avec URLs (optionnel)
-                'source_file_url': str or None,    # URL de l'image source (optionnel)
-                'annotated_url': str or None,      # URL de l'image avec annotations (bbox tracée)
-                'Processing time': float           # Temps de traitement en secondes (ajouté par le pipeline)
-            }
+            dict: Résultat standardisé ::
+
+                {
+                    'Object_detected': bool,
+                    'detections': [                         # liste de toutes les détections
+                        {
+                            'object': str,                  # nom de l'objet détecté
+                            'detection_box': (x, y, w, h),  # coordonnées de la bbox
+                            'confidence': float,            # score de confiance [0.0-1.0] (optionnel)
+                        },
+                        ...
+                    ],
+                    'logs': list,                           # messages de debug (optionnel)
+                    'Processing time': float,               # ajouté par le pipeline (ne pas remplir)
+                }
 
         Note:
-            - Les anciens détecteurs peuvent avoir une interface legacy (frame seulement).
-            - Le pipeline vision utilise l'introspection pour détecter la signature.
-            - Les clés 'logs', 'steps', 'source_file_url', 'annotated_url' sont optionnelles.
-            - Pour compatibilité, les détecteurs legacy peuvent retourner d'autres formats.
+            - Le pipeline ajoute 'Processing time' automatiquement.
+            - L'annotation et la génération des URLs ('annotated_url',
+              'source_file_url') sont gérées par le pipeline / contrôleur.
         """
         pass
 
@@ -43,5 +54,27 @@ class BaseDetector(ABC):
     def attach_capture_dir(self, capture_dir):
         """
         Attache le dossier de capture d'images au détecteur.
+        """
+        pass
+
+    @abstractmethod
+    def process_passive(self, frame):
+        """
+        Détection passive optimisée pour le live feed.
+
+        Retourne le même format standardisé que process(), mais peut omettre
+        les logs et les champs optionnels pour minimiser la latence.
+
+        Returns:
+            dict ::
+
+                {
+                    'Object_detected': bool,
+                    'detections': [
+                        {'object': str, 'detection_box': (x, y, w, h)},
+                        ...
+                    ],
+                    'timestamp': float,   # time.time() de la détection
+                }
         """
         pass

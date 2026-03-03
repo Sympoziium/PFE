@@ -29,3 +29,17 @@ class CameraBase(ABC):
         Retourne une image BGR (OpenCV compatible)
         """
         pass
+
+    @abstractmethod
+    def reconfigure(self, width: int, height: int):
+        """
+        Reconfigure la caméra à la résolution demandée.
+
+        L'implémentation gère le cycle de vie complet (fermeture,
+        recréation et reconfiguration) en interne. L'appelant n'a pas
+        besoin d'appeler close() avant ni start_camera() après.
+
+        :param width:  Largeur en pixels.
+        :param height: Hauteur en pixels.
+        """
+        pass

@@ -52,7 +52,12 @@ class LineDetector(BaseDetector):
         return result
     
     def attach_capture_dir(self, capture_dir):
+        """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
+
+    def process_passive(self, frame):
+        """Détection de lignes optimisée pour le live feed."""
+        return {"detector": "line", "value": self.detect_lines(frame)}
 
     def detect_lines(self, frame):
         # 1. Définition de la zone de détection
@@ -86,7 +91,8 @@ class LineDetector(BaseDetector):
         if len(contours) == 0:
             cv2.putText(frame, "Aucune ligne detectee", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            print("[LINE_DETECTOR] Aucun contour trouvé -> retourne None")
+            if self.debug_mode:
+                print("[LINE_DETECTOR] Aucun contour trouvé -> retourne None")
             return None
         
         # 4. Filtrer les contours pour trouver les POINTILLÉS
@@ -136,7 +142,8 @@ class LineDetector(BaseDetector):
         if len(valid_dashes) == 0:
             cv2.putText(frame, "Pas de ligne valide apres filtrage", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
-            print("[LINE_DETECTOR] Aucun pointillé valide après filtrage -> retourne None")
+            if self.debug_mode:
+                print("[LINE_DETECTOR] Aucun pointillé valide après filtrage -> retourne None")
             return None
         
         # 5. Grouper les pointillés alignés verticalement
@@ -166,7 +173,8 @@ class LineDetector(BaseDetector):
         if len(best_group) < 1:
             cv2.putText(frame, "Aucun pointille trouve", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
-            print("[LINE_DETECTOR] Aucun groupe de pointillés valide -> retourne None")
+            if self.debug_mode:
+                print("[LINE_DETECTOR] Aucun groupe de pointillés valide -> retourne None")
             return None
         
         # 6. Calculer le centre moyen
@@ -208,5 +216,6 @@ class LineDetector(BaseDetector):
         cv2.putText(frame, threshold_text, (20, 70), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
-        print("[LINE_DETECTOR] Ligne détectée! offset={:.1f}, {} pointillés dans le groupe".format(offset, len(best_group)))
+        if self.debug_mode:
+            print("[LINE_DETECTOR] Ligne détectée! offset={:.1f}, {} pointillés dans le groupe".format(offset, len(best_group)))
         return offset
