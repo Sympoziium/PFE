@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 # onglet_vision.py
 # ------------------
-# ce module dÃ©fini un onglet de l'interface web dÃ©diÃ© au fonctionnalitÃ©es du module de vision
+# ce module défini un onglet de l'interface web dédié au fonctionnalitées du module de vision
 # ------------------
 
 def render_vision_tab(title: str = "Vision du Zumi") -> str:
-    """Retourne une page HTML complÃ¨te avec les widgets pour l'onglet de vision."""
+    """Retourne une page HTML complète avec les widgets pour l'onglet de vision."""
 
     html = """<!DOCTYPE html><html lang='fr'>
     <head>
@@ -44,7 +44,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     .tab-nav {
         display: flex; align-items: center;
         gap: 4px;
-        margin-left: auto; /* pousse la nav Ã  droite */
+        margin-left: auto; /* pousse la nav à droite */
     }
 
     .tab-btn-group {
@@ -67,7 +67,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         background: #f7fbff;
     }
 
-    /* --- Styles pour les diffÃ©rents types de texte --- */
+    /* --- Styles pour les différents types de texte --- */
     
     /* Boite de texte format titre */
     .tab-title {
@@ -84,7 +84,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         font-size: 16px; font-weight: normal; margin: 0;
     }
 
-    /* --- DÃ©clarations des diffÃ©rents styles de widgets --- */
+    /* --- Déclarations des différents styles de widgets --- */
 
     /* style bouton cliquable principal */
     .primary-btn {
@@ -95,7 +95,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
     .primary-btn:hover { background: #005fa3; }
 
-    /* Ã©tat actif pour le bouton d'onglet courant */
+    /* état actif pour le bouton d'onglet courant */
     .primary-btn.active {
         background: #00528a;
         box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
@@ -108,7 +108,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         active_detector: none;
     }
 
-    .detector-btn:hover { background: #218838; } /* vert foncÃ© au survol */
+    .detector-btn:hover { background: #218838; } /* vert foncé au survol */
 
 
 
@@ -130,7 +130,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
     /* style bouton toggle */
     .toggle-btn {
-        background: #007acc; /* bleu par dÃ©faut */
+        background: #007acc; /* bleu par défaut */
         color: white; 
         border: none; 
         padding: 10px 18px; 
@@ -141,7 +141,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
     .toggle-btn:hover { background: #005fa3; } 
 
-    /* --- Styles pour le live feed vidÃ©o --- */
+    /* --- Styles pour le live feed vidéo --- */
 
     .live-feed {
         display: none; 
@@ -163,14 +163,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         margin-top: 10px; 
     }
 
-    /* Exemple de style additionnel pour les boutons et zones de rÃ©sultats */
+    /* Exemple de style additionnel pour les boutons et zones de résultats */
     /* container : conteneur principal de l'onglet
        tab-shell : "coquille" de l'onglet avec le fond blanc et les arrondis
-       tab-header : entÃªte de l'onglet avec le titre et les actions globales
+       tab-header : entête de l'onglet avec le titre et les actions globales
        tab-title : titre de l'onglet
        tab-content : zone principale de contenu de l'onglet
        L'ordre des classes CSS suit l'ordre d'apparition dans le HTML.
-       Sections dÃ©limitÃ©es par <div class='XXX'> ... </div> */
+       Sections délimitées par <div class='XXX'> ... </div> */
 
     /* Ajout styles pour select */
     .select-detector {
@@ -179,7 +179,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
     /* --- Stop Detection UI panel --- */
     .stop-detect-panel {
-        display: none; /* visible seulement pour le dÃ©tecteur stop */
+        display: none; /* visible seulement pour le détecteur stop */
         flex: 1;
         border: 2px solid #00b894;
         border-radius: 12px;
@@ -221,7 +221,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
     .detect-indicator {
         border-radius: 10px; padding: 10px; text-align: center; font-weight: bold; color: #fff;
-        background: #bdc3c7; /* dÃ©faut: gris */
+        background: #bdc3c7; /* défaut: gris */
     }
 
     .detect-indicator.on { background: #2ecc71; }
@@ -279,7 +279,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     <button class='toggle-btn' id='cameraToggleBtn'>â–¶ï¸ Start Camera</button>
                     <button class='primary-btn' id='captureImageBtn'>ðŸ“¸ Capture Image</button>
                     <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> ðŸ’¾ Off</button>
-                    <select id='resolutionSelect' class='select-detector' title='RÃ©solution camÃ©ra'>
+                    <select id='resolutionSelect' class='select-detector' title='Résolution caméra'>
                         <option value='160x128' selected>QQVGA 160Ã—128</option>
                         <option value='176x144'>QCIF 176Ã—144</option>
                         <option value='320x240'>QVGA 320Ã—240</option>
@@ -293,7 +293,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     <button class='primary-btn' id='downloadMiningBtn' style='display:none;'>ðŸ“¦ Download Crops</button>
                 </div>
                 <div id='zone-resultats'></div>
-                <!-- Conteneur unifiÃ© pour livefeed et image capturÃ©e -->
+                <!-- Conteneur unifié pour livefeed et image capturée -->
                 <div class='live-feed' id='mainImageDisplay' style='display:none;'>
                     <img id='mainImage' alt='Image principale'>
                 </div>
@@ -303,25 +303,25 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 <div class='tab-header'>
                     <h3 class='tab-subtitle'>Image Detection</h3>
                 </div>
-                <!-- AJOUT DES FONCTIONS DE DÃ‰TECTION -->
+                <!-- AJOUT DES FONCTIONS DE DÉTECTION -->
                 <div class='tab-row'>
                     <div class='tab-btn-group'>
-                        <label for='detectorSelect' class='tab-text'>Choix du dÃ©tecteur</label>
+                        <label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
                         <select id='detectorSelect' class='select-detector'>
                             <!-- options remplies dynamiquement -->
                         </select>
-                        <button class='detector-btn' id='runDetectionBtn'>Lancer DÃ©tection</button>
-                        <button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique DÃ©tecteur</button>
+                        <button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
+                        <button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
                     </div>
                     <!-- Stop detection diagnostic panel -->
                     <div class='stop-detect-panel' id='stopDetectPanel'>
                         <div class='tab-subtitle'>Diagnostic Stop</div>
                         <div class='indicator-and-terminal'>
-                            <div id='stopDetectIndicator' class='detect-indicator'>Aucune dÃ©tection</div>
+                            <div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
                             <div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
                         </div>
                     </div>
-                    <!-- ajouter la derniÃ¨re image capturÃ©e -->
+                    <!-- ajouter la dernière image capturée -->
                 </div>
             </div>
         </div>
@@ -333,7 +333,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     <!-- --- Scripts JavaScript pour les interactions --- -->
 
     <script>
-    // Active l'Ã©tat du bouton d'onglet selon l'URL courante (compat ES5)
+    // Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
     (function() {
         var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
         var here = norm(location.pathname);
@@ -427,9 +427,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         }
     }
 
-    // Ã‰tat global: mode d'affichage (livefeed ou captured) et Ã©tat camÃ©ra
+    // État global: mode d'affichage (livefeed ou captured) et état caméra
     var DISPLAY_MODE = 'livefeed'; // 'livefeed' | 'captured'
-    var CAMERA_ACTIVE = false; // Track si la camÃ©ra est dÃ©marrÃ©e
+    var CAMERA_ACTIVE = false; // Track si la caméra est démarrée
 
     function toggleCamera() {
         console.log('toggleCamera() appelee');
@@ -441,7 +441,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         var isActive = CAMERA_ACTIVE && mainDisplay.style.display === 'block';
 
         if (!isActive) {
-            // DÃ©marrer la camÃ©ra
+            // Démarrer la caméra
             btn.textContent = 'â›” Stop Camera';
             fetch('/start_camera', { method: 'POST' })
                 .then(function(response) {
@@ -458,7 +458,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     CAMERA_ACTIVE = false;
                 });
         } else {
-            // ArrÃªter la camÃ©ra
+            // Arrêter la caméra
             mainDisplay.style.display = 'none';
             btn.textContent = 'â–¶ï¸ Start Camera';
             mainImage.src = "";
@@ -469,10 +469,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         }
     }
 
-    function toggleHighResCaptured() {
-        // DEPRECATED â€” rÃ©solution gÃ©rÃ©e via le dropdown resolutionSelect
-    }
-
     function onResolutionChange() {
         var sel = document.getElementById('resolutionSelect');
         var parts = sel.value.split('x');
@@ -480,7 +476,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         var h = parseInt(parts[1], 10);
         console.log('onResolutionChange:', w, 'x', h);
 
-        showToast('Changement de rÃ©solution: ' + w + 'Ã—' + h + 'â€¦', 'info', 2000);
+        showToast('Changement de résolution: ' + w + 'Ã—' + h + 'â€¦', 'info', 2000);
 
         fetch('/set_resolution', {
             method: 'POST',
@@ -492,9 +488,9 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
             return r.json();
         })
         .then(function(data) {
-            showToast('RÃ©solution appliquÃ©e: ' + data.resolution, 'success', 2000);
-            // Si la camÃ©ra tournait, le serveur l'a relancÃ©e.
-            // RafraÃ®chir le flux vidÃ©o dans le navigateur.
+            showToast('Résolution appliquée: ' + data.resolution, 'success', 2000);
+            // Si la caméra tournait, le serveur l'a relancée.
+            // Rafraîchir le flux vidéo dans le navigateur.
             if (CAMERA_ACTIVE && DISPLAY_MODE === 'livefeed') {
                 var mainImage = document.getElementById('mainImage');
                 mainImage.src = '/video?' + new Date().getTime();
@@ -502,7 +498,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         })
         .catch(function(err) {
             logError('onResolutionChange', err);
-            showToast('Erreur rÃ©solution: ' + err.message, 'error');
+            showToast('Erreur résolution: ' + err.message, 'error');
         });
     }
 
@@ -520,7 +516,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 btn.classList.toggle('on', nextActive);
                 btn.classList.toggle('off', !nextActive);
                 btn.textContent = nextActive ? 'Stop Passive Detection' : 'Start Passive Detection';
-                showToast(nextActive ? 'DÃ©tection passive dÃ©marrÃ©e' : 'DÃ©tection passive arrÃªtÃ©e', nextActive ? 'success' : 'info', 2000);
+                showToast(nextActive ? 'Détection passive démarrée' : 'Détection passive arrêtée', nextActive ? 'success' : 'info', 2000);
             })
             .catch(function(err) {
                 logError('togglePassiveDetection: ' + endpoint, err);
@@ -559,7 +555,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     return;
                 }
 
-                // enregistrement de l'image sur le PC client si demandÃ©
+                // enregistrement de l'image sur le PC client si demandé
                 if (downloadEnabled) {
                     var link = document.createElement('a');
                     link.href = download_url;
@@ -567,10 +563,10 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     document.body.appendChild(link);
                     link.click();
                     link.remove();
-                    showToast('Image sauvegardÃ©e: ' + filename, 'success', 2000);
+                    showToast('Image sauvegardée: ' + filename, 'success', 2000);
                 }
 
-                // Basculer vers l'image capturÃ©e dans l'affichage principal
+                // Basculer vers l'image capturée dans l'affichage principal
                 var mainImage = document.getElementById('mainImage');
                 var mainDisplay = document.getElementById('mainImageDisplay');
                 var captureBtn = document.getElementById('captureImageBtn');
@@ -578,10 +574,10 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 mainImage.src = file_url;
                 mainDisplay.style.display = 'block';
                 DISPLAY_MODE = 'captured';
-                CAMERA_ACTIVE = false; // La camÃ©ra a Ã©tÃ© stoppÃ©e par le serveur pour la capture hires
+                CAMERA_ACTIVE = false; // La caméra a été stoppée par le serveur pour la capture hires
                 captureBtn.textContent = 'â†©ï¸ Return to Livefeed';
 
-                // Mise Ã  jour de la derniÃ¨re image capturÃ©e (pour diagnostic)
+                // Mise à jour de la dernière image capturée (pour diagnostic)
                 imageCapturedCallback(file_url);
             })
             .catch(function(err) {
@@ -597,12 +593,12 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         var captureBtn = document.getElementById('captureImageBtn');
 
         if (CAMERA_ACTIVE) {
-            // CamÃ©ra dÃ©jÃ  active, juste basculer vers le livestream
+            // Caméra déjà active, juste basculer vers le livestream
             mainImage.src = '/video?' + new Date().getTime();
             DISPLAY_MODE = 'livefeed';
             captureBtn.textContent = 'ðŸ“¸ Capture Image';
         } else {
-            // CamÃ©ra pas active, la redÃ©marrer
+            // Caméra pas active, la redémarrer
             var btn = document.getElementById('cameraToggleBtn');
             btn.textContent = 'â›” Stop Camera';
             fetch('/start_camera', { method: 'POST' })
@@ -618,7 +614,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     logError('returnToLivefeed: /start_camera', err);
                     btn.textContent = 'â–¶ï¸ Start Camera';
                     CAMERA_ACTIVE = false;
-                    alert('Erreur: impossible de redÃ©marrer la camÃ©ra. Utilisez le bouton Start Camera.');
+                    alert('Erreur: impossible de redémarrer la caméra. Utilisez le bouton Start Camera.');
                 });
         }
     }
@@ -626,14 +622,14 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     function imageCapturedCallback(imageUrl) {
         console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl);
 
-        // Mettre Ã  jour l'affichage principal si on est en mode captured
+        // Mettre à jour l'affichage principal si on est en mode captured
         if (DISPLAY_MODE === 'captured') {
             var mainImage = document.getElementById('mainImage');
             mainImage.src = imageUrl;
         }
     }
     
-    // --- DÃ©tecteurs: chargement, sÃ©lection et exÃ©cution ---
+    // --- Détecteurs: chargement, sélection et exécution ---
     var DETECTORS_MAP = {}; // index -> name
     var SELECTED_DETECTOR_NAME = null;
 
@@ -648,7 +644,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 if (!detectors || detectors.length === 0) {
                     var opt = document.createElement('option');
                     opt.value = -1;
-                    opt.textContent = 'Aucun dÃ©tecteur disponible';
+                    opt.textContent = 'Aucun détecteur disponible';
                     sel.appendChild(opt);
                     sel.disabled = true;
                     return;
@@ -683,7 +679,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         var terminal = document.getElementById('stopDetectTerminal');
         if (indicator) {
             indicator.classList.remove('on', 'off');
-            indicator.textContent = 'Aucune dÃ©tection';
+            indicator.textContent = 'Aucune détection';
         }
         if (terminal) {
             terminal.textContent = 'Terminal vide';
@@ -752,7 +748,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 
     function updateDiagnosticPanelVisibility() {
         var panel = document.getElementById('stopDetectPanel');
-        // Afficher le panneau diagnostic pour tout dÃ©tecteur sÃ©lectionnÃ©
+        // Afficher le panneau diagnostic pour tout détecteur sélectionné
         if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
     }
@@ -794,7 +790,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     appendTerminalLines(JSON.stringify(payload, null, 2));
                 }
 
-                // Mettre Ã  jour l'indicateur de dÃ©tection
+                // Mettre à jour l'indicateur de détection
                 indicator.classList.remove('on', 'off');
                 if (payload.Object_detected) {
                     indicator.classList.add('on');
@@ -804,13 +800,13 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     indicator.textContent = 'Aucune detection';
                 }
 
-                // Afficher la derniÃ¨re image annotÃ©e ou source
+                // Afficher la dernière image annotée ou source
                 var imgUrl = payload.annotated_url
                     || (payload.steps && payload.steps.length ? payload.steps[payload.steps.length - 1].url : null)
                     || payload.source_file_url;
                 if (imgUrl) { imageCapturedCallback(imgUrl); }
 
-                // Ouvrir la galerie des Ã©tapes dans un nouvel onglet (si disponible)
+                // Ouvrir la galerie des étapes dans un nouvel onglet (si disponible)
                 if (payload.steps && payload.steps.length) {
                     var w = window.open('', '_blank');
                     if (w) {
@@ -834,7 +830,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
             });
     }
 
-    // Charger la liste des dÃ©tecteurs au chargement de la page et lier les Ã©vÃ©nements
+    // Charger la liste des détecteurs au chargement de la page et lier les événements
     // --- Hard Positive Mining ---
     var MINING_POLL_INTERVAL = null;
 
@@ -854,7 +850,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
             btn.classList.toggle('on', nextActive);
             btn.classList.toggle('off', !nextActive);
             btn.textContent = nextActive ? 'â›ï¸ Mining On' : 'â›ï¸ Mining Off';
-            showToast(nextActive ? 'Hard positive mining activÃ©' : 'Mining dÃ©sactivÃ©', nextActive ? 'success' : 'info', 2000);
+            showToast(nextActive ? 'Hard positive mining activé' : 'Mining désactivé', nextActive ? 'success' : 'info', 2000);
 
             if (nextActive) {
                 startMiningPoll();
@@ -895,7 +891,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         var total = stats.total || 0;
 
         if (total > 0) {
-            // Construire un rÃ©sumÃ© par objet
+            // Construire un résumé par objet
             var parts = [];
             var perObj = stats.per_object || {};
             for (var key in perObj) {
@@ -913,15 +909,15 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     }
 
     function downloadMiningCrops() {
-        showToast('PrÃ©paration du ZIPâ€¦', 'info', 2000);
-        // DÃ©clencher le tÃ©lÃ©chargement via un lien cachÃ©
+        showToast('Préparation du ZIP â€¦', 'info', 2000);
+        // Déclencher le téléchargement via un lien caché
         var link = document.createElement('a');
         link.href = '/download_mining_crops';
         link.download = '';
         document.body.appendChild(link);
         link.click();
         link.remove();
-        // RafraÃ®chir les stats aprÃ¨s un court dÃ©lai (le serveur supprime les crops)
+        // Rafraîchir les stats après un court délai (le serveur supprime les crops)
         setTimeout(function() { pollMiningStats(); }, 2000);
     }
 
@@ -981,5 +977,5 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     </body></html>
     """
 
-    # Remplacer uniquement le titre sans interprÃ©ter les autres accolades
+    # Remplacer uniquement le titre sans interpréter les autres accolades
     return html.replace("{title}", title)

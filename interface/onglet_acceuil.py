@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 # onglet_acceuil.py
 # ------------------
-# ce module dÃ©fini un onglet de l'interface web dÃ©diÃ© Ã  l'accueil
+# ce module défini un onglet de l'interface web dédié à l'accueil
 # on y trouve notamment des boutons pour naviguer vers les autres onglets,
-# un livefeed de la camÃ©ra, les boutons de contrÃ´le du Zumi, les boutons de
-# choix de scÃ©narios et les boutons de contrÃ´le du pont levis.
+# un livefeed de la caméra, les boutons de contrôle du Zumi, les boutons de
+# choix de scénarios et les boutons de contrôle du pont levis.
 
 def render_accueil_tab(title: str = "Accueil") -> str:
-    """Retourne la page HTML complÃ¨te de l'onglet d'accueil."""
+    """Retourne la page HTML complète de l'onglet d'accueil."""
     
     html = """<!DOCTYPE html><html lang='fr'>
     <head>
@@ -21,7 +21,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         margin: 0; padding: 0;
         width: 100vw; height: 100vh;
         font-family: 'Segoe UI', Arial, sans-serif;
-        /* Ton background prÃ©fÃ©rÃ© rose et bleu pastel */
+        /* Ton background préféré rose et bleu pastel */
         background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
         color: #333; display: flex; flex-direction: column;
         overflow: hidden;
@@ -33,7 +33,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     }
 
     .tab-shell {
-        /* Un blanc trÃ¨s lÃ©gÃ¨rement bleutÃ© pour la douceur */
+        /* Un blanc très légèrement bleuté pour la douceur */
         background: rgba(247, 253, 255, 0.95);
         border-radius: 20px;
         padding: 2%;
@@ -59,7 +59,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     }
 
     .tab-content {
-        /* Bordure bleue plus douce et fond jaune crÃ¨me trÃ¨s lÃ©ger */
+        /* Bordure bleue plus douce et fond jaune crème très léger */
         border: 3px dashed #B5FFFC;
         border-radius: 15px;
         padding: 3%;
@@ -87,7 +87,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         display: flex;         /* Utilise Flexbox pour centrer le texte */
         align-items: center;   /* Centre le texte verticalement */
         justify-content: center; /* Centre le texte horizontalement */
-        overflow: hidden;      /* EmpÃªche le texte de dÃ©passer si c'est trop long */
+        overflow: hidden;      /* Empêche le texte de dépasser si c'est trop long */
         
         margin-bottom: 2vh;
         text-align: center;
@@ -120,7 +120,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         padding: 12px 20px; border-radius: 12px;
         cursor: pointer; font-size: 1rem; font-weight: bold;
         transition: transform 0.2s, background 0.2s;
-        box-shadow: 0 4px 0 #6BAED6; /* Effet 3D lÃ©ger */
+        box-shadow: 0 4px 0 #6BAED6; /* Effet 3D léger */
     }
 
     .primary-btn:hover { 
@@ -139,7 +139,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     }
 
     .toggle-btn {
-        background: #FFB7D5; /* Rose pastel pour la camÃ©ra */
+        background: #FFB7D5; /* Rose pastel pour la caméra */
         color: white; border: none; 
         padding: 12px 24px; border-radius: 12px; 
         cursor: pointer; font-weight: bold;
@@ -148,7 +148,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 
     .toggle-btn:hover { background: #FFA3C8; }
 
-    /* --- Le D-Pad (ContrÃ´le Robot) --- */
+    /* --- Le D-Pad (Contrôle Robot) --- */
 
     .driving-mode {
         background-color: #E0F7FA;
@@ -161,10 +161,10 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         box-shadow: 0 5px 15px rgba(0,0,0,0.05);
     }
 
-    /* --- Le D-Pad en Croix (Ã‰toile) --- */
+    /* --- Le D-Pad en Croix (Étoile) --- */
     .dpad-container {
         display: grid;
-        /* Ici on dÃ©finit la grille 3x3 pour faire la croix */
+        /* Ici on définit la grille 3x3 pour faire la croix */
         grid-template-areas: 
             ".     up     ."
             "left  center right"
@@ -230,7 +230,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 <button class='primary-btn' data-path="/">Accueil</button>
                 <button class='primary-btn' data-path="/vision">Vision</button>
                 <button class='primary-btn' data-path="/onglet_template">Template</button>
-        <button class='primary-btn' data-path="/pid">PID</button>
+        		<button class='primary-btn' data-path="/pid">PID</button>
                 <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
                 </div>
             </div>
@@ -238,20 +238,20 @@ def render_accueil_tab(title: str = "Accueil") -> str:
             <div class='tab-content'>
                 <!-- AJOUTER VOS BOUTONS ICI -->
                 <div class='left-panel'>
-                    <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>ðŸŽ¥ Allume la camÃ©ra !</button>
+                    <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>ðŸŽ¥ Allume la caméra !</button>
                     <div id='zone-resultats'>
-                        <!-- Conteneur du flux vidÃ©o en direct -->
+                        <!-- Conteneur du flux vidéo en direct -->
                         <div class='live-feed' id='liveFeed' style = 'display:none;'>
-                            <img id='videoStream' alt='Flux vidÃ©o en direct'>
+                            <img id='videoStream' alt='Flux vidéo en direct'>
                         </div>
                     </div>
                 </div>
 
                 <div class='right-panel'>
                     <div class='driving-mode'>
-                        <h3>ContrÃ´le du Zumi</h3>
-                        <!-- La boÃ®te apparaÃ®t grÃ¢ce Ã  cette ligne -->
-                        <div id="log-box">Coucou ! Je suis prÃªt Ã  rouler ! ðŸ¤–</div>
+                        <h3>Contrôle du Zumi</h3>
+                        <!-- La boîte apparaît grâces à cette ligne -->
+                        <div id="log-box">Coucou ! Je suis prêt à rouler ! ðŸ¤–</div>
                         
                         <div class="dpad-container">
                             <!-- HAUT -->
@@ -303,7 +303,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     <!-- --- Scripts JavaScript pour les interactions --- -->
 
     <script>
-    // Active l'Ã©tat du bouton d'onglet selon l'URL courante (compat ES5)
+    // Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
     (function() {
         var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
         var here = norm(location.pathname);
@@ -315,7 +315,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     })();
 
     function toggleCamera() { 
-        console.log("toggleCamera() appelÃ©e"); // pour debug
+        console.log("toggleCamera() appelée"); // pour debug
 
         const liveFeed = document.getElementById('liveFeed'); 
         const btn = document.getElementById('cameraToggleBtn'); 
@@ -324,13 +324,13 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         const isActive = liveFeed.style.display === 'block';
 
         if (!isActive) {
-            // 1. Affiche le conteneur et change le bouton (pour la rÃ©activitÃ©)  
-            btn.textContent = 'â¹ï¸ Ã‰teint la camÃ©ra'; 
+            // 1. Affiche le conteneur et change le bouton (pour la réactivité)  
+            btn.textContent = 'â¹ï¸ Éteint la caméra'; 
 
-            // 2. Envoie la commande de dÃ©marrage au serveur 
+            // 2. Envoie la commande de démarrage au serveur 
             fetch('/start_camera', { method: 'POST' }) 
                 .then(() => {
-                // 3. ATTEND que le serveur ait confirmÃ© le dÃ©marrage avant de demander le flux vidÃ©o. 
+                // 3. ATTEND que le serveur ait confirmé le démarrage avant de demander le flux vidéo. 
                 liveFeed.style.display = 'block';
                 img.src = '/video?' + new Date().getTime(); 
             }); 
@@ -338,12 +338,12 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         } else {
             // 1. Cache le conteneur et change le bouton 
             liveFeed.style.display = 'none'; 
-            btn.textContent = 'ðŸŽ¥ Allume la camÃ©ra !'; 
+            btn.textContent = 'ðŸŽ¥ Allume la caméra !'; 
             
-            // 2. Vide la source de l'image (arrÃªte le flux gelÃ©) 
+            // 2. Vide la source de l'image (arrête le flux gelé) 
             img.src = "";  
             
-            // 3. Envoie la commande d'arrÃªt au serveur 
+            // 3. Envoie la commande d'arrêt au serveur 
             fetch('/close_camera', { method: 'POST' }); 
         }
     }
@@ -370,7 +370,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     function toggleAuto(isAuto) {
         var val = isAuto ? '1' : '0';
         fetch('/bridge/mode_auto/' + val, { method: 'POST' })
-            .then(function() { console.log('Mode auto changÃ©: ' + val); })
+            .then(function() { console.log('Mode auto changé: ' + val); })
             .catch(function(err) { logError('toggleAuto', err, { val: val }); });
 
         var btnOpen = document.getElementById('btnOpen');
@@ -390,12 +390,12 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         
         
         // --- NOUVEAU : Texte affiche pour etat du robot ---
-        //document.getElementById('log-box').innerText = "ðŸ¤– Ã‰tat : " + direction;
+        //document.getElementById('log-box').innerText = "ðŸ¤– État : " + direction;
         
         const log = document.getElementById('log-box');
-        log.style.color = "#000000"; // Couleur de texte par dÃ©faut (noir)
+        log.style.color = "#000000"; // Couleur de texte par défaut (noir)
 
-        // Logique pour afficher le message appropriÃ©
+        // Logique pour afficher le message approprié
         switch (direction)
         {
             case 'forward':
@@ -403,7 +403,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 log.style.color = "#28a745"; // Vert pour avancer
                 break;
             case 'reverse':
-                log.innerText = "En arriÃ¨re ! âª";
+                log.innerText = "En arrière ! âª";
                 log.style.color = "#dc3545"; // Rouge pour reculer
                 break;
             case 'left':
@@ -426,15 +426,15 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 .catch(error => console.error('Fetch error:', error));
         };
 
-        // 1. Envoyer la commande 1x immÃ©diatement pour la rÃ©activitÃ©
+        // 1. Envoyer la commande 1x immédiatement pour la réactivité
         sendMoveCommand(); 
         
-        // 2. DÃ©marrer un intervalle qui 'nourrit' le watchdog 4x par seconde (250ms)
+        // 2. Démarrer un intervalle qui 'nourrit' le watchdog 4x par seconde (250ms)
         moveInterval = setInterval(sendMoveCommand, 250);
     }
 
     function stopMove() {
-        if (!isMoving) return; // Ã‰vite les 'stop' inutiles
+        if (!isMoving) return; // Évite les 'stop' inutiles
         isMoving = false;
         
         
@@ -444,13 +444,13 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         log.style.color = "#6c757d"; // Gris neutre pour la pause
         
         
-        // 1. ArrÃªter l'envoi de commandes en continu
+        // 1. Arrêter l'envoi de commandes en continu
         if (moveInterval) {
             clearInterval(moveInterval);
             moveInterval = null;            
         }
         
-        // 2. Envoyer la commande d'arrÃªt explicite
+        // 2. Envoyer la commande d'arrêt explicite
         fetch('/zumi/stop')
             .then(response => {
                 if (!response.ok) console.error('Error stopping move');
@@ -488,9 +488,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
 
-    // --- Charger les Ã©vÃ©nements au DOMContentLoaded ---
+    // --- Charger les événements au DOMContentLoaded ---
     window.addEventListener('DOMContentLoaded', function() {
-        // Navigation buttons (utilise data-path pour dÃ©terminer la destination)
+        // Navigation buttons (utilise data-path pour déterminer la destination)
         var navBtns = document.querySelectorAll('.tab-nav .primary-btn');
         Array.prototype.forEach.call(navBtns, function(btn) {
             var path = btn.getAttribute('data-path');

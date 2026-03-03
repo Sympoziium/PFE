@@ -2,20 +2,20 @@
 # -*- coding: utf-8 -*-
 # onglet_template.py
 # ------------------
-# Template de base (HTML/CSS/JS inline) pour un onglet vide prÃªt Ã  Ãªtre branchÃ© dans Flask.
-# ProcÃ©dure pour l'utiliser dans le serveur Flask :
-# 1) Importer `render_template_tab` et appeler la fonction pour obtenir une string HTML complÃ¨te (page autonome).
+# Template de base (HTML/CSS/JS inline) pour un onglet vide prêt à être branché dans Flask.
+# Procédure pour l'utiliser dans le serveur Flask :
+# 1) Importer `render_template_tab` et appeler la fonction pour obtenir une string HTML complète (page autonome).
 # 2) Coller/retourner cette string dans un endpoint (ex.: `return render_template_tab("Vision")`).
-# 3) Remplacer la zone marquÃ©e "<!-- AJOUTER VOS BOUTONS ICI -->" par vos boutons/contrÃ´les spÃ©cifiques.
-# 4) Reprendre le style du serveur existant (fond dÃ©gradÃ©, boutons bleus) dÃ©jÃ  inclus ci-dessous.
+# 3) Remplacer la zone marquée "<!-- AJOUTER VOS BOUTONS ICI -->" par vos boutons/contrÃ´les spécifiques.
+# 4) Reprendre le style du serveur existant (fond dégradé, boutons bleus) déjà inclus ci-dessous.
 # 5) Si vous voulez plusieurs onglets, vous pouvez dupliquer ce fichier avec d'autres noms ou composer plusieurs blocs dans un template parent.
 
 
-def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
-    """Retourne une page HTML complÃ¨te avec un onglet vide et le style existant.
+def render_template_tab(title: str = "Onglet générique") -> str:
+    """Retourne une page HTML complète avec un onglet vide et le style existant.
 
-    Le HTML est autonome : styles, structure et JS minimal pour cliquer sur des boutons si ajoutÃ©s.
-    La page est volontairement vide de contrÃ´les; insÃ©rez vos boutons Ã  l'endroit indiquÃ©.
+    Le HTML est autonome : styles, structure et JS minimal pour cliquer sur des boutons si ajoutés.
+    La page est volontairement vide de contrÃ´les; insérez vos boutons à l'endroit indiqué.
     """
 
     html = """<!DOCTYPE html><html lang='fr'>
@@ -33,9 +33,9 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
         color: #333; display: flex; flex-direction: column;
     }
 
-    /* --- DÃ©clarations des diffÃ©rents styles de conteneurs --- */
+    /* --- Déclarations des différents styles de conteneurs --- */
 
-    /* Container principal des Ã©lÃ©ments de l'onglet */
+    /* Container principal des éléments de l'onglet */
     .container {
         display: flex; justify-content: center; align-items: flex-start;
         padding: 20px; height: calc(100vh - 40px);
@@ -50,7 +50,7 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
         width: min(980px, 100%);
     }
 
-    /* Boite d'entÃªte */
+    /* Boite d'entête */
     .tab-header {
         display: flex; align-items: center;
         margin-bottom: 12px;
@@ -60,10 +60,10 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
     .tab-nav {
         display: flex; align-items: center;
         gap: 4px;
-        margin-left: auto; /* pousse la nav Ã  droite */
+        margin-left: auto; /* pousse la nav à droite */
     }
 
-    /* Boite de contenu, contour pointillÃ© */
+    /* Boite de contenu, contour pointillé */
     .tab-content {
         border: 2px dashed #bcdffb;
         border-radius: 12px;
@@ -72,12 +72,12 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
         background: #f7fbff;
     }
 
-    /* Ligne horizontale pour agencer des Ã©lÃ©ments */
+    /* Ligne horizontale pour agencer des éléments */
     .tab-row {
         display: flex; align-items: flex-start; gap: 12px;
     }
 
-    /* --- Styles pour les diffÃ©rents types de texte --- */
+    /* --- Styles pour les différents types de texte --- */
     
     /* Boite de texte format titre */
     .tab-title {
@@ -94,7 +94,7 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
         font-size: 16px; font-weight: normal; margin: 0;
     }
 
-    /* --- DÃ©clarations des diffÃ©rents styles de widgets --- */
+    /* --- Déclarations des différents styles de widgets --- */
 
     /* style bouton cliquable principal */
     .primary-btn {
@@ -105,7 +105,7 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
 
     .primary-btn:hover { background: #005fa3; }
 
-    /* Ã©tat actif pour le bouton d'onglet courant */
+    /* état actif pour le bouton d'onglet courant */
     .primary-btn.active {
         background: #00528a;
         box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
@@ -125,7 +125,7 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
 
     .toggle-btn:hover { background: #005fa3; } 
 
-    /* --- Arrangements des Ã©lÃ©ments de l'interface --- */
+    /* --- Arrangements des éléments de l'interface --- */
     
     </style>
     </head>
@@ -157,7 +157,7 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
     <!-- --- Scripts JavaScript pour les interactions --- -->
 
     <script>
-    // Active l'Ã©tat du bouton d'onglet selon l'URL courante
+    // Active l'état du bouton d'onglet selon l'URL courante
     (function() {
         const norm = p => (p || '').replace(/\/+$/,'') || '/';
         const here = norm(location.pathname);
@@ -167,7 +167,7 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
         });
     })();
 
-    // Ajoutez ici vos callbacks JS pour cÃ¢bler les boutons au backend Flask.
+    // Ajoutez ici vos callbacks JS pour câbler les boutons au backend Flask.
     // Exemple :
         async function startCamera() { await fetch('/start_camera', { method: 'POST' }); }
         async function capture() { const r = await fetch('/capture_image', { method: 'POST' }); const j = await r.json(); console.log(j); }
@@ -175,11 +175,11 @@ def render_template_tab(title: str = "Onglet gÃ©nÃ©rique") -> str:
     </body></html>
     """
 
-    # Remplacer uniquement le titre sans interprÃ©ter les autres accolades
+    # Remplacer uniquement le titre sans interpréter les autres accolades
     return html.replace("{title}", title)
 
 
-# Rappel d'intÃ©gration rapide dans Flask (page simple) :
+# Rappel d'intégration rapide dans Flask (page simple) :
 # dans flask_router.py :
 # app.add_url_rule('/onglet_template', 'template', lambda: ctrl.onglet_template())
 #
