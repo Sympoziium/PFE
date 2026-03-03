@@ -22,7 +22,7 @@ import gc
 
 
 class VisionPipeline:
-    def __init__(self, camera, detectors=None, fps=30, debug=False):
+    def __init__(self, camera, detectors=None, fps=30, debug=True):
         self.camera = camera
         self.detectors = detectors if detectors is not None else []
         self.periode = 1.0 / fps
@@ -409,6 +409,10 @@ class VisionPipeline:
         S'endort entre chaque détection pour ne pas saturer le CPU.
         Si le mining est activé, les crops des détections sont sauvegardés.
         """
+        
+        detector_index = 0
+        nb_detectors = len(self._passive_detectors)
+
         while self._passive_running:
             # attend si le mode pause est activé
             self._passive_pause_event.wait()
