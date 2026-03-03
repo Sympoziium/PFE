@@ -398,15 +398,20 @@ class controller:
         def generate():
             while vp.is_running():
                 try:
-                    # Capture du frame depuis la caméra
-                    frame_bgr = vp.get_last_frame()
+                    # Capture directe depuis la caméra
+                    # (get_last_frame ne fonctionne que si un contrôleur
+                    #  peuple le buffer via vp.step(); ici on capture nous-mêmes)
+                    frame_bgr = vp.camera.capture()
+                    if frame_bgr is None:
+                        time.sleep(0.1)
+                        continue
                     # Mettre à jour le buffer pour les captures instantanées
                     # NOTE: on stocke la frame BRUTE (sans annotations) pour que
                     # le thread de détection passive travaille sur une image propre.
                     vp.update_last_frame(frame_bgr)
                 except Exception:
                     time.sleep(0.1)
-                    break
+                    continue
 
                 # --- Overlay détection passive sur la frame d'affichage ---
                 display_frame = frame_bgr
@@ -1104,10 +1109,12 @@ class controller:
             def step_loop():
                 while self.step_mode_active:
                     try:
-                        frame = vp.get_last_frame()
+                        # Capture directe depuis la caméra pas 
+                        frame = vp.camera.capture()
                         if frame is None:
                             time.sleep(0.05)
                             continue
+                        vp.update_last_frame(frame)
                         result = self.step_machine.step(frame)
                         self.last_line_offset = result.get('line_offset', 0)
                         self.last_left_speed = result.get('left_speed', 0)
