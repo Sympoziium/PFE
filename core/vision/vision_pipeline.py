@@ -311,7 +311,18 @@ class VisionPipeline:
             'stop_sign':   4.5
         }
 
-        f_pixels = 594.0674603  # focale en pixels calculé depuis excel par essai sur des captures a distances fixes de 15 et 30 cm
+        f_pixels_par_objet_R = {
+            'pieton':          579.2058,  # résultat de la régression
+            'camion_pompier':  611.5730,
+            'stop_sign':       614.2960,
+        }
+
+        f_pixels_par_objet_M = {
+            'pieton':          573.6111,  # résultat des moyennes
+            'camion_pompier':  627.6786,
+            'stop_sign':       632.2222,
+        }
+
         object_name = label.lower()
         object_height_pixels = detection_box[3]  # hauteur de la bbox en pixels
 
@@ -339,8 +350,11 @@ class VisionPipeline:
         # formule de distance : D = (H * f) / h
         # où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée)
         if normalized_height > 0:
-            distance_cm = (hauteur_réelle_obj_cm * f_pixels) / normalized_height
-            return distance_cm
+            distance_cm_R = (hauteur_réelle_obj_cm * f_pixels_par_objet_R[object_name]) / normalized_height
+            print("Distance estimée pour {}: {:.1f} cm (RÉGRESSION)".format(label, distance_cm_R))
+            distance_cm_M = (hauteur_réelle_obj_cm * f_pixels_par_objet_M[object_name]) / normalized_height
+            print("Distance estimée pour {}: {:.1f} cm (MOYENNES)".format(label, distance_cm_M))
+            return distance_cm_R
         else:
             if debug:
                 print("Hauteur de l'objet en pixels est nulle, impossible de calculer la distance.")
@@ -409,7 +423,7 @@ class VisionPipeline:
         S'endort entre chaque détection pour ne pas saturer le CPU.
         Si le mining est activé, les crops des détections sont sauvegardés.
         """
-        
+
         detector_index = 0
         nb_detectors = len(self._passive_detectors)
 
