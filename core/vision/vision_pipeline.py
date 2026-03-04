@@ -346,12 +346,26 @@ class VisionPipeline:
                 print("Objet inconnu pour la distance: {}, utiliser une hauteur par défaut de 5 cm".format(object_name))
             hauteur_réelle_obj_cm = 5.0
 
+
+        # Facteur correctif empirique : ratio entre la taille bbox observée et la taille réelle de l'objet dans l'image
+        # < 1.0 : le détecteur sous-estime la taille (camion) → on amplifie h_pixel
+        # > 1.0 : le détecteur sur-estime la taille (stop)   → on réduit h_pixel
+        bbox_correction = {
+            'pieton':         1.0,   # modèle propre, pas de correction nécessaire
+            'camion_pompier': 0.88,  # détecte à l'intérieur → bbox trop petite
+            'stop_sign':      1.15,  # crop trop large → bbox trop grande
+        }
+
+        # Dans le calcul :
+        corrected_height = normalized_height * bbox_correction.get(object_name, 1.0)
+
+
         # formule de distance : D = (H * f) / h
         # où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée)
-        if normalized_height > 0:
-            distance_cm_R = (hauteur_réelle_obj_cm * f_pixels_par_objet_R[object_name]) / normalized_height
+        if corrected_height > 0:
+            distance_cm_R = (hauteur_réelle_obj_cm * f_pixels_par_objet_R[object_name]) / corrected_height
             print("Distance estimée pour {}: {:.1f} cm (RÉGRESSION)".format(label, distance_cm_R))
-            distance_cm_M = (hauteur_réelle_obj_cm * f_pixels_par_objet_M[object_name]) / normalized_height
+            distance_cm_M = (hauteur_réelle_obj_cm * f_pixels_par_objet_M[object_name]) / corrected_height
             print("Distance estimée pour {}: {:.1f} cm (MOYENNES)".format(label, distance_cm_M))
             return distance_cm_R
         else:
