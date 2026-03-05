@@ -172,22 +172,21 @@ class ControlManager:
                 if current_mode == MODE_IDLE:
                     break
 
-                # --- Mode actif : capture + détection ---
+                # --- Lecture du buffer partagé (sans capturer la caméra) ---
+                # La capture est déjà faite par video_feed() qui alimente le buffer.
+                frame = self.vision_pipeline.get_last_frame()
+                if frame is None:
+                    time.sleep(0.03)
+                    continue
 
-                # la fonction step me semble un peu redondante si on l'appel seulement ici
-                results = self.vision_pipeline.step()
-
-                # Extraire l'offset de ligne
+                # Pour MODE_PID : détecter la ligne depuis le buffer et stocker l'offset
                 line_val = None
-                for res in results:
-                    if 'line_offset' in res:
-                        line_val = res.get('line_offset')
-
-                # Stocker pour les consommateurs (thread-safe via _data_lock)
-                with self._data_lock:
-                    self.last_line_offset = line_val
-                # Rétro-compatibilité : le pid_loop du server_controller lit cet attribut
-                self.vision_pipeline.last_line_offset = line_val
+                if current_mode == MODE_PID:
+                    line_val = self._detect_line_from_frame(frame)
+                    with self._data_lock:
+                        self.last_line_offset = line_val
+                    # Rétro-compatibilité : le pid_loop du server_controller lit cet attribut
+                    self.vision_pipeline.last_line_offset = line_val
 
                 # --- Dispatch du mode actif ---
                 if current_mode == MODE_PID:
@@ -281,6 +280,22 @@ class ControlManager:
             self.last_line_offset = result.get('line_offset', self.last_line_offset)
             self.last_left_speed = result.get('left_speed', 0)
             self.last_right_speed = result.get('right_speed', 0)
+
+    def _detect_line_from_frame(self, frame):
+        """Extrait l'offset de ligne depuis une frame pré-capturée (sans appel caméra).
+        
+        Cherche le premier détecteur nommé 'line' dans le pipeline et appelle
+        process_frame() avec la frame fournie.
+        """
+        for i, det in enumerate(self.vision_pipeline.detectors):
+            if getattr(det, 'name', '') == 'line':
+                try:
+                    result = self.vision_pipeline.process_frame(frame.copy(), i)
+                    if result:
+                        return result.get('line_offset')
+                except Exception:
+                    pass
+        return None
 
     # ------------------------------------------------------------------
     #  Activation / désactivation des modes

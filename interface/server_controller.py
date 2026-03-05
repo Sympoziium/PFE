@@ -449,6 +449,13 @@ class controller:
                         else:
                             # Dessin des contours détecté sans recalculer la distance pour économiser du CPU
                             display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
+
+                elif self.control_manager and self.control_manager.mode != MODE_IDLE:
+                    # Mode actif (PID / state machine) — annoter avec les données du dernier cycle
+                    for det in vp.detectors:
+                        if getattr(det, 'name', '') == 'line' and getattr(det, '_last_annotation_data', None) is not None:
+                            display_frame = det.annotate_detection(frame_bgr.copy())
+                            break
                 
 
                 # Encodage direct en JPEG depuis BGR
