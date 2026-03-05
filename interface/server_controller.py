@@ -107,12 +107,13 @@ TURN_SPEED = 15
 WATCHDOG_TIMEOUT_SECONDS = 0.8
 
 class controller:
-    def __init__(self, zumi):
+    def __init__(self, zumi, debug=False):
         self.app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
         self.robot = zumi
         self.vision_pipeline = None
         self.control_manager = None  # Initialisé via attach_control_manager()
         self.last_move_time = time.time()
+        self.debug = debug
         self.watchdog_active = False
         # Rétro-compatibilité : pid_controller local utilisé seulement
         # quand aucun ControlManager n'est attaché.
@@ -130,6 +131,7 @@ class controller:
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
+
         
         # --- CONFIGURATION DU PONT ---
         # ⚠️ REMPLACE CECI PAR L'IP QUE TON ARDUINO A AFFICHÉE

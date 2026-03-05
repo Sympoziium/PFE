@@ -12,7 +12,7 @@ from core.control.pid_controller import PIDController
 from core.control.line_following_state_machine import LineFollowingStateMachine, State
 from core.control.control_manager import ControlManager
 
-from interface import server_controller as controller_module
+from interface import server_controller as flask_controller
 from interface import flask_router as routes
 
 import os
@@ -81,7 +81,7 @@ state_machine.set_photo_directory(PHOTOS_DIR)
 state_machine.set_rotation_angle(90)  # Rotation de 90 degrés
 
 # Contrôleur Flask
-ctrl = controller_module.controller(zumi)
+ctrl = flask_controller.controller(zumi, debug=True)  # Passer debug=True pour activer les logs de debug et les annotations détaillées
 routes.register_routes(ctrl)
 ctrl.attach_pipeline_vision(vision_pipeline)
 
