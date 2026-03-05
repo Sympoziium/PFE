@@ -201,6 +201,7 @@ class controller:
             # --- Log ressources toutes les 40s (40 itérations * 0.5s) ---
             if iteration_count % 40 == 0:
                 self._log_resource_usage_internal()
+                iteration_count = 0  # reset du compteur après log
             
             time.sleep(0.5)
 
@@ -422,6 +423,7 @@ class controller:
                         if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
                             # Dessine sur une copie pour ne pas polluer le buffer brut
                             display_frame = self._draw_passive_overlay(frame_bgr.copy(), result)
+                            frames = 0  # reset du compteur après annotation
 
                 # Encodage direct en JPEG depuis BGR
                 ret, jpeg = cv2.imencode('.jpg', display_frame)
