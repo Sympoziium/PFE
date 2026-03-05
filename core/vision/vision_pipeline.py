@@ -177,8 +177,7 @@ class VisionPipeline:
                 return self.camera.capture()
             except Exception as e:
                 if self.debug:
-                    print("Erreur lors de la capture d'une image brute: {}".format(e))
-                
+                    print("Erreur lors de la capture d'une image brute: {}".format(e)) 
 
     def update_last_frame(self, frame):
         """Met à jour le buffer de la dernière image capturée (thread-safe)."""
@@ -309,6 +308,7 @@ class VisionPipeline:
         
         # Cas spécial: LineDetector (possède line_offset et annotate_detection)
         if 'line_offset' in detection_result and hasattr(detector, 'annotate_detection'):
+            print("[VisionPipeline] Annotation spéciale pour LineDetector") # debug
             annotated = frame.copy()
             annotated = detector.annotate_detection(annotated)
             return annotated, None
@@ -326,6 +326,7 @@ class VisionPipeline:
         
         # Aucune détection
         return frame.copy(), None
+    
     @staticmethod
     def approximate_object_distance(detection_box, frame_h, label, debug=False):
         """
@@ -397,7 +398,6 @@ class VisionPipeline:
 
         # Dans le calcul :
         corrected_height = normalized_height * bbox_correction.get(object_name, 1.0)
-
 
         # formule de distance : D = (H * f) / h
         # où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée)
