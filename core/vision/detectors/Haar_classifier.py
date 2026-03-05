@@ -35,6 +35,7 @@ class HaarDetector(BaseDetector):
         self.cascade_paths = {}    # {nom: chemin_xml}
         self.CAPTURE_DIR = None
         self.DIAGNOSTIC_DIR = None
+        self.debug = False  # Flag de debug pour les fonctions d'annotation et de diagnostic
         # Diagnostique et logs des messages
         self.logs = []
         self.steps = []
@@ -59,7 +60,8 @@ class HaarDetector(BaseDetector):
                 'scaleFactor': scaleFactor,
                 'minNeighbors': minNeighbors
             }
-            print("Classifieur '{}' chargé depuis: {}".format(name, cascade_path))
+            if self.debug:
+                print("Classifieur '{}' chargé depuis: {}".format(name, cascade_path))
         except Exception as e:
             print("Erreur lors de l'ajout du classifieur {}: {}".format(name, str(e)))
 
@@ -69,7 +71,8 @@ class HaarDetector(BaseDetector):
             try:
                 del self.classifiers[name]
                 del self.cascade_paths[name]
-                print("Classifieur '{}' supprimé.".format(name))
+                if self.debug:
+                    print("Classifieur '{}' supprimé.".format(name))
             except Exception as e:
                 print("Erreur lors de la suppression du classifieur {}: {}".format(name, str(e)))
 
@@ -83,7 +86,8 @@ class HaarDetector(BaseDetector):
                 'cascade_path': self.cascade_paths.get(name, '')
             }
         else:
-            print("Classifieur '{}' non trouvé.".format(name))
+            if self.debug:
+                print("Classifieur '{}' non trouvé.".format(name))
             return None
 
     def attach_capture_dir(self, capture_dir):

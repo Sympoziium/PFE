@@ -43,6 +43,7 @@ class StopDetectorCV(BaseDetector):
         self.w_min = int(w_min)
         self.fill_ratio_min = float(fill_ratio_min)  # ratio aire/boîte englobante minimale
         self.name = "StopDetectorCV"
+        self.debug = False  # Flag de debug pour les fonctions d'annotation et de diagnostic
         self.CAPTURE_DIR = None
         self.DIAGNOSTIC_DIR = None
         self.steps = []  # pour stocker les étapes de diagnostique

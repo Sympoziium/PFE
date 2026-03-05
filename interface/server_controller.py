@@ -145,6 +145,7 @@ class controller:
     def attach_pipeline_vision(self, pipeline):
         pipeline.attach_capture_dir(self.CAPTURE_DIR)
         self.vision_pipeline = pipeline
+        self.vision_pipeline.debug = self.debug
 
     def attach_control_manager(self, control_manager):
         """Attache le ControlManager (orchestrateur de contrôle).

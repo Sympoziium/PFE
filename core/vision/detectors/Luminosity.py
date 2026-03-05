@@ -11,6 +11,7 @@ import numpy as np
 class LuminosityDetector(BaseDetector):
     def __init__(self):
         self.name = "LuminosityDetector"
+        self.debug = True  # Mode debug activé pour diagnostiquer le problème
 
     def process(self, frame):
         """

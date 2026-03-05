@@ -36,6 +36,7 @@ class StopDetectorZumi(BaseDetector):
         self.name = "StopDetectorZumi"
         self.CAPTURE_DIR = None
         self.DIAGNOSTIC_DIR = None
+        self.debug = False  # Flag de debug pour les fonctions d'annotation et de diagnostic
         self.logs = []
         self.steps = []
 

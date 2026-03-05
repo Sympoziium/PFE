@@ -22,10 +22,9 @@ import gc
 
 
 class VisionPipeline:
-    def __init__(self, camera, detectors=None, fps=30, debug=True):
+    def __init__(self, camera, detectors=None, debug=False):
         self.camera = camera
         self.detectors = detectors if detectors is not None else []
-        self.periode = 1.0 / fps
         self.running = False
         self.last_captured_image_url = None
         self.CAPTURE_DIR = None
@@ -127,6 +126,7 @@ class VisionPipeline:
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
         self.detectors.append(detectors)
+        self.detectors[]
 
     def add_passive_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
@@ -165,10 +165,6 @@ class VisionPipeline:
     def is_running(self):
         """ vérifier si le pipeline de vision est en cours d'exécution """
         return self.running
-    
-    def get_periode(self):
-        """ obtenir la période entre chaque cycle de vision en secondes """
-        return self.periode
 
     def capture_frame(self):
         """ capturer une image brute de la caméra """
@@ -379,7 +375,6 @@ class VisionPipeline:
                 f_pixels = 610.0 # valeur par défaut basée sur les moyennes des autres objets
 
             distance_cm = (hauteur_réelle_obj_cm * f_pixels) / corrected_height
-            print("Distance estimée pour {}: {:.1f} cm {}".format(label, distance_cm, time.localtime())) # pour débug le multi call retirer plus tard
             return distance_cm
         else:
             if debug:

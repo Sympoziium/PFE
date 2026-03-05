@@ -22,7 +22,7 @@ class LineDetector(BaseDetector):
         self.min_area = min_area
         self.offset_ratio = offset_ratio
         self.CAPTURE_DIR = None
-        self.debug_mode = True  # Mode debug activé pour diagnostiquer le problème
+        self.debug = True  # Mode debug activé pour diagnostiquer le problème
         
     def update_params(self, white_threshold=None, min_area=None, offset_ratio=None):
         """Met à jour les paramètres du détecteur."""
@@ -46,7 +46,7 @@ class LineDetector(BaseDetector):
         line_center = self.detect_lines(frame)
         result = {"detector": "line", "value": line_center}
         # LOG DEBUG pour diagnostiquer
-        if self.debug_mode:
+        if self.debug:
             print("[LINE_DETECTOR] process() retourne: value={} (type: {})".format(
                 line_center, type(line_center).__name__ if line_center is not None else "NoneType"))
         return result
@@ -91,7 +91,7 @@ class LineDetector(BaseDetector):
         if len(contours) == 0:
             cv2.putText(frame, "Aucune ligne detectee", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            if self.debug_mode:
+            if self.debug:
                 print("[LINE_DETECTOR] Aucun contour trouvé -> retourne None")
             return None
         
@@ -142,7 +142,7 @@ class LineDetector(BaseDetector):
         if len(valid_dashes) == 0:
             cv2.putText(frame, "Pas de ligne valide apres filtrage", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
-            if self.debug_mode:
+            if self.debug:
                 print("[LINE_DETECTOR] Aucun pointillé valide après filtrage -> retourne None")
             return None
         
@@ -173,7 +173,7 @@ class LineDetector(BaseDetector):
         if len(best_group) < 1:
             cv2.putText(frame, "Aucun pointille trouve", (20, 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 165, 0), 2)
-            if self.debug_mode:
+            if self.debug:
                 print("[LINE_DETECTOR] Aucun groupe de pointillés valide -> retourne None")
             return None
         
@@ -216,6 +216,6 @@ class LineDetector(BaseDetector):
         cv2.putText(frame, threshold_text, (20, 70), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
-        if self.debug_mode:
+        if self.debug:
             print("[LINE_DETECTOR] Ligne détectée! offset={:.1f}, {} pointillés dans le groupe".format(offset, len(best_group)))
         return offset
