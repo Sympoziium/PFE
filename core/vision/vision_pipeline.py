@@ -126,7 +126,7 @@ class VisionPipeline:
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
         self.detectors.append(detectors)
-        self.detectors[]
+        self.detectors[-1].debug = self.debug  # Propager le mode debug au détecteur ajouté
 
     def add_passive_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
