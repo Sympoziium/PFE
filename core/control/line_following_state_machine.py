@@ -848,8 +848,7 @@ class StepByStepStateMachine:
             start_time = time.time()
             while (time.time() - start_time) < self.approach_duration:
                 # Capturer une nouvelle frame
-                frame_current = self.vision_pipeline.capture_frame()
-                self.vision_pipeline.update_last_frame(frame_current)
+                frame_current = self.vision_pipeline.get_last_frame()
                 line_offset_current = self._run_line_detection(frame_current)
                 
                 if line_offset_current is None:
@@ -882,8 +881,7 @@ class StepByStepStateMachine:
         
         # Après avoir avancé, vérifier si la ligne est toujours visible
         print("[STEP_MACHINE] Vérification après approche...")
-        frame_check = self.vision_pipeline.capture_frame()
-        self.vision_pipeline.update_last_frame(frame_check)
+        frame_check = self.vision_pipeline.get_last_frame()
         line_offset_check = self._run_line_detection(frame_check)
         
         if line_offset_check is None:

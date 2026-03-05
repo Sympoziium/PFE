@@ -254,8 +254,8 @@ class ControlManager:
         if self._state_machine is None or not self._state_machine.is_running():
             return
 
-        frame = self.vision_pipeline.capture_frame()
-        self.vision_pipeline.update_last_frame(frame)
+        # Lire depuis le buffer partagé (peuplé par video_feed)
+        frame = self.vision_pipeline.get_last_frame()
         if frame is None:
             return
 
@@ -270,8 +270,8 @@ class ControlManager:
         if self._step_machine is None or not self._step_machine.is_running():
             return
 
-        frame = self.vision_pipeline.capture_frame()
-        self.vision_pipeline.update_last_frame(frame)
+        # Lire depuis le buffer partagé (peuplé par video_feed)
+        frame = self.vision_pipeline.get_last_frame()
         if frame is None:
             return
 
