@@ -307,19 +307,25 @@ class VisionPipeline:
         hauteur_reelle_cm = {
             'pieton': 4.5,
             'camion_pompier': 7.0,
-            'stop_sign':   4.5
+            'stop_sign':   4.5,
+            'stop_sign Moi':   4.5,
+            'stop_sign Git':   4.5
         }
 
         f_pixels_par_objet_R = {
             'pieton':          579.2058,  # résultat de la régression
             'camion_pompier':  611.5730,
             'stop_sign':       614.2960,
+            'stop_sign Moi':       614.2960,
+            'stop_sign Git':       614.2960,
         }
 
         f_pixels_par_objet_M = {
             'pieton':          573.6111,  # résultat des moyennes
             'camion_pompier':  627.6786,
             'stop_sign':       632.2222,
+            'stop_sign Moi':       632.2222,
+            'stop_sign Git':       632.2222,
         }
 
         object_name = label.lower()
@@ -354,6 +360,8 @@ class VisionPipeline:
             'pieton':         1.0,   # modèle propre, pas de correction nécessaire
             'camion_pompier': 0.88,  # détecte à l'intérieur → bbox trop petite
             'stop_sign':      1.15,  # crop trop large → bbox trop grande
+            'stop_sign Moi':      1.0,  # même modèle que stop_sign
+            'stop_sign Git':      1.15,  # même modèle que stop_sign
         }
 
         # Dans le calcul :
