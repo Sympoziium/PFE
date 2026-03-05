@@ -16,6 +16,8 @@ from interface import server_controller as flask_controller
 from interface import flask_router as routes
 
 import os
+import signal
+import sys
 import threading
 import time
 
@@ -104,6 +106,16 @@ zumi.clear_screen()
 
 
 if __name__ == '__main__':
+    # Nettoyage propre sur Ctrl+C / kill : libère le socket pour ne pas
+    # avoir à relancer zumi_prepare.sh fast entre deux tests.
+    def _shutdown(sig, frame):
+        print("\n🛑 Arrêt propre...")
+        zumi.clear_screen()
+        os._exit(0)
+
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
+
     # Au boot : seul le serveur Flask démarre.
     # La caméra, les détecteurs et les contrôleurs ne s'activent
     # qu'à la demande depuis l'interface web (bouton Start Camera,
