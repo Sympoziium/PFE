@@ -2,24 +2,21 @@
 # -*- coding: utf-8 -*-
 # main.py
 
-from core.robot.robot_zumi import RobotZumi
-from core.vision.vision_pipeline import VisionPipeline
-from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
-from core.vision.detectors.Stop_detector_cv import StopDetectorCV
-from core.vision.detectors.Haar_classifier import HaarDetector
-from core.vision.detectors.Line_detector import LineDetector
-from core.control.pid_controller import PIDController
-from core.control.line_following_state_machine import LineFollowingStateMachine, State
-from core.control.control_manager import ControlManager
-
-from interface import server_controller as flask_controller
-from interface import flask_router as routes
-
+# import essentiels
 import os
 import signal
-import sys
 import threading
 import time
+from core.robot.robot_zumi import RobotZumi
+
+
+
+
+
+
+
+
+
 
 # ═════════════════════════════════════════════════════════════════════
 #  Fonctions de bootstrap avec affichage de progression
@@ -70,6 +67,11 @@ def bootstrap():
     
     # Étape 2 : Créer les détecteurs
     print("[BOOT] Chargement des détecteurs... (10-30%)")
+    
+    from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
+    from core.vision.detectors.Stop_detector_cv import StopDetectorCV
+    from core.vision.detectors.Haar_classifier import HaarDetector
+    from core.vision.detectors.Line_detector import LineDetector
     stop_detector = StopDetectorZumi()
     draw_progress_bar(zumi.screen, 15)
     
@@ -97,6 +99,7 @@ def bootstrap():
     
     # Étape 4 : Créer le pipeline de vision
     print("[BOOT] Initialisation du pipeline de vision...")
+    from core.vision.vision_pipeline import VisionPipeline
     vision_pipeline = VisionPipeline(camera=zumi.camera)
     vision_pipeline.add_detectors(line_detector)
     vision_pipeline.add_detectors(stop_detector)
@@ -107,6 +110,9 @@ def bootstrap():
     
     # Étape 5 : Créer les contrôleurs
     print("[BOOT] Initialisation des contrôleurs...")
+    from core.control.pid_controller import PIDController
+    from core.control.line_following_state_machine import LineFollowingStateMachine, State
+    from core.control.control_manager import ControlManager
     pid_controller = PIDController(
         kp=0.2, 
         ki=0.0, 
@@ -135,6 +141,8 @@ def bootstrap():
     
     # Étape 6 : Initialiser Flask et routes
     print("[BOOT] Initialisation du serveur Flask...")
+    from interface import server_controller as flask_controller
+    from interface import flask_router as routes
     ctrl = flask_controller.controller(zumi, debug=True)
     routes.register_routes(ctrl)
     ctrl.attach_pipeline_vision(vision_pipeline)
