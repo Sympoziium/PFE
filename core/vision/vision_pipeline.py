@@ -496,6 +496,7 @@ class VisionPipeline:
                     detection_result = detector.process_passive(frame)
                     with self._result_lock:
                         self._last_detection_result = detection_result
+                        self._last_detection_result['Detector'] = str(detector)  # ajouter le nom du détecteur au résultat
 
                     # --- Hard Positive Mining: sauvegarder les crops ---
                     if self._mining_enabled and detection_result.get('Object_detected'):

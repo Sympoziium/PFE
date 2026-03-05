@@ -462,31 +462,32 @@ class controller:
         # Obtenir le détecteur associé au résultat
         vp = self.vision_pipeline
         detector = None
-        if vp and vp._passive_detectors:
-            # Normalement il y a un seul détecteur passif
-            detector = vp._passive_detectors[0] if len(vp._passive_detectors) > 0 else None
-        
-        # Utiliser la nouvelle méthode générique d'annotation
-        if detector:
-            annotated, distance_cm = VisionPipeline.annotate_detection_result(
-                frame, 
-                detector, 
-                result,
-                approximate_distance=approximate_distance,
-                debug=debug
-            )
-        else:
-            # Fallback: utiliser ancienne méthode si pas de détecteur
-            detections = result.get('detections', [])
-            if not detections:
-                return frame, previous_distance
-            annotated, distance_cm = VisionPipeline.annotate_frame(
-                frame, 
-                detections, 
-                approximate_distance=approximate_distance, 
-                previous_distance=previous_distance, 
-                debug=debug
-            )
+        for det in vp._passive_detectors:
+            if det.name == result.get('Detector'):
+                detector = det
+                
+    
+            # Utiliser la nouvelle méthode générique d'annotation
+            if detector:
+                annotated, distance_cm = VisionPipeline.annotate_detection_result(
+                    frame, 
+                    detector, 
+                    result,
+                    approximate_distance=approximate_distance,
+                    debug=debug
+                )
+            else:
+                # Fallback: utiliser ancienne méthode si pas de détecteur
+                detections = result.get('detections', [])
+                if not detections:
+                    return frame, previous_distance
+                annotated, distance_cm = VisionPipeline.annotate_frame(
+                    frame, 
+                    detections, 
+                    approximate_distance=approximate_distance, 
+                    previous_distance=previous_distance, 
+                    debug=debug
+                )
         
         return annotated, distance_cm
     
