@@ -6,6 +6,126 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 
 
 
+## [Non publié] — Rework complet du LineDetector et intégration VisionPipeline (2026-03-05)
+
+### Objectif
+1. Uniformiser le **LineDetector** avec le format standardisé BaseDetector (`{'Object_detected', 'detections', 'logs'}`)
+2. Éliminer le **circuit parallèle** où les state machines déshérissaient le détecteur directement
+3. Forcer l'architecture **VisionPipeline** comme point d'accès unique pour la détection
+4. Supprimer la **duplication de code** (`set_photo_directory`, accès caméra, etc.)
+
+### Modifié
+
+#### LineDetector (`core/vision/detectors/Line_detector.py`) — Format standardisé
+- **Ancien format** : `{'detector': 'line', 'value': offset, 'Object_detected': bool, 'detections': [dicts complexes], '_annotation_data': {...}, 'detection_stats': {...}}`
+- **Nouveau format** : `{'Object_detected': bool, 'detections': [], 'line_offset': offset|None, 'logs': []}`
+  - Clés éliminées : `detector`, `value`, `_annotation_data`, `detection_stats`, `detection_data`
+  - `line_offset` est la **clé d'extension spécialisée** pour les state machines
+  - Données d'annotation internes : stockées sur `self._last_annotation_data` au lieu de retournées
+  
+- **Méthode `annotate_detection(frame)`** : signature modifiée
+  - Ancien : `annotate_detection(frame, detection_result)` — passait le résultat entier
+  - Nouveau : `annotate_detection(frame)` — lit depuis `self._last_annotation_data` intrinsèque
+  - Permet une séparation nette entre **détection logique** et **annotation visuelle**
+  
+- **Méthode `_detect_lines()`** : nettoyage
+  - Correction : `show_ROI=False` (pas d'annotation lors de la détection)
+  - Suppression : code mort testant `'ctn' in dash` (clé n'existe pas, était `'contour'`)
+  - Simplifie et clarifie le retour `{'offset', 'avg_cx', 'avg_cy', 'best_group', 'valid_dashes', 'image_stats'}`
+  
+- **Méthode `process_passive()`** : refactorisation
+  - Ancien : implémentation dupliquée avec `_detect_lines()` + appels récursifs
+  - Nouveau : appelle simplement `process()` + ajoute `timestamp` pour le live feed
+
+#### State Machines (`core/control/line_following_state_machine.py`) — VisionPipeline au lieu de circuit isolé
+- **Constructeur `LineFollowingStateMachine`**
+  - Ancien : `__init__(robot, camera, pid_controller, line_detector, stop_condition_detector=None)`
+  - Nouveau : `__init__(robot, vision_pipeline, pid_controller, stop_condition_detector=None)`
+  - Caméra et détecteur de ligne **trouvés via pipeline** à la demande
+  
+- **Constructeur `StepByStepStateMachine`**
+  - Ancien : `__init__(robot, camera, pid_controller, line_detector)`
+  - Nouveau : `__init__(robot, vision_pipeline, pid_controller)`
+  - Même principe : accès unifié via `vision_pipeline`
+  
+- **Nouveaux helpers** (tous deux machines)
+  - `_find_line_detector_index()` : cherche le détecteur par `name == 'line'` dans `vision_pipeline.detectors`
+  - `_run_line_detection(frame)` : exécute `vision_pipeline.process_frame(frame, index)` et extrait `line_offset`
+  
+- **Suppression de la duplication**
+  - `set_photo_directory(dir)` éliminé → utilise `vision_pipeline.CAPTURE_DIR` directement
+  - `self.camera.capture()` → `self.vision_pipeline.camera.capture()`
+  - Tous les `self.line_detector.process()` → remplacés par `self._run_line_detection(frame)`
+  
+- **Remplacement systématique des appels**
+  - Ancien : `line_result = self.line_detector.process(frame.copy())` + `line_offset = line_result.get('value')`
+  - Nouveau : `line_offset = self._run_line_detection(frame)`
+  - Appliqué à **10+ locations** : `_handle_waiting_approval`, `_handle_moving`, `_handle_approach_line`, `_handle_recenter`, `_handle_line_lost`, etc.
+
+#### ControlManager (`core/control/control_manager.py`) — Extraction correcte de l'offset
+- **Boucle `_control_loop()`**
+  - Ancien : filtre par `res.get("detector") == "line"` + extrait `res.get("value")`
+  - Nouveau : filtre par `'line_offset' in res` + extrait `res.get('line_offset')`
+  - Plus robuste : fonctionne même si plusieurs détecteurs retournent `line_offset`
+  
+- **Méthode `_create_step_machine()`**
+  - Ancien : cherchait manuellement le line_detector dans pipeline, passait camera + line_detector séparément
+  - Nouveau : passe `vision_pipeline` directement, laisse le machine trouver le détecteur
+  - Élimine `register_line_detector()` : plus de nécessité d'une référence globale
+
+#### main.py — Wiring simplifié
+- **Création `LineFollowingStateMachine`**
+  - Ancien : `LineFollowingStateMachine(robot=zumi, camera=zumi.camera, ..., line_detector=line_detector, ...)`
+    + `state_machine.set_photo_directory(PHOTOS_DIR)`
+    + `control_manager.register_line_detector(line_detector)`
+  - Nouveau : `LineFollowingStateMachine(robot=zumi, vision_pipeline=vision_pipeline, ...)`
+    + Plus de `set_photo_directory()` ni `register_line_detector()`
+    + Photos sauvegardées via `vision_pipeline.CAPTURE_DIR` configuré au bootstrap
+
+#### VisionPipeline (`core/vision/vision_pipeline.py`) — Annotation générique
+- **Méthode `annotate_detection_result(frame, detector, result)`**
+  - Ancien : détectait via `result.get('detector') == 'line'` + appelait `detector.annotate_detection(frame, result)`
+  - Nouveau : détecte via `'line_offset' in result` + appelle `detector.annotate_detection(frame)` (sans result)
+  - Signature new-school plus simple et modulaire
+
+#### server_controller.py (`interface/server_controller.py`) — Fallback legacy mis à jour
+- **Route `pid_step_start()` — Fallback pour créer StepByStepStateMachine sans ControlManager**
+  - Ancien : `StepByStepStateMachine(robot=self.robot, camera=vp.camera, pid_controller=..., line_detector=detector)`
+  - Nouveau : `StepByStepStateMachine(robot=self.robot, vision_pipeline=vp, pid_controller=...)`
+  - Élimine la recherche manuelle du line_detector
+
+#### test_line_detector_refactoring.py — Mise à jour tests
+- **Tous les 6 tests révisés** pour vérifier le **nouveau format standardisé**
+- Tests clés :
+  - ✓ Format correct : `['Object_detected', 'detections', 'line_offset', 'logs']`
+  - ✓ Pas de clés anciennes : `detector`, `value`, `_annotation_data`, `detection_stats`
+  - ✓ `annotate_detection(frame)` sans paramètre result
+  - ✓ `process_passive()` + `timestamp`
+  - ✓ Image noire → `Object_detected=False, line_offset=None`
+  - ✓ Intégration VisionPipeline.annotate_detection_result()
+
+### Impact architectural
+
+| Aspect | Avant | Après |
+|--------|-------|-------|
+| **Point d'accès caméra** | Duplicé : `robot.camera`, `vision_pipeline.camera`, state machines | Unique : `vision_pipeline.camera` |
+| **Détection de ligne** | Direct : `state_machine.line_detector.process()` | VisionPipeline : `_run_line_detection()` |
+| **Format des résultats** | Fragmenté (3+ formats différents par détecteur) | Unifié : format BaseDetector |
+| **Stockage photos** | Via attribut `self.photo_save_dir` | Via `vision_pipeline.CAPTURE_DIR` |
+| **Annotation visuelle** | Embarquée dans process() | Séparée : annotate_detection(frame) |
+| **Clés d'extension** | `value`, `detector`, `detection_stats` | `line_offset` simple et claire |
+
+### Fichiers modifiés
+- `core/vision/detectors/Line_detector.py` — Refactorisation majeure (format + annotation)
+- `core/control/line_following_state_machine.py` — Rework complet (2 machines, helpers, wiring)
+- `core/control/control_manager.py` — Extraction offset corrigée, création step_machine simplifiée
+- `core/vision/vision_pipeline.py` — Annotation alignée sur nouveau format
+- `main.py` — Wiring simplifié, suppression set_photo_directory + register_line_detector
+- `interface/server_controller.py` — Fallback legacy mis à jour
+- `test_line_detector_refactoring.py` — Tests refactorisés pour nouveau format
+
+---
+
 ## [Non publié] — Amélioration du sctipt de préparation du zumi (2026-03-05)
 
 ### Objectif :

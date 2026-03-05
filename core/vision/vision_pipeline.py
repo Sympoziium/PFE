@@ -202,10 +202,6 @@ class VisionPipeline:
             except Exception:
                 return self._last_frame
 
-    # SUPPRIMÉ: set_hires_capture_fn, capture_hires_frame, has_hires_capture
-    # Utiliser change_camera_resolution(width, height) à la place pour un flux vidéo continu
-    # à la résolution désirée
-
     def change_camera_resolution(self, width, height):
         """
         Remplace l'instance caméra par une nouvelle à la résolution demandée.
@@ -291,6 +287,45 @@ class VisionPipeline:
                         text_color, 1, cv2.LINE_AA)
         return annotated, distance_cm
     
+    @staticmethod
+    def annotate_detection_result(frame, detector, detection_result, approximate_distance=True, debug=False):
+        """
+        Annote une frame avec les résultats de détection d'n'importe quel détecteur.
+        Gère les cas spéciaux (comme LineDetector) et les détecteurs standard.
+        
+        Args:
+            frame: Image BGR originale (copie sera faite si nécessaire)
+            detector: Objet détecteur (pour accéder à ses méthodes d'annotation)
+            detection_result: dict retourné par detector.process()
+            approximate_distance: Si True, calcule distance pour objets bbox
+            debug: Mode debug
+            
+        Returns:
+            annotated: Image annotée
+            distance_cm: Distance estimée (si applicatible)
+        """
+        if detection_result is None:
+            return frame.copy(), None
+        
+        # Cas spécial: LineDetector (possède line_offset et annotate_detection)
+        if 'line_offset' in detection_result and hasattr(detector, 'annotate_detection'):
+            annotated = frame.copy()
+            annotated = detector.annotate_detection(annotated)
+            return annotated, None
+        
+        # Cas standard: autres détecteurs avec 'detections'
+        detections = detection_result.get('detections', [])
+        if detections:
+            annotated, distance_cm = VisionPipeline.annotate_frame(
+                frame, 
+                detections,
+                approximate_distance=approximate_distance,
+                debug=debug
+            )
+            return annotated, distance_cm
+        
+        # Aucune détection
+        return frame.copy(), None
     @staticmethod
     def approximate_object_distance(detection_box, frame_h, label, debug=False):
         """

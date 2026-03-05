@@ -34,29 +34,29 @@ class StepState(Enum):
     RECENTER = 13  # Recentrage sur la ligne avec turn(angle)
 
 class LineFollowingStateMachine:
-    def __init__(self, robot, camera, pid_controller, line_detector, stop_condition_detector=None):
+    def __init__(self, robot, vision_pipeline, pid_controller, stop_condition_detector=None):
         """
         Initialise la machine à états.
         
         Args:
             robot: Instance du robot Zumi
-            camera: Instance de la caméra
+            vision_pipeline: Instance du VisionPipeline (caméra + détecteurs)
             pid_controller: Instance du contrôleur PID
-            line_detector: Détecteur de ligne
             stop_condition_detector: Détecteur optionnel pour détecter un marqueur d'arrêt
         """
         self.robot = robot
-        self.camera = camera
+        self.vision_pipeline = vision_pipeline
         self.pid_controller = pid_controller
-        self.line_detector = line_detector
         self.stop_condition_detector = stop_condition_detector
         
         self.state = State.IDLE
         self.running = False
         
+        # Trouver l'index du détecteur de ligne dans le pipeline
+        self._line_detector_index = self._find_line_detector_index()
+        
         # Paramètres configurables
         self.rotation_angle = 90  # Degrés
-        self.photo_save_dir = None
         self.stop_marker_detected_count = 0
         self.stop_marker_threshold = 3  # Nombre de détections consécutives nécessaires
         
@@ -64,10 +64,21 @@ class LineFollowingStateMachine:
         self.photos_taken = []
         self.rotation_count = 0
         
-    def set_photo_directory(self, directory):
-        """Définit le répertoire de sauvegarde des photos."""
-        self.photo_save_dir = directory
-        os.makedirs(directory, exist_ok=True)
+    def _find_line_detector_index(self):
+        """Trouve l'index du détecteur de ligne dans le pipeline."""
+        for i, det in enumerate(self.vision_pipeline.detectors):
+            if getattr(det, 'name', '') == 'line':
+                return i
+        return None
+    
+    def _run_line_detection(self, frame):
+        """Exécute la détection de ligne via le pipeline et retourne line_offset."""
+        if self._line_detector_index is None:
+            return None
+        result = self.vision_pipeline.process_frame(frame.copy(), self._line_detector_index)
+        if result is None:
+            return None
+        return result.get('line_offset')
         
     def set_rotation_angle(self, angle):
         """Définit l'angle de rotation en degrés."""
@@ -139,8 +150,7 @@ class LineFollowingStateMachine:
     def _handle_following_line(self, frame):
         """Gère l'état de suivi de ligne."""
         # 1. Détecter la ligne
-        line_result = self.line_detector.process(frame.copy())
-        line_offset = line_result.get('value')
+        line_offset = self._run_line_detection(frame)
         
         # 2. Vérifier si un marqueur d'arrêt est détecté (optionnel)
         stop_detected = False
@@ -188,15 +198,18 @@ class LineFollowingStateMachine:
         """Gère la prise de photo."""
         print("[STATE_MACHINE] Prise de photo...")
         
-        if self.photo_save_dir is None:
+        photo_dir = self.vision_pipeline.CAPTURE_DIR
+        if photo_dir is None:
             print("[STATE_MACHINE WARNING] Aucun répertoire de sauvegarde défini")
             self.state = State.ROTATING
             return {'state': self.state.name, 'photo_taken': False}
         
+        os.makedirs(photo_dir, exist_ok=True)
+        
         # Générer un nom de fichier unique
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         filename = "photo_{}_rot{}.jpg".format(timestamp, self.rotation_count)
-        filepath = os.path.join(self.photo_save_dir, filename)
+        filepath = os.path.join(photo_dir, filename)
         
         # Sauvegarder la photo
         import cv2
@@ -322,20 +335,21 @@ class StepByStepStateMachine:
     - Feedback visuel sur l'écran avant chaque action
     """
     
-    def __init__(self, robot, camera, pid_controller, line_detector):
+    def __init__(self, robot, vision_pipeline, pid_controller):
         """
         Initialise la machine à états step-by-step.
         
         Args:
             robot: Instance du robot Zumi
-            camera: Instance de la caméra
+            vision_pipeline: Instance du VisionPipeline (caméra + détecteurs)
             pid_controller: Instance du contrôleur PID
-            line_detector: Détecteur de ligne
         """
         self.robot = robot
-        self.camera = camera
+        self.vision_pipeline = vision_pipeline
         self.pid_controller = pid_controller
-        self.line_detector = line_detector
+        
+        # Trouver l'index du détecteur de ligne dans le pipeline
+        self._line_detector_index = self._find_line_detector_index()
         
         self.state = StepState.IDLE
         self.running = False
@@ -364,6 +378,22 @@ class StepByStepStateMachine:
         self.recenter_attempts = 0  # Compteur de tentatives de recentrage
         self.max_recenter_attempts = 3  # Maximum de tentatives de recentrage
         self.auto_recenter = False  # Flag pour recentrage automatique sans attente d'approbation
+    
+    def _find_line_detector_index(self):
+        """Trouve l'index du détecteur de ligne dans le pipeline."""
+        for i, det in enumerate(self.vision_pipeline.detectors):
+            if getattr(det, 'name', '') == 'line':
+                return i
+        return None
+    
+    def _run_line_detection(self, frame):
+        """Exécute la détection de ligne via le pipeline et retourne line_offset."""
+        if self._line_detector_index is None:
+            return None
+        result = self.vision_pipeline.process_frame(frame.copy(), self._line_detector_index)
+        if result is None:
+            return None
+        return result.get('line_offset')
         
     def start(self):
         """Démarre la machine à états."""
@@ -495,11 +525,9 @@ class StepByStepStateMachine:
     def _handle_waiting_approval(self, frame):
         """Gère l'état d'attente de validation."""
         # Vérifier que la ligne est toujours visible
-        line_result = self.line_detector.process(frame.copy())
-        line_offset = line_result.get('value')
+        line_offset = self._run_line_detection(frame)
         
         # LOG DÉTAILLÉ pour diagnostic
-        print("[STEP_MACHINE DEBUG] line_result complet: {}".format(line_result))
         print("[STEP_MACHINE DEBUG] line_offset = {} (type: {})".format(
             line_offset, type(line_offset).__name__ if line_offset is not None else "NoneType"))
         
@@ -596,8 +624,7 @@ class StepByStepStateMachine:
     def _handle_moving(self, frame):
         """Gère l'état de mouvement - Avance tout droit sans PID."""
         # Détecter la ligne pour vérifier qu'elle est toujours visible
-        line_result = self.line_detector.process(frame.copy())
-        line_offset = line_result.get('value')
+        line_offset = self._run_line_detection(frame)
         
         if line_offset is None:
             # Ligne perdue pendant le mouvement
@@ -733,8 +760,7 @@ class StepByStepStateMachine:
         print("[STEP_MACHINE] Capture et analyse de l'image...")
         self._display_message("Analyse image...")
         
-        line_result = self.line_detector.process(frame.copy())
-        line_offset = line_result.get('value')
+        line_offset = self._run_line_detection(frame)
         
         print("[STEP_MACHINE] Résultat détection: line_offset={}".format(line_offset))
         
@@ -778,8 +804,7 @@ class StepByStepStateMachine:
         Attend l'approbation utilisateur avant d'avancer.
         """
         # Vérifier que la ligne est toujours visible
-        line_result = self.line_detector.process(frame.copy())
-        line_offset = line_result.get('value')
+        line_offset = self._run_line_detection(frame)
         
         if line_offset is None:
             # Ligne perdue pendant l'approche
@@ -823,9 +848,9 @@ class StepByStepStateMachine:
             start_time = time.time()
             while (time.time() - start_time) < self.approach_duration:
                 # Capturer une nouvelle frame
-                frame_current = self.camera.capture()
-                line_result_current = self.line_detector.process(frame_current.copy())
-                line_offset_current = line_result_current.get('value')
+                frame_current = self.vision_pipeline.capture_frame()
+                self.vision_pipeline.update_last_frame(frame_current)
+                line_offset_current = self._run_line_detection(frame_current)
                 
                 if line_offset_current is None:
                     # Ligne perdue, arrêter
@@ -857,9 +882,9 @@ class StepByStepStateMachine:
         
         # Après avoir avancé, vérifier si la ligne est toujours visible
         print("[STEP_MACHINE] Vérification après approche...")
-        frame_check = self.camera.capture()
-        line_result_check = self.line_detector.process(frame_check.copy())
-        line_offset_check = line_result_check.get('value')
+        frame_check = self.vision_pipeline.capture_frame()
+        self.vision_pipeline.update_last_frame(frame_check)
+        line_offset_check = self._run_line_detection(frame_check)
         
         if line_offset_check is None:
             # Ligne perdue après approche
@@ -892,8 +917,7 @@ class StepByStepStateMachine:
         Si la ligne n'est pas visible, tourne lentement pour la retrouver.
         """
         # Vérifier que la ligne est visible
-        line_result = self.line_detector.process(frame.copy())
-        line_offset = line_result.get('value')
+        line_offset = self._run_line_detection(frame)
         
         if line_offset is None:
             # Ligne non visible - tourner lentement pour la retrouver
@@ -1041,8 +1065,7 @@ class StepByStepStateMachine:
         self.robot.stop()
         
         # Vérifier quand même si la ligne réapparaît
-        line_result = self.line_detector.process(frame.copy())
-        line_offset = line_result.get('value')
+        line_offset = self._run_line_detection(frame)
         
         if line_offset is not None:
             print("[STEP_MACHINE] Ligne détectée à nouveau!")

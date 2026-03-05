@@ -173,13 +173,15 @@ class ControlManager:
                     break
 
                 # --- Mode actif : capture + détection ---
+
+                # la fonction step me semble un peu redondante si on l'appel seulement ici
                 results = self.vision_pipeline.step()
 
                 # Extraire l'offset de ligne
                 line_val = None
                 for res in results:
-                    if res.get("detector") == "line":
-                        line_val = res.get("value")
+                    if 'line_offset' in res:
+                        line_val = res.get('line_offset')
 
                 # Stocker pour les consommateurs (thread-safe via _data_lock)
                 with self._data_lock:
@@ -252,7 +254,8 @@ class ControlManager:
         if self._state_machine is None or not self._state_machine.is_running():
             return
 
-        frame = self.vision_pipeline.get_last_frame()
+        frame = self.vision_pipeline.capture_frame()
+        self.vision_pipeline.update_last_frame(frame)
         if frame is None:
             return
 
@@ -267,7 +270,8 @@ class ControlManager:
         if self._step_machine is None or not self._step_machine.is_running():
             return
 
-        frame = self.vision_pipeline.get_last_frame()
+        frame = self.vision_pipeline.capture_frame()
+        self.vision_pipeline.update_last_frame(frame)
         if frame is None:
             return
 
@@ -367,20 +371,10 @@ class ControlManager:
         """Crée la StepByStepStateMachine à la demande."""
         from core.control.line_following_state_machine import StepByStepStateMachine
 
-        if self._line_detector is None:
-            # Tenter de trouver le détecteur de ligne dans le pipeline
-            for det in self.vision_pipeline.get_detectors():
-                if hasattr(det, 'white_threshold'):
-                    self._line_detector = det
-                    break
-        if self._line_detector is None:
-            raise ValueError("Aucun LineDetector trouvé dans le pipeline de vision.")
-
         self._step_machine = StepByStepStateMachine(
             robot=self.robot,
-            camera=self.vision_pipeline.camera,
+            vision_pipeline=self.vision_pipeline,
             pid_controller=self._pid_controller,
-            line_detector=self._line_detector
         )
 
     def get_status(self):

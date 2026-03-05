@@ -442,27 +442,52 @@ class controller:
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-    # --- Helper: dessiner les résultats de détection passive sur une frame ---
     def _draw_passive_overlay(self, frame, result, approximate_distance=False, previous_distance=None, debug=False):
         """
         Dessine les bounding boxes et labels de la détection passive
         directement sur *frame* (qui doit être une copie).
 
-        Utilise VisionPipeline.annotate_frame() pour garder un seul
-        point de dessin dans tout le projet.
-        Ajoute un petit badge indiquant le nombre de détections.
+        Utilise VisionPipeline.annotate_detection_result() pour gérer tous les types
+        de détecteurs (standard avec bboxes et spécialisés comme LineDetector).
 
         :param frame: image BGR (copie) sur laquelle dessiner.
-        :param result: dict retourné par process_passive() du détecteur,
-                       contenant 'detections' -> list[{object, detection_box}].
-        :return: frame annotée.
+        :param result: dict retourné par process_passive() du détecteur.
+        :param approximate_distance: Si True, calcule distance pour objets bbox.
+        :param previous_distance: Distance précédente (pour stabilité).
+        :param debug: Mode debug.
+        :return: (frame annotée, distance_cm)
         """
         from core.vision.vision_pipeline import VisionPipeline
-        detections = result.get('detections', [])
-        if not detections:
-            return frame
-        annotated, distance_cm = VisionPipeline.annotate_frame(frame, detections, approximate_distance=approximate_distance, previous_distance=previous_distance, debug=debug)
-
+        
+        # Obtenir le détecteur associé au résultat
+        vp = self.vision_pipeline
+        detector = None
+        if vp and vp._passive_detectors:
+            # Normalement il y a un seul détecteur passif
+            detector = vp._passive_detectors[0] if len(vp._passive_detectors) > 0 else None
+        
+        # Utiliser la nouvelle méthode générique d'annotation
+        if detector:
+            annotated, distance_cm = VisionPipeline.annotate_detection_result(
+                frame, 
+                detector, 
+                result,
+                approximate_distance=approximate_distance,
+                debug=debug
+            )
+        else:
+            # Fallback: utiliser ancienne méthode si pas de détecteur
+            detections = result.get('detections', [])
+            if not detections:
+                return frame, previous_distance
+            annotated, distance_cm = VisionPipeline.annotate_frame(
+                frame, 
+                detections, 
+                approximate_distance=approximate_distance, 
+                previous_distance=previous_distance, 
+                debug=debug
+            )
+        
         return annotated, distance_cm
     
     def approximate_object_distance(self):
@@ -1081,21 +1106,11 @@ class controller:
             if self.pid_active:
                 return jsonify({'error': 'Normal PID is running. Stop it first.'}), 400
 
-            # Trouver le détecteur de ligne
-            line_detector = None
-            for detector in vp.get_detectors():
-                if hasattr(detector, 'white_threshold'):
-                    line_detector = detector
-                    break
-            if not line_detector:
-                return jsonify({'error': 'Line detector not found'}), 404
-
             if self.step_machine is None:
                 self.step_machine = StepByStepStateMachine(
                     robot=self.robot,
-                    camera=vp.camera,
+                    vision_pipeline=vp,
                     pid_controller=self.pid_controller,
-                    line_detector=line_detector
                 )
 
             self.step_machine.start()

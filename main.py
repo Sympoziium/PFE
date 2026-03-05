@@ -35,8 +35,6 @@ def draw_progress_bar(screen, percent):
     filled_width = int((bar_width * percent) / 100.0)
     if filled_width > 0:
         screen.draw_rect(bar_x + 1, bar_y + 1, filled_width - 2, bar_height - 2, fill_in=True)
-    
-  
 
 def bootstrap():
     """
@@ -94,6 +92,7 @@ def bootstrap():
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
+    vision_pipeline.add_passive_detectors(line_detector)
     draw_progress_bar(zumi.screen, 70)
     
     # Étape 5 : Créer les contrôleurs
@@ -116,14 +115,11 @@ def bootstrap():
     
     state_machine = LineFollowingStateMachine(
         robot=zumi,
-        camera=zumi.camera,
+        vision_pipeline=vision_pipeline,
         pid_controller=pid_controller,
-        line_detector=line_detector,
         stop_condition_detector=stop_detector
     )
     
-    PHOTOS_DIR = os.path.join(os.path.dirname(__file__), 'photos_sequence')
-    state_machine.set_photo_directory(PHOTOS_DIR)
     state_machine.set_rotation_angle(90)
     draw_progress_bar(zumi.screen, 80)
     
@@ -141,7 +137,6 @@ def bootstrap():
     control_manager = ControlManager(robot=zumi, vision_pipeline=vision_pipeline)
     control_manager.register_pid(pid_controller)
     control_manager.register_state_machine(state_machine)
-    control_manager.register_line_detector(line_detector)
     
     ctrl.attach_control_manager(control_manager)
     ctrl.state_machine = state_machine
