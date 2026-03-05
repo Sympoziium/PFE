@@ -335,6 +335,15 @@ class controller:
                 ann_name, ann_rel_url = vp.save_annotated_image(frame_bgr, detections, filename)
                 if ann_rel_url:
                     annotated_url = url_for('static', filename=ann_rel_url)
+            elif results.get('Object_detected'):
+                # Détecteurs spécialisés (ex. LineDetector) sans bboxes standard
+                from core.vision.vision_pipeline import VisionPipeline
+                detector = vp.get_detectors()[self.selected_detector_index]
+                annotated, _ = VisionPipeline.annotate_detection_result(frame_bgr, detector, results)
+                base, ext = os.path.splitext(filename)
+                ann_name = '{}_det_{}{}'.format(base, uuid.uuid4().hex[:6], ext or '.jpg')
+                cv2.imwrite(os.path.join(self.CAPTURE_DIR, ann_name), annotated)
+                annotated_url = url_for('static', filename='captured_images/{}'.format(ann_name))
 
             # Construire le payload pour le frontend
             # On extrait la plus grande bbox comme détection principale (indicateur UI)
@@ -402,6 +411,9 @@ class controller:
         def generate():
             frames = 0
             previous_distance = None
+            STICKY_SECONDS = 1.5        # Durée pendant laquelle la dernière détection positive reste affichée
+            last_positive_time = 0.0    # time.time() du dernier résultat positif
+            last_positive_result = None # dernier résultat positif reçu
             while vp.is_running():
                 try:
                     # Capture directe depuis la caméra
@@ -423,15 +435,21 @@ class controller:
                 display_frame = frame_bgr
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
+                    now = time.time()
                     if result and result.get('Object_detected'):
+                        last_positive_time = now
+                        last_positive_result = result
+                    # Garder l'annotation visible pendant STICKY_SECONDS après la dernière détection positive
+                    active_result = last_positive_result if (now - last_positive_time) < STICKY_SECONDS else None
+                    if active_result:
                         print("[Video Feed] Object détecté passivement Annotation ...") # debug
                         if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
                             # Dessine sur une copie pour ne pas polluer le buffer brut
-                            display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
+                            display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
                             frames = 0  # reset du compteur après annotation
                         else:
                             # Dessin des contours détecté sans recalculer la distance pour économiser du CPU
-                            display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
+                            display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
                 
                 print("Frame") # debug
 
@@ -466,34 +484,39 @@ class controller:
             result.get('Processing time', 0), list(result.keys()))) # debug
 
         # Obtenir le détecteur associé au résultat
+        # NOTE: _passive_detection_loop stocke str(detector) (repr Python), pas det.name
         vp = self.vision_pipeline
         detector = None
         for det in vp._passive_detectors:
-            if det.name == result.get('Detector'):
+            if str(det) == result.get('Detector', ''):
                 detector = det
-                
-    
-            # Utiliser la nouvelle méthode générique d'annotation
-            if detector:
-                annotated, distance_cm = VisionPipeline.annotate_detection_result(
-                    frame, 
-                    detector, 
-                    result,
-                    approximate_distance=approximate_distance,
-                    debug=debug
-                )
-            else:
-                # Fallback: utiliser ancienne méthode si pas de détecteur
-                detections = result.get('detections', [])
-                if not detections:
-                    return frame, previous_distance
-                annotated, distance_cm = VisionPipeline.annotate_frame(
-                    frame, 
-                    detections, 
-                    approximate_distance=approximate_distance, 
-                    previous_distance=previous_distance, 
-                    debug=debug
-                )
+                break
+
+        # Fallback: si un seul détecteur passif, l'utiliser directement
+        if detector is None and len(vp._passive_detectors) == 1:
+            detector = vp._passive_detectors[0]
+
+        # Utiliser la nouvelle méthode générique d'annotation
+        if detector:
+            annotated, distance_cm = VisionPipeline.annotate_detection_result(
+                frame, 
+                detector, 
+                result,
+                approximate_distance=approximate_distance,
+                debug=debug
+            )
+        else:
+            # Fallback: utiliser ancienne méthode si pas de détecteur
+            detections = result.get('detections', [])
+            if not detections:
+                return frame, previous_distance
+            annotated, distance_cm = VisionPipeline.annotate_frame(
+                frame, 
+                detections, 
+                approximate_distance=approximate_distance, 
+                previous_distance=previous_distance, 
+                debug=debug
+            )
         
         return annotated, distance_cm
     

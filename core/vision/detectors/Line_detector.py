@@ -4,7 +4,9 @@
 # ------------------
 # Module de détecteur de lignes en pointillés dans une image
 
+import os
 import time
+import uuid
 
 from .detector_base import BaseDetector
 import cv2
@@ -166,8 +168,151 @@ class LineDetector(BaseDetector):
         result = self.process(frame)
         result['timestamp'] = time.time()
         return result
-        
-###########################################################################
+
+    def diagnostique_detecteur(self, filename):
+        """
+        Diagnostic détaillé du détecteur de ligne.
+        Visualise chaque étape du pipeline de détection:
+          1. Image source originale
+          2. Région d'intérêt (ROI) avec rectangle rouge
+          3. Image prétraitée (gris → flou → seuillage → morphologie)
+          4. Tous les contours trouvés (avant filtrage)
+          5. Pointillés valides (après filtrage)
+          6. Résultat final annoté (meilleur groupe + offset)
+
+        :param filename: Nom du fichier image capturé (dans CAPTURE_DIR).
+        :return: dict standardisé {'Object_detected', 'line_offset', 'logs', 'steps', 'source_file_url', 'annotated_url'}
+        """
+        from flask import url_for
+
+        self.logs = []
+        steps = []
+
+        if not filename:
+            return {'error': 'no captured image available. Please capture an image first.'}
+        if not self.CAPTURE_DIR:
+            return {'error': 'CAPTURE_DIR not setup. Call attach_capture_dir() first.'}
+
+        img_path = os.path.join(self.CAPTURE_DIR, filename)
+        if not os.path.exists(img_path):
+            return {'error': 'last captured image not found on server'}
+
+        DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
+        os.makedirs(DIAGNOSTIC_DIR, exist_ok=True)
+
+        short_id = uuid.uuid4().hex[:8]
+
+        def _save_step(label, img_bgr):
+            fname = 'diag_line_{}_{}.jpg'.format(label.replace(' ', '_'), short_id)
+            cv2.imwrite(os.path.join(DIAGNOSTIC_DIR, fname), img_bgr)
+            url = url_for('static', filename='captured_images/diagnostics/{}'.format(fname))
+            steps.append({'name': label, 'url': url})
+
+        try:
+            frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return {'error': 'failed to read captured image'}
+
+            h, w = frame_bgr.shape[:2]
+            self.logs.append('=== DIAGNOSTIC LIGNE ===')
+            self.logs.append('Image: {}  |  Resolution: {}x{}'.format(filename, w, h))
+            self.logs.append('Parametres: seuil_blanc={}, min_area={}, offset_ratio={}'.format(
+                self.white_threshold, self.min_area, self.offset_ratio))
+
+            # 1. Image source
+            _save_step('1 - Source', frame_bgr.copy())
+
+            # 2. ROI tracée sur la frame (rectangle rouge)
+            offset_y = int(h * self.offset_ratio)
+            roi_vis = frame_bgr.copy()
+            cv2.rectangle(roi_vis, (0, offset_y), (w, h), (0, 0, 255), 2)
+            cv2.putText(roi_vis, 'ROI (offset_ratio={})'.format(self.offset_ratio),
+                        (10, offset_y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            self.logs.append('ROI: y_debut={} ({}% de la hauteur)'.format(offset_y, int(self.offset_ratio * 100)))
+            _save_step('2 - ROI', roi_vis)
+
+            # 3. Prétraitement (gris → GaussianBlur → seuillage → morphologie)
+            roi = frame_bgr[offset_y:h, :]
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(gray, (5, 5), 0)
+            _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+            # Convertir en BGR pour sauvegarde couleur
+            thresh_full = np.zeros_like(frame_bgr)
+            thresh_full[offset_y:h, :] = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+            self.logs.append('Seuil blanc applique: {}'.format(self.white_threshold))
+            _save_step('3 - Pretraitement threshold', thresh_full)
+
+            image_stats = {
+                'height': h, 'width': w,
+                'offset_y': offset_y, 'roi_height': roi.shape[0],
+            }
+
+            # 4. Tous les contours (avant filtrage)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
+            all_cnt_vis = frame_bgr.copy()
+            for cnt in (contours or []):
+                cx_, cy_, cw_, ch_ = cv2.boundingRect(cnt)
+                cv2.rectangle(all_cnt_vis, (cx_, cy_ + offset_y), (cx_ + cw_, cy_ + ch_ + offset_y), (255, 128, 0), 1)
+            self.logs.append('Contours totaux trouves: {}'.format(len(contours) if contours else 0))
+            _save_step('4 - Tous les contours', all_cnt_vis)
+
+            # 5. Pointillés valides (après filtrage)
+            valid_dashes = self._extract_and_validate_contours(thresh, image_stats)
+            valid_vis = frame_bgr.copy()
+            for d in (valid_dashes or []):
+                cv2.rectangle(valid_vis, (d['x'], d['y'] + offset_y),
+                              (d['x'] + d['w'], d['y'] + d['h'] + offset_y), (0, 255, 255), 2)
+            self.logs.append('Pointilles valides apres filtrage: {}'.format(len(valid_dashes) if valid_dashes else 0))
+            _save_step('5 - Pointilles valides', valid_vis)
+
+            # 6. Résultat final (meilleur groupe + annotation complète)
+            object_detected = False
+            line_offset = None
+            annotated_url = None
+
+            if valid_dashes:
+                best_group = self._grouper_pointilles(valid_dashes, image_stats)
+                offset_stats = self._compute_offset(best_group, image_stats)
+                self._last_annotation_data = {
+                    'best_group': best_group,
+                    'valid_dashes': valid_dashes,
+                    'image_stats': image_stats,
+                    'avg_cx': offset_stats['avg_cx'],
+                    'avg_cy': offset_stats['avg_cy'],
+                    'offset': offset_stats['offset'],
+                }
+                annotated_frame = self.annotate_detection(frame_bgr.copy())
+                _save_step('6 - Resultat annote', annotated_frame)
+                annotated_url = steps[-1]['url']
+                object_detected = True
+                line_offset = offset_stats['offset']
+                self.logs.append('Meilleur groupe: {} pointilles'.format(len(best_group)))
+                self.logs.append('Offset final: {:.1f} px'.format(line_offset))
+            else:
+                self.logs.append('Aucune ligne detectee dans cette image.')
+
+            source_url = url_for('static', filename='captured_images/{}'.format(filename))
+            return {
+                'Object_detected': object_detected,
+                'line_offset': line_offset,
+                'logs': self.logs,
+                'steps': steps,
+                'source_file_url': source_url,
+                'annotated_url': annotated_url,
+            }
+
+        except Exception as e:
+            import traceback
+            self.logs.append('ERREUR: {}'.format(str(e)))
+            return {
+                'error': 'diagnostic failed: {}'.format(str(e)),
+                'logs': self.logs,
+                'steps': steps,
+            }
+
+
 #         Méthode interne pour détecter les lignes en pointillés
 ###########################################################################
 
@@ -177,8 +322,8 @@ class LineDetector(BaseDetector):
          Returns: dict ou None: Données de détection brutes.
          """
         
-        # 1. Extraire la région d'intérêt (ROI) et préparer l'image pour la détection
-        frame_roi, image_stats = self._extract_and_prepare_roi(frame, show_ROI=True)
+        # 1. Extraire la région d'intérêt (ROI) — pas d'annotation ici, show_ROI=False
+        frame_roi, image_stats = self._extract_and_prepare_roi(frame, show_ROI=False)
   
         # 2. Extraire les contours et valider les candidats pour les lignes en pointillés
         valid_dashes = self._extract_and_validate_contours(frame_roi, image_stats)
