@@ -253,7 +253,7 @@ class VisionPipeline:
 # ----------------------------------------
     @staticmethod
     def annotate_frame(frame, detections, box_color=(0, 255, 0), text_color=(0, 255, 0),
-                       thickness=2, font_scale=0.5, debug=False):
+                       thickness=2, font_scale=0.5, previous_distance=None, approximate_distance=True, debug=False):
         """
         Dessine les bounding boxes et labels sur une **copie** de l'image.
 
@@ -263,6 +263,8 @@ class VisionPipeline:
         :param text_color:  Couleur BGR du texte (défaut vert).
         :param thickness:   Épaisseur du trait.
         :param font_scale:  Échelle de la police.
+        :param previous_distance: Distance calculée précédemment (optionnel, pour affichage stable).
+        :param approximate_distance: Si True, calcule et affiche une estimation de la distance de l'objet. pour libérer l'overhead du CPU
         :return: Copie de l'image annotée (BGR).
         """
         annotated = frame.copy()
@@ -284,10 +286,14 @@ class VisionPipeline:
             # distance approximative
             # Attention: l'implémentation ne devrais pas être faite ici si on souhaite utiliser la distance calculé dans le contrôle du robot.
             # on l'a fait ici pour tester vite fais, mais cette fonction ne sert qu'â annoter l'image, pas à faire des calculs de détection ou de contrôle.
-            distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label, debug=debug)
+            if approximate_distance is True:
+                distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label, debug=debug)
+            else :
+                distance_cm = previous_distance
+
             cv2.putText(annotated, "{:.1f} cm".format(distance_cm) if distance_cm else "N/A", (x, y + h + 15), font, font_scale,
                         text_color, 1, cv2.LINE_AA)
-        return annotated
+        return annotated, distance_cm
     
     @staticmethod
     def approximate_object_distance(detection_box, frame_h, label, debug=False):
@@ -392,7 +398,7 @@ class VisionPipeline:
         if not detections or not self.CAPTURE_DIR:
             return None, None
 
-        annotated = self.annotate_frame(frame, detections, debug=self.debug)
+        annotated, _ = self.annotate_frame(frame, detections, debug=self.debug)
 
         base, ext = os.path.splitext(filename)
         ann_name = '{}_det_{}{}'.format(base, uuid.uuid4().hex[:6], ext or '.jpg')

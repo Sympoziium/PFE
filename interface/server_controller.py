@@ -398,6 +398,7 @@ class controller:
         if not vp or not vp.is_running(): return "Camera OFF", 503
         def generate():
             frames = 0
+            previous_distance = None
             while vp.is_running():
                 try:
                     # Capture directe depuis la caméra
@@ -422,8 +423,11 @@ class controller:
                     if result and result.get('Object_detected'):
                         if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
                             # Dessine sur une copie pour ne pas polluer le buffer brut
-                            display_frame = self._draw_passive_overlay(frame_bgr.copy(), result)
+                            display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
                             frames = 0  # reset du compteur après annotation
+                        else:
+                            # Dessin des contours détecté sans recalculer la distance pour économiser du CPU
+                            display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
 
                 # Encodage direct en JPEG depuis BGR
                 ret, jpeg = cv2.imencode('.jpg', display_frame)
@@ -436,7 +440,7 @@ class controller:
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     # --- Helper: dessiner les résultats de détection passive sur une frame ---
-    def _draw_passive_overlay(self, frame, result):
+    def _draw_passive_overlay(self, frame, result, approximate_distance=False, previous_distance=None, debug=False):
         """
         Dessine les bounding boxes et labels de la détection passive
         directement sur *frame* (qui doit être une copie).
@@ -454,9 +458,9 @@ class controller:
         detections = result.get('detections', [])
         if not detections:
             return frame
-        annotated = VisionPipeline.annotate_frame(frame, detections)
+        annotated, distance_cm = VisionPipeline.annotate_frame(frame, detections, approximate_distance=approximate_distance, previous_distance=previous_distance, debug=debug)
 
-        return annotated
+        return annotated, distance_cm
     
     def approximate_object_distance(self):
         """
