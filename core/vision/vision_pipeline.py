@@ -486,7 +486,7 @@ class VisionPipeline:
         while self._passive_running:
             # attend si le mode pause est activé
             self._passive_pause_event.wait()
-
+            print("[passive_detect]")
             # récupération de la dernière frame du livefeed
             frame = self.get_last_frame()
             if frame is not None and nb_detectors > 0:

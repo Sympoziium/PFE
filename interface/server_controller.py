@@ -424,6 +424,7 @@ class controller:
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
                     if result and result.get('Object_detected'):
+                        print("[Video Feed] Object détecté passivement Annotation ...") # debug
                         if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
                             # Dessine sur une copie pour ne pas polluer le buffer brut
                             display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
@@ -431,6 +432,8 @@ class controller:
                         else:
                             # Dessin des contours détecté sans recalculer la distance pour économiser du CPU
                             display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
+                
+                print("Frame") # debug
 
                 # Encodage direct en JPEG depuis BGR
                 ret, jpeg = cv2.imencode('.jpg', display_frame)
@@ -459,6 +462,9 @@ class controller:
         """
         from core.vision.vision_pipeline import VisionPipeline
         
+        print("[Passive Detection] Résultat reçu pour annotation: time={:.3f}s, data keys={}".format(
+            result.get('Processing time', 0), list(result.keys()))) # debug
+
         # Obtenir le détecteur associé au résultat
         vp = self.vision_pipeline
         detector = None
