@@ -35,7 +35,7 @@ class VisionPipeline:
         # threads pour la détection passive
         self._passive_thread = None         # instance du thread
         self._passive_running = False       # Flag pour contrôler l'exécution du thread
-        self._passive_interval = 1          # Intervalle de 1 seconde entre chaque détection passive
+        self._passive_interval = 0.5          # Intervalle de 1 seconde entre chaque détection passive
         self._passive_pause_event = threading.Event() # Event pour contrôler la pause du thread de détection passive
         self._passive_pause_event.clear()     # pause par défaut
 
