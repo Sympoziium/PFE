@@ -198,8 +198,8 @@ class controller:
                     except Exception as e:
                         pass
             
-            # --- Log ressources toutes les 5s (10 itérations * 0.5s) ---
-            if iteration_count % 10 == 0:
+            # --- Log ressources toutes les 40s (40 itérations * 0.5s) ---
+            if iteration_count % 40 == 0:
                 self._log_resource_usage_internal()
             
             time.sleep(0.5)
@@ -450,22 +450,6 @@ class controller:
         if not detections:
             return frame
         annotated = VisionPipeline.annotate_frame(frame, detections)
-
-        # --- Badge compteur de détections (coin supérieur gauche) ---
-        # count = len(detections)
-        # badge_text = str(count)
-        # font = cv2.FONT_HERSHEY_SIMPLEX
-        # font_scale = 0.55
-        # thickness = 2
-        # (tw, th), baseline = cv2.getTextSize(badge_text, font, font_scale, thickness)
-        # pad = 4
-        # bx, by = 4, 4
-        # # Fond du badge (vert)
-        # cv2.rectangle(annotated, (bx, by), (bx + tw + pad * 2, by + th + pad * 2 + baseline),
-        #               (0, 180, 0), cv2.FILLED)
-        # # Texte du badge (blanc)
-        # cv2.putText(annotated, badge_text, (bx + pad, by + th + pad),
-        #             font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
         return annotated
     

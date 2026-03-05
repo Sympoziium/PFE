@@ -33,6 +33,12 @@ def prepare_data(positive_images_dir, negative_images_dir, data_dir, num_augment
             os.remove(os.path.join(negative_images_dir, f))
         print(f"  → Les hard negatives sont maintenant gérés dans data/hard_negatives/")
 
+    # Étape 1.0c : Assainir les noms de fichiers (espaces → underscores)
+    #   opencv_createsamples et opencv_traincascade utilisent un format
+    #   délimité par des espaces ; les noms contenant des espaces cassent le parsing.
+    sanitize_filenames(positive_images_dir)
+    sanitize_filenames(negative_images_dir)
+
     # Étape 1.1 : Validation des images positives et négatives
     validate_images(positive_images_dir)
     validate_images(negative_images_dir)
@@ -83,6 +89,52 @@ def prepare_data(positive_images_dir, negative_images_dir, data_dir, num_augment
     print("-----------------------------------\n")
 
     return train_pos_dir, train_neg_dir, test_pos_dir, test_neg_dir, nb_annotations, nb_negatives, annotations_file, bg_file
+
+
+def sanitize_filenames(images_dir):
+    """Renomme les fichiers dont le nom contient des espaces ou caractères spéciaux.
+    
+    opencv_createsamples et opencv_traincascade utilisent un format d'annotations
+    délimité par des espaces. Un nom de fichier contenant des espaces (ex. 
+    'stop 15 cm.jpg') casse le parsing et provoque 'Unable to open image'.
+    
+    Remplacement : espaces → underscores, parenthèses supprimées.
+    Gère les conflits de noms via un suffixe numérique.
+    
+    :param images_dir: Dossier contenant les images à assainir
+    """
+    import re as _re
+
+    image_files = [f for f in os.listdir(images_dir)
+                   if os.path.isfile(os.path.join(images_dir, f))]
+    
+    renamed = 0
+    for filename in image_files:
+        # Remplacer caractères problématiques pour le format d'annotations OpenCV
+        new_name = filename.replace(' ', '_')
+        new_name = _re.sub(r'[()]+', '', new_name)       # supprimer parenthèses
+        new_name = _re.sub(r'_+', '_', new_name)         # fusionner underscores multiples
+        new_name = new_name.strip('_')                     # pas d'underscore en début/fin
+        
+        if new_name == filename:
+            continue
+        
+        # Gérer les conflits de noms
+        dst = os.path.join(images_dir, new_name)
+        if os.path.exists(dst):
+            base, ext = os.path.splitext(new_name)
+            counter = 1
+            while os.path.exists(dst):
+                dst = os.path.join(images_dir, f"{base}_{counter}{ext}")
+                counter += 1
+            new_name = os.path.basename(dst)
+        
+        os.rename(os.path.join(images_dir, filename), dst)
+        renamed += 1
+    
+    if renamed > 0:
+        print(f"  Assainissement : {renamed} fichier(s) renommé(s) dans {os.path.basename(images_dir)}/ "
+              f"(espaces → underscores)")
 
 
 def validate_images(images_dir):

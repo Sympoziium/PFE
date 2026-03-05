@@ -312,20 +312,16 @@ class VisionPipeline:
             'stop_sign Git':   4.5
         }
 
-        f_pixels_par_objet_R = {
-            'pieton':          579.2058,  # résultat de la régression
-            'camion_pompier':  611.5730,
-            'stop_sign':       614.2960,
-            'stop_sign moi':       614.2960,
-            'stop_sign git':       614.2960,
-        }
+        # La distance focale en pixels à été calculée à partir d'images capturées à
+        # 4 points de référence (15, 20, 30, 45 cm). Les résultats ont été régressés
+        # pour obtenir une estimation de la focale en pixels pour chaque objet.
+        # Ces valeurs sont donc spécifique à nos objets et doivent calculer pour tout
+        # nouvel objet ajouté.
 
-        f_pixels_par_objet_M = {
+        f_pixels_par_objet = {
             'pieton':          573.6111,  # résultat des moyennes
             'camion_pompier':  627.6786,
             'stop_sign':       632.2222,
-            'stop_sign moi':       632.2222,
-            'stop_sign git':       632.2222,
         }
 
         object_name = label.lower()
@@ -360,8 +356,6 @@ class VisionPipeline:
             'pieton':         1.0,   # modèle propre, pas de correction nécessaire
             'camion_pompier': 0.88,  # détecte à l'intérieur → bbox trop petite
             'stop_sign':      1.15,  # crop trop large → bbox trop grande
-            'stop_sign moi':      1.0,  # même modèle que stop_sign
-            'stop_sign git':      1.15,  # même modèle que stop_sign
         }
 
         # Dans le calcul :
@@ -371,11 +365,16 @@ class VisionPipeline:
         # formule de distance : D = (H * f) / h
         # où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée)
         if corrected_height > 0:
-            distance_cm_R = (hauteur_réelle_obj_cm * f_pixels_par_objet_R[object_name]) / corrected_height
-            print("Distance estimée pour {}: {:.1f} cm (RÉGRESSION)".format(label, distance_cm_R))
-            distance_cm_M = (hauteur_réelle_obj_cm * f_pixels_par_objet_M[object_name]) / corrected_height
-            print("Distance estimée pour {}: {:.1f} cm (MOYENNES)".format(label, distance_cm_M))
-            return distance_cm_R
+            if object_name in f_pixels_par_objet:
+                f_pixels = f_pixels_par_objet[object_name]
+            else:
+                if debug:
+                    print("Objet inconnu pour la focale: {}, utiliser une focale par défaut de 600 pixels".format(object_name))
+                f_pixels = 610.0 # valeur par défaut basée sur les moyennes des autres objets
+
+            distance_cm = (hauteur_réelle_obj_cm * f_pixels) / corrected_height
+            print("Distance estimée pour {}: {:.1f} cm (MOYENNES)".format(label, distance_cm)) # pour débug le multi call retirer plus tard
+            return distance_cm
         else:
             if debug:
                 print("Hauteur de l'objet en pixels est nulle, impossible de calculer la distance.")
