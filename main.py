@@ -9,15 +9,6 @@ import threading
 import time
 from core.robot.robot_zumi import RobotZumi
 
-
-
-
-
-
-
-
-
-
 # ═════════════════════════════════════════════════════════════════════
 #  Fonctions de bootstrap avec affichage de progression
 # ═════════════════════════════════════════════════════════════════════
@@ -28,7 +19,6 @@ def draw_progress_bar(screen, percent):
     
     Args:
         screen: Objet Screen du Zumi
-        percent: Pourcentage de progression (0-100)
     """
     screen.clear_drawing()
     
@@ -46,9 +36,7 @@ def draw_progress_bar(screen, percent):
     if filled_width > 0:
         screen.draw_rect(bar_x + 1, bar_y + 1, filled_width - 2, bar_height - 2, fill_in=True)
     
-    # Texte du pourcentage au-dessus de la barre
-    percent_text = "{0}%".format(int(percent))
-    screen.draw_text_center(percent_text, font_size=14)
+  
 
 def bootstrap():
     """
