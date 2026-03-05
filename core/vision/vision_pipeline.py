@@ -287,7 +287,7 @@ class VisionPipeline:
         return annotated, distance_cm
     
     @staticmethod
-    def annotate_detection_result(frame, detector, detection_result, approximate_distance=True, debug=False):
+    def annotate_detection_result(frame, detector, detection_result, approximate_distance=True, previous_distance=None, debug=False):
         """
         Annote une frame avec les résultats de détection d'n'importe quel détecteur.
         Gère les cas spéciaux (comme LineDetector) et les détecteurs standard.
@@ -297,6 +297,7 @@ class VisionPipeline:
             detector: Objet détecteur (pour accéder à ses méthodes d'annotation)
             detection_result: dict retourné par detector.process()
             approximate_distance: Si True, calcule distance pour objets bbox
+            previous_distance: Distance calculée précédemment (optionnel) pour affichage stable
             debug: Mode debug
             
         Returns:
@@ -319,6 +320,7 @@ class VisionPipeline:
                 frame, 
                 detections,
                 approximate_distance=approximate_distance,
+                previous_distance=previous_distance,
                 debug=debug
             )
             return annotated, distance_cm

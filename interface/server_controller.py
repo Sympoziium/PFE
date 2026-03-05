@@ -339,7 +339,7 @@ class controller:
                 # Détecteurs spécialisés (ex. LineDetector) sans bboxes standard
                 from core.vision.vision_pipeline import VisionPipeline
                 detector = vp.get_detectors()[self.selected_detector_index]
-                annotated, _ = VisionPipeline.annotate_detection_result(frame_bgr, detector, results)
+                annotated, _ = VisionPipeline.annotate_detection_result(frame_bgr, detector, approximate_distance=True, detection_result = results)
                 base, ext = os.path.splitext(filename)
                 ann_name = '{}_det_{}{}'.format(base, uuid.uuid4().hex[:6], ext or '.jpg')
                 cv2.imwrite(os.path.join(self.CAPTURE_DIR, ann_name), annotated)
@@ -505,6 +505,7 @@ class controller:
                 detector, 
                 result,
                 approximate_distance=approximate_distance,
+                previous_distance=previous_distance,
                 debug=debug
             )
         else:
