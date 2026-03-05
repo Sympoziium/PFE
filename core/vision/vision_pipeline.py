@@ -36,7 +36,7 @@ class VisionPipeline:
         # threads pour la détection passive
         self._passive_thread = None         # instance du thread
         self._passive_running = False       # Flag pour contrôler l'exécution du thread
-        self._passive_interval = 4.0        # Intervalle de 4 secondes entre chaque détection passive
+        self._passive_interval = 1          # Intervalle de 1 seconde entre chaque détection passive
         self._passive_pause_event = threading.Event() # Event pour contrôler la pause du thread de détection passive
         self._passive_pause_event.clear()     # pause par défaut
 
@@ -373,7 +373,7 @@ class VisionPipeline:
                 f_pixels = 610.0 # valeur par défaut basée sur les moyennes des autres objets
 
             distance_cm = (hauteur_réelle_obj_cm * f_pixels) / corrected_height
-            print("Distance estimée pour {}: {:.1f} cm (MOYENNES)".format(label, distance_cm)) # pour débug le multi call retirer plus tard
+            print("Distance estimée pour {}: {:.1f} cm {}".format(label, distance_cm, time.localtime())) # pour débug le multi call retirer plus tard
             return distance_cm
         else:
             if debug:

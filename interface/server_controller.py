@@ -396,6 +396,7 @@ class controller:
         vp = self.vision_pipeline
         if not vp or not vp.is_running(): return "Camera OFF", 503
         def generate():
+            frames = 0
             while vp.is_running():
                 try:
                     # Capture directe depuis la caméra
@@ -418,8 +419,9 @@ class controller:
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
                     if result and result.get('Object_detected'):
-                        # Dessiner sur une copie pour ne pas polluer le buffer brut
-                        display_frame = self._draw_passive_overlay(frame_bgr.copy(), result)
+                        if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
+                            # Dessine sur une copie pour ne pas polluer le buffer brut
+                            display_frame = self._draw_passive_overlay(frame_bgr.copy(), result)
 
                 # Encodage direct en JPEG depuis BGR
                 ret, jpeg = cv2.imencode('.jpg', display_frame)
@@ -427,6 +429,7 @@ class controller:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
                 time.sleep(0.05) ### on impose une limite du livefeed a 20fps si on veux faire de la détection passive sa pourrais bloquer le Pi
+                frames += 1 # mise à jour du compteur de frames pour l'annotation de détection passive
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
