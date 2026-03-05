@@ -308,7 +308,6 @@ class VisionPipeline:
         
         # Cas spécial: LineDetector (possède line_offset et annotate_detection)
         if 'line_offset' in detection_result and hasattr(detector, 'annotate_detection'):
-            print("[VisionPipeline] Annotation spéciale pour LineDetector") # debug
             annotated = frame.copy()
             annotated = detector.annotate_detection(annotated)
             return annotated, None
