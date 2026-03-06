@@ -4,6 +4,177 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
+
+
+## [Non publié] — Rework complet du LineDetector et intégration VisionPipeline (2026-03-05)
+
+### Objectif
+1. Uniformiser le **LineDetector** avec le format standardisé BaseDetector (`{'Object_detected', 'detections', 'logs'}`)
+2. Éliminer le **circuit parallèle** où les state machines déshérissaient le détecteur directement
+3. Forcer l'architecture **VisionPipeline** comme point d'accès unique pour la détection
+4. Supprimer la **duplication de code** (`set_photo_directory`, accès caméra, etc.)
+
+### Modifié
+
+#### LineDetector (`core/vision/detectors/Line_detector.py`) — Format standardisé
+- **Ancien format** : `{'detector': 'line', 'value': offset, 'Object_detected': bool, 'detections': [dicts complexes], '_annotation_data': {...}, 'detection_stats': {...}}`
+- **Nouveau format** : `{'Object_detected': bool, 'detections': [], 'line_offset': offset|None, 'logs': []}`
+  - Clés éliminées : `detector`, `value`, `_annotation_data`, `detection_stats`, `detection_data`
+  - `line_offset` est la **clé d'extension spécialisée** pour les state machines
+  - Données d'annotation internes : stockées sur `self._last_annotation_data` au lieu de retournées
+  
+- **Méthode `annotate_detection(frame)`** : signature modifiée
+  - Ancien : `annotate_detection(frame, detection_result)` — passait le résultat entier
+  - Nouveau : `annotate_detection(frame)` — lit depuis `self._last_annotation_data` intrinsèque
+  - Permet une séparation nette entre **détection logique** et **annotation visuelle**
+  
+- **Méthode `_detect_lines()`** : nettoyage
+  - Correction : `show_ROI=False` (pas d'annotation lors de la détection)
+  - Suppression : code mort testant `'ctn' in dash` (clé n'existe pas, était `'contour'`)
+  - Simplifie et clarifie le retour `{'offset', 'avg_cx', 'avg_cy', 'best_group', 'valid_dashes', 'image_stats'}`
+  
+- **Méthode `process_passive()`** : refactorisation
+  - Ancien : implémentation dupliquée avec `_detect_lines()` + appels récursifs
+  - Nouveau : appelle simplement `process()` + ajoute `timestamp` pour le live feed
+
+#### State Machines (`core/control/line_following_state_machine.py`) — VisionPipeline au lieu de circuit isolé
+- **Constructeur `LineFollowingStateMachine`**
+  - Ancien : `__init__(robot, camera, pid_controller, line_detector, stop_condition_detector=None)`
+  - Nouveau : `__init__(robot, vision_pipeline, pid_controller, stop_condition_detector=None)`
+  - Caméra et détecteur de ligne **trouvés via pipeline** à la demande
+  
+- **Constructeur `StepByStepStateMachine`**
+  - Ancien : `__init__(robot, camera, pid_controller, line_detector)`
+  - Nouveau : `__init__(robot, vision_pipeline, pid_controller)`
+  - Même principe : accès unifié via `vision_pipeline`
+  
+- **Nouveaux helpers** (tous deux machines)
+  - `_find_line_detector_index()` : cherche le détecteur par `name == 'line'` dans `vision_pipeline.detectors`
+  - `_run_line_detection(frame)` : exécute `vision_pipeline.process_frame(frame, index)` et extrait `line_offset`
+  
+- **Suppression de la duplication**
+  - `set_photo_directory(dir)` éliminé → utilise `vision_pipeline.CAPTURE_DIR` directement
+  - `self.camera.capture()` → `self.vision_pipeline.camera.capture()`
+  - Tous les `self.line_detector.process()` → remplacés par `self._run_line_detection(frame)`
+  
+- **Remplacement systématique des appels**
+  - Ancien : `line_result = self.line_detector.process(frame.copy())` + `line_offset = line_result.get('value')`
+  - Nouveau : `line_offset = self._run_line_detection(frame)`
+  - Appliqué à **10+ locations** : `_handle_waiting_approval`, `_handle_moving`, `_handle_approach_line`, `_handle_recenter`, `_handle_line_lost`, etc.
+
+#### ControlManager (`core/control/control_manager.py`) — Extraction correcte de l'offset
+- **Boucle `_control_loop()`**
+  - Ancien : filtre par `res.get("detector") == "line"` + extrait `res.get("value")`
+  - Nouveau : filtre par `'line_offset' in res` + extrait `res.get('line_offset')`
+  - Plus robuste : fonctionne même si plusieurs détecteurs retournent `line_offset`
+  
+- **Méthode `_create_step_machine()`**
+  - Ancien : cherchait manuellement le line_detector dans pipeline, passait camera + line_detector séparément
+  - Nouveau : passe `vision_pipeline` directement, laisse le machine trouver le détecteur
+  - Élimine `register_line_detector()` : plus de nécessité d'une référence globale
+
+#### main.py — Wiring simplifié
+- **Création `LineFollowingStateMachine`**
+  - Ancien : `LineFollowingStateMachine(robot=zumi, camera=zumi.camera, ..., line_detector=line_detector, ...)`
+    + `state_machine.set_photo_directory(PHOTOS_DIR)`
+    + `control_manager.register_line_detector(line_detector)`
+  - Nouveau : `LineFollowingStateMachine(robot=zumi, vision_pipeline=vision_pipeline, ...)`
+    + Plus de `set_photo_directory()` ni `register_line_detector()`
+    + Photos sauvegardées via `vision_pipeline.CAPTURE_DIR` configuré au bootstrap
+
+#### VisionPipeline (`core/vision/vision_pipeline.py`) — Annotation générique
+- **Méthode `annotate_detection_result(frame, detector, result)`**
+  - Ancien : détectait via `result.get('detector') == 'line'` + appelait `detector.annotate_detection(frame, result)`
+  - Nouveau : détecte via `'line_offset' in result` + appelle `detector.annotate_detection(frame)` (sans result)
+  - Signature new-school plus simple et modulaire
+
+#### server_controller.py (`interface/server_controller.py`) — Fallback legacy mis à jour
+- **Route `pid_step_start()` — Fallback pour créer StepByStepStateMachine sans ControlManager**
+  - Ancien : `StepByStepStateMachine(robot=self.robot, camera=vp.camera, pid_controller=..., line_detector=detector)`
+  - Nouveau : `StepByStepStateMachine(robot=self.robot, vision_pipeline=vp, pid_controller=...)`
+  - Élimine la recherche manuelle du line_detector
+
+#### test_line_detector_refactoring.py — Mise à jour tests
+- **Tous les 6 tests révisés** pour vérifier le **nouveau format standardisé**
+- Tests clés :
+  - ✓ Format correct : `['Object_detected', 'detections', 'line_offset', 'logs']`
+  - ✓ Pas de clés anciennes : `detector`, `value`, `_annotation_data`, `detection_stats`
+  - ✓ `annotate_detection(frame)` sans paramètre result
+  - ✓ `process_passive()` + `timestamp`
+  - ✓ Image noire → `Object_detected=False, line_offset=None`
+  - ✓ Intégration VisionPipeline.annotate_detection_result()
+
+### Impact architectural
+
+| Aspect | Avant | Après |
+|--------|-------|-------|
+| **Point d'accès caméra** | Duplicé : `robot.camera`, `vision_pipeline.camera`, state machines | Unique : `vision_pipeline.camera` |
+| **Détection de ligne** | Direct : `state_machine.line_detector.process()` | VisionPipeline : `_run_line_detection()` |
+| **Format des résultats** | Fragmenté (3+ formats différents par détecteur) | Unifié : format BaseDetector |
+| **Stockage photos** | Via attribut `self.photo_save_dir` | Via `vision_pipeline.CAPTURE_DIR` |
+| **Annotation visuelle** | Embarquée dans process() | Séparée : annotate_detection(frame) |
+| **Clés d'extension** | `value`, `detector`, `detection_stats` | `line_offset` simple et claire |
+
+### Fichiers modifiés
+- `core/vision/detectors/Line_detector.py` — Refactorisation majeure (format + annotation)
+- `core/control/line_following_state_machine.py` — Rework complet (2 machines, helpers, wiring)
+- `core/control/control_manager.py` — Extraction offset corrigée, création step_machine simplifiée
+- `core/vision/vision_pipeline.py` — Annotation alignée sur nouveau format
+- `main.py` — Wiring simplifié, suppression set_photo_directory + register_line_detector
+- `interface/server_controller.py` — Fallback legacy mis à jour
+- `test_line_detector_refactoring.py` — Tests refactorisés pour nouveau format
+
+---
+
+## [Non publié] — Amélioration du sctipt de préparation du zumi (2026-03-05)
+
+### Objectif :
+1. Refactor complet du script `zumi_prepare.sh` pour le rendre plus robuste, fiable et adapté aux tests terrain.
+2. Ajouter une fonctionnalité de diagnostic pour vérifier que le port 5000 est bien libé avant de lancer le programme, avec un système de retry automatique.
+3. Ajouter une méthode pour bootstrap le programme principale et offirir une barre de chargement pour indiquer la progression de la préparation.
+
+### Modifications apportées
+- Refactor complet de `zumi_prepare.sh` en mode plus robuste avec fonctions utilitaires (`port_is_free`, `get_pids_on_port`, `free_port`, `kill_by_pattern`).
+- Réécriture de la boucle FAST pour libérer le port 5000 avec vérification réelle et retry (jusqu'à 10 tentatives) avant d'annoncer un succès.
+- Correction de l'extraction des PID sur un port (méthode robuste via `ss` + fallback `fuser`) pour éviter les faux positifs de libération.
+- Passage des kills critiques en `-9` pour les processus récalcitrants (`main.py`, `flask`, `werkzeug`).
+- Ajout d'une vérification post-kill des processus Python restants en mode FULL.
+- Suppression des credentials Wi-Fi hardcodés : le mode FULL demande maintenant SSID et mot de passe de façon interactive.
+- Sécurisation du fichier temporaire Wi-Fi (`chmod 600`) et meilleure gestion de `wpa_supplicant` (arrêt propre + fallback).
+- Ajout d'un retry de connectivité réseau avec plusieurs tentatives de ping avant échec.
+- Nettoyage de la sortie `dhclient` pour éviter les messages parasites dans les logs.
+- Le mode FULL réutilise explicitement la logique FAST en fin de parcours pour garantir que le port 5000 est libre avant lancement du programme.
+- Ajout d'un handler `SIGINT`/`SIGTERM` dans `main.py` pour forcer un arrêt propre et éviter d'avoir à relancer `zumi_prepare.sh fast` entre deux tests.
+- Ajout d'une barre de progression visuelle dans le terminal pour indiquer les étapes de chargement au lancement de notre programme.
+
+### Résultat
+- Le mode FAST est plus fiable et déterministe : il valide que le port 5000 est effectivement libre.
+- Le mode FULL est plus versatile pour les tests terrain (choix réseau au moment du lancement).
+- Réduction des cas `OSError: [Errno 98] Address already in use` lors des redémarrages rapides.
+
+
+## [Non publié] — Amélioration algorithme de calcul de distance (2026-03-04)
+
+### Objectif : 
+1. Améliorer la précision du calcul de distance approximative à partir de la taille de la bounding box.
+
+### Solution proposée :
+- La première estimation de la distance focale c'est basé sur 2 point (15 et 30 cm). pour améliorer la précision on va ajouter 2 points supplémentaires (20 et 45 cm) pour faire une régression linéaire plus précise.
+
+### Modification apporté
+- réduction de la férquence de polling de l'utilisation des ressources à 20 sec au lieu de 5.
+- Comme il semble y avoir une légère distortion entre les objets, on change l'apporche de la focale globale pour une focale spécifique par objet.
+- On a précédement déterminer les distance focale en utilisant des moyennes, mais pour améliorer la précision on va faire une régression linéaire pour chaque objet en utilisant les 4 points de données (15, 20, 30, 45 cm) au lieu de 2 points (15 et 30 cm). pour faire la régression j'ai fait un script `Régression_lin_distance_focale.py` qui utilise la méthode des moindres carrés pour trouver les coefficients de la régression linéaire (focale = a * taille_image + b).
+- j'ai entrainer un nouveau modèle pour les panneau stop et il torche le cul du modèle de git big time. genre il peut voir dans le noir et les résultats de son approximation sont beaucoup plus précis que le modèle de git. dire que je viens d'entrainer mon meilleur modèle avec moins de 200 images positives. je pense que le maxFalseAlarmRate de 0.4 a vraiment aidé à améliorer la précision du modèle, ça a permis d'avoir des bounding box plus précises ce qui a un impact direct sur la précision du calcul de distance. je vais tenter de log les résultats pour ajouter au rapport plus tard.
+- ajout d'une limite de fréquence d'annotation sur le live feed pour réduire la charge CPU (annotation toutes les 10 frames (0.5s à 20fps))
+- j'ai aussi changer la fréquence de détection passive de 4sec a 0.5sec pour le moment tout semble bien aller et sa semble être bénéfique en basse résolution. avec l'arrivé des nouveau Pi V2 on va pouvoir se gater un peu plus niveau ressources.
+### Commentaires :
+- la première implémentation a été fait avec 2 points (15 et 30 cm), les résultats était relativement bien avec une erreur d'environ 3-4 cm à 30 cm et plus, ces pour quoi on a décider d'ajouter 2 point supplémentaire pour améliorer la précision. cela dit ce n'est pas la seul chose qui sera tester, on va également essayer une focale spécifique par objet et on va tenter 2 méthodes pour les calculer (moyenne et régression linéaire) pour voir laquelle donne les meilleurs résultats. je vais tenter de log les résultats pour ajouter au rapport plus tard.
+- après expérimentation, il n'y a pas de différence significative entre les deux méthodes. ce qui a un plus gros impact cependant ces la qualité des bounding box du modèle. si elle sont trop large ou trop mince cela va fausser le calcul de la distance. c'est pour ça que je pense que l'amélioration de la précision du modèle de détection aura un impact plus significatif sur la précision du calcul de distance que l'amélioration de la méthode de calcul elle même.
+
+#### Résumé pour le rapport
+La conclusion que tu devrais tirer de cette analyse est la suivante : le modèle pinhole avec focale fixe est adéquat pour des distances courtes (15–30 cm), mais sa précision est fondamentalement limitée par la qualité des bounding boxes produites par le détecteur HAAR, et non par la méthode d'estimation de la constante focale. L'amélioration prioritaire serait donc d'améliorer la précision des bounding boxes via un meilleur entraînement du modèle, ou d'introduire un facteur correctif empirique par classe d'objet.
+
 ---
 
 ## [Non publié] — Resources Monitoring (2026-02-27)

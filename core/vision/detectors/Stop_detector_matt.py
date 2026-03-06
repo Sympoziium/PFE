@@ -63,6 +63,7 @@ class StopDetectorMatt(BaseDetector):
         self.name = "StopDetectorMatt"
         self.CAPTURE_DIR = None
         self.DIAGNOSTIC_DIR = None
+        self.debug = False  # Flag de debug pour les fonctions d'annotation et de diagnostic
         self.steps = []  # pour stocker les étapes de diagnostic
         self.logs = []   # pour stocker les logs de diagnostic
 

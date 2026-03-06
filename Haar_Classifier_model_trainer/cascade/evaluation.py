@@ -243,12 +243,6 @@ def evaluate_model(model_path, test_pos_dir, test_neg_dir):
     print(f"    Meilleur profil par F1 : {best['preset_label']} (SF={best['sf']}, MN={best['mn']})")
     print(f"    F1={best['f1']:.3f}, Recall={best['recall']:.1f}%, Précision={best['precision']:.1f}%")
 
-    strict = all_results[-1]
-    print(f"\n  Raspberry Pi Zero V1 :")
-    print(f"    Profil Strict recommandé : SF={strict['sf']}, MN={strict['mn']}")
-    print(f"    (Recall={strict['recall']:.1f}%, Précision={strict['precision']:.1f}%, F1={strict['f1']:.3f})")
-    print(f"    LBP est ~3-5× plus rapide que HAAR à l'exécution.")
-
     return all_results, best_idx
 
 
@@ -323,6 +317,7 @@ def generate_model_plaque(model_path, config, sample_width, sample_height,
     lines.append(f"| Feature type | {feature} |")
     lines.append(f"| Stages demandés | {config.get('stages', 'N/A')} |")
     lines.append(f"| minHitRate | {config.get('min_hit_rate', 'N/A')} |")
+    lines.append(f"| maxFalseAlarmRate | {config.get('max_false_alarm_rate', 'N/A')} |")
     lines.append(f"| Fenêtre | {sample_width}×{sample_height} |")
     lines.append(f"")
     

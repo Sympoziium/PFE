@@ -172,20 +172,21 @@ class ControlManager:
                 if current_mode == MODE_IDLE:
                     break
 
-                # --- Mode actif : capture + détection ---
-                results = self.vision_pipeline.step()
+                # --- Lecture du buffer partagé (sans capturer la caméra) ---
+                # La capture est déjà faite par video_feed() qui alimente le buffer.
+                frame = self.vision_pipeline.get_last_frame()
+                if frame is None:
+                    time.sleep(0.03)
+                    continue
 
-                # Extraire l'offset de ligne
+                # Pour MODE_PID : détecter la ligne depuis le buffer et stocker l'offset
                 line_val = None
-                for res in results:
-                    if res.get("detector") == "line":
-                        line_val = res.get("value")
-
-                # Stocker pour les consommateurs (thread-safe via _data_lock)
-                with self._data_lock:
-                    self.last_line_offset = line_val
-                # Rétro-compatibilité : le pid_loop du server_controller lit cet attribut
-                self.vision_pipeline.last_line_offset = line_val
+                if current_mode == MODE_PID:
+                    line_val = self._detect_line_from_frame(frame)
+                    with self._data_lock:
+                        self.last_line_offset = line_val
+                    # Rétro-compatibilité : le pid_loop du server_controller lit cet attribut
+                    self.vision_pipeline.last_line_offset = line_val
 
                 # --- Dispatch du mode actif ---
                 if current_mode == MODE_PID:
@@ -252,6 +253,7 @@ class ControlManager:
         if self._state_machine is None or not self._state_machine.is_running():
             return
 
+        # Lire depuis le buffer partagé (peuplé par video_feed)
         frame = self.vision_pipeline.get_last_frame()
         if frame is None:
             return
@@ -267,6 +269,7 @@ class ControlManager:
         if self._step_machine is None or not self._step_machine.is_running():
             return
 
+        # Lire depuis le buffer partagé (peuplé par video_feed)
         frame = self.vision_pipeline.get_last_frame()
         if frame is None:
             return
@@ -277,6 +280,22 @@ class ControlManager:
             self.last_line_offset = result.get('line_offset', self.last_line_offset)
             self.last_left_speed = result.get('left_speed', 0)
             self.last_right_speed = result.get('right_speed', 0)
+
+    def _detect_line_from_frame(self, frame):
+        """Extrait l'offset de ligne depuis une frame pré-capturée (sans appel caméra).
+        
+        Cherche le premier détecteur nommé 'line' dans le pipeline et appelle
+        process_frame() avec la frame fournie.
+        """
+        for i, det in enumerate(self.vision_pipeline.detectors):
+            if getattr(det, 'name', '') == 'line':
+                try:
+                    result = self.vision_pipeline.process_frame(frame.copy(), i)
+                    if result:
+                        return result.get('line_offset')
+                except Exception:
+                    pass
+        return None
 
     # ------------------------------------------------------------------
     #  Activation / désactivation des modes
@@ -367,20 +386,10 @@ class ControlManager:
         """Crée la StepByStepStateMachine à la demande."""
         from core.control.line_following_state_machine import StepByStepStateMachine
 
-        if self._line_detector is None:
-            # Tenter de trouver le détecteur de ligne dans le pipeline
-            for det in self.vision_pipeline.get_detectors():
-                if hasattr(det, 'white_threshold'):
-                    self._line_detector = det
-                    break
-        if self._line_detector is None:
-            raise ValueError("Aucun LineDetector trouvé dans le pipeline de vision.")
-
         self._step_machine = StepByStepStateMachine(
             robot=self.robot,
-            camera=self.vision_pipeline.camera,
+            vision_pipeline=self.vision_pipeline,
             pid_controller=self._pid_controller,
-            line_detector=self._line_detector
         )
 
     def get_status(self):

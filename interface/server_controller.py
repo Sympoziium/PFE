@@ -107,12 +107,13 @@ TURN_SPEED = 15
 WATCHDOG_TIMEOUT_SECONDS = 0.8
 
 class controller:
-    def __init__(self, zumi):
+    def __init__(self, zumi, debug=False):
         self.app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
         self.robot = zumi
         self.vision_pipeline = None
         self.control_manager = None  # Initialisé via attach_control_manager()
         self.last_move_time = time.time()
+        self.debug = debug
         self.watchdog_active = False
         # Rétro-compatibilité : pid_controller local utilisé seulement
         # quand aucun ControlManager n'est attaché.
@@ -130,6 +131,7 @@ class controller:
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
+
         
         # --- CONFIGURATION DU PONT ---
         # ⚠️ REMPLACE CECI PAR L'IP QUE TON ARDUINO A AFFICHÉE
@@ -143,6 +145,7 @@ class controller:
     def attach_pipeline_vision(self, pipeline):
         pipeline.attach_capture_dir(self.CAPTURE_DIR)
         self.vision_pipeline = pipeline
+        self.vision_pipeline.debug = self.debug
 
     def attach_control_manager(self, control_manager):
         """Attache le ControlManager (orchestrateur de contrôle).
@@ -198,9 +201,10 @@ class controller:
                     except Exception as e:
                         pass
             
-            # --- Log ressources toutes les 5s (10 itérations * 0.5s) ---
-            if iteration_count % 10 == 0:
+            # --- Log ressources toutes les 40s (40 itérations * 0.5s) ---
+            if iteration_count % 40 == 0:
                 self._log_resource_usage_internal()
+                iteration_count = 0  # reset du compteur après log
             
             time.sleep(0.5)
 
@@ -331,6 +335,15 @@ class controller:
                 ann_name, ann_rel_url = vp.save_annotated_image(frame_bgr, detections, filename)
                 if ann_rel_url:
                     annotated_url = url_for('static', filename=ann_rel_url)
+            elif results.get('Object_detected'):
+                # Détecteurs spécialisés (ex. LineDetector) sans bboxes standard
+                from core.vision.vision_pipeline import VisionPipeline
+                detector = vp.get_detectors()[self.selected_detector_index]
+                annotated, _ = VisionPipeline.annotate_detection_result(frame_bgr, detector, approximate_distance=True, detection_result = results)
+                base, ext = os.path.splitext(filename)
+                ann_name = '{}_det_{}{}'.format(base, uuid.uuid4().hex[:6], ext or '.jpg')
+                cv2.imwrite(os.path.join(self.CAPTURE_DIR, ann_name), annotated)
+                annotated_url = url_for('static', filename='captured_images/{}'.format(ann_name))
 
             # Construire le payload pour le frontend
             # On extrait la plus grande bbox comme détection principale (indicateur UI)
@@ -396,6 +409,11 @@ class controller:
         vp = self.vision_pipeline
         if not vp or not vp.is_running(): return "Camera OFF", 503
         def generate():
+            frames = 0
+            previous_distance = None
+            STICKY_SECONDS = 1.5        # Durée pendant laquelle la dernière détection positive reste affichée
+            last_positive_time = 0.0    # time.time() du dernier résultat positif
+            last_positive_result = None # dernier résultat positif reçu
             while vp.is_running():
                 try:
                     # Capture directe depuis la caméra
@@ -417,9 +435,28 @@ class controller:
                 display_frame = frame_bgr
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
+                    now = time.time()
                     if result and result.get('Object_detected'):
-                        # Dessiner sur une copie pour ne pas polluer le buffer brut
-                        display_frame = self._draw_passive_overlay(frame_bgr.copy(), result)
+                        last_positive_time = now
+                        last_positive_result = result
+                    # Garder l'annotation visible pendant STICKY_SECONDS après la dernière détection positive
+                    active_result = last_positive_result if (now - last_positive_time) < STICKY_SECONDS else None
+                    if active_result:
+                        if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
+                            # Dessine sur une copie pour ne pas polluer le buffer brut
+                            display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
+                            frames = 0  # reset du compteur après annotation
+                        else:
+                            # Dessin des contours détecté sans recalculer la distance pour économiser du CPU
+                            display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
+
+                elif self.control_manager and self.control_manager.mode != MODE_IDLE:
+                    # Mode actif (PID / state machine) — annoter avec les données du dernier cycle
+                    for det in vp.detectors:
+                        if getattr(det, 'name', '') == 'line' and getattr(det, '_last_annotation_data', None) is not None:
+                            display_frame = det.annotate_detection(frame_bgr.copy())
+                            break
+                
 
                 # Encodage direct en JPEG depuis BGR
                 ret, jpeg = cv2.imencode('.jpg', display_frame)
@@ -427,47 +464,64 @@ class controller:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
                 time.sleep(0.05) ### on impose une limite du livefeed a 20fps si on veux faire de la détection passive sa pourrais bloquer le Pi
+                frames += 1 # mise à jour du compteur de frames pour l'annotation de détection passive
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-    # --- Helper: dessiner les résultats de détection passive sur une frame ---
-    def _draw_passive_overlay(self, frame, result):
+    def _draw_passive_overlay(self, frame, result, approximate_distance=False, previous_distance=None, debug=False):
         """
         Dessine les bounding boxes et labels de la détection passive
         directement sur *frame* (qui doit être une copie).
 
-        Utilise VisionPipeline.annotate_frame() pour garder un seul
-        point de dessin dans tout le projet.
-        Ajoute un petit badge indiquant le nombre de détections.
+        Utilise VisionPipeline.annotate_detection_result() pour gérer tous les types
+        de détecteurs (standard avec bboxes et spécialisés comme LineDetector).
 
         :param frame: image BGR (copie) sur laquelle dessiner.
-        :param result: dict retourné par process_passive() du détecteur,
-                       contenant 'detections' -> list[{object, detection_box}].
-        :return: frame annotée.
+        :param result: dict retourné par process_passive() du détecteur.
+        :param approximate_distance: Si True, calcule distance pour objets bbox.
+        :param previous_distance: Distance précédente (pour stabilité).
+        :param debug: Mode debug.
+        :return: (frame annotée, distance_cm)
         """
         from core.vision.vision_pipeline import VisionPipeline
-        detections = result.get('detections', [])
-        if not detections:
-            return frame
-        annotated = VisionPipeline.annotate_frame(frame, detections)
+        
+        # Obtenir le détecteur associé au résultat
+        # NOTE: _passive_detection_loop stocke str(detector) (repr Python), pas det.name
+        vp = self.vision_pipeline
+        detector = None
+        for det in vp._passive_detectors:
+            if str(det) == result.get('Detector', ''):
+                detector = det
+                break
 
-        # --- Badge compteur de détections (coin supérieur gauche) ---
-        # count = len(detections)
-        # badge_text = str(count)
-        # font = cv2.FONT_HERSHEY_SIMPLEX
-        # font_scale = 0.55
-        # thickness = 2
-        # (tw, th), baseline = cv2.getTextSize(badge_text, font, font_scale, thickness)
-        # pad = 4
-        # bx, by = 4, 4
-        # # Fond du badge (vert)
-        # cv2.rectangle(annotated, (bx, by), (bx + tw + pad * 2, by + th + pad * 2 + baseline),
-        #               (0, 180, 0), cv2.FILLED)
-        # # Texte du badge (blanc)
-        # cv2.putText(annotated, badge_text, (bx + pad, by + th + pad),
-        #             font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+        # Fallback: si un seul détecteur passif, l'utiliser directement
+        if detector is None and len(vp._passive_detectors) == 1:
+            detector = vp._passive_detectors[0]
 
-        return annotated
+        # Utiliser la nouvelle méthode générique d'annotation
+        if detector:
+            annotated, distance_cm = VisionPipeline.annotate_detection_result(
+                frame, 
+                detector, 
+                result,
+                approximate_distance=approximate_distance,
+                previous_distance=previous_distance,
+                debug=debug
+            )
+        else:
+            # Fallback: utiliser ancienne méthode si pas de détecteur
+            detections = result.get('detections', [])
+            if not detections:
+                return frame, previous_distance
+            annotated, distance_cm = VisionPipeline.annotate_frame(
+                frame, 
+                detections, 
+                approximate_distance=approximate_distance, 
+                previous_distance=previous_distance, 
+                debug=debug
+            )
+        
+        return annotated, distance_cm
     
     def approximate_object_distance(self):
         """
@@ -1085,21 +1139,11 @@ class controller:
             if self.pid_active:
                 return jsonify({'error': 'Normal PID is running. Stop it first.'}), 400
 
-            # Trouver le détecteur de ligne
-            line_detector = None
-            for detector in vp.get_detectors():
-                if hasattr(detector, 'white_threshold'):
-                    line_detector = detector
-                    break
-            if not line_detector:
-                return jsonify({'error': 'Line detector not found'}), 404
-
             if self.step_machine is None:
                 self.step_machine = StepByStepStateMachine(
                     robot=self.robot,
-                    camera=vp.camera,
+                    vision_pipeline=vp,
                     pid_controller=self.pid_controller,
-                    line_detector=line_detector
                 )
 
             self.step_machine.start()

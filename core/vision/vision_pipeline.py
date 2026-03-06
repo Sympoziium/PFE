@@ -22,10 +22,9 @@ import gc
 
 
 class VisionPipeline:
-    def __init__(self, camera, detectors=None, fps=30, debug=True):
+    def __init__(self, camera, detectors=None, debug=False):
         self.camera = camera
         self.detectors = detectors if detectors is not None else []
-        self.periode = 1.0 / fps
         self.running = False
         self.last_captured_image_url = None
         self.CAPTURE_DIR = None
@@ -36,7 +35,7 @@ class VisionPipeline:
         # threads pour la détection passive
         self._passive_thread = None         # instance du thread
         self._passive_running = False       # Flag pour contrôler l'exécution du thread
-        self._passive_interval = 4.0        # Intervalle de 4 secondes entre chaque détection passive
+        self._passive_interval = 0.5          # Intervalle de 1 seconde entre chaque détection passive
         self._passive_pause_event = threading.Event() # Event pour contrôler la pause du thread de détection passive
         self._passive_pause_event.clear()     # pause par défaut
 
@@ -127,6 +126,7 @@ class VisionPipeline:
     def add_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
         self.detectors.append(detectors)
+        self.detectors[-1].debug = self.debug  # Propager le mode debug au détecteur ajouté
 
     def add_passive_detectors(self, detectors):
         """ ajouter un détecteur au pipeline de vision """
@@ -165,10 +165,6 @@ class VisionPipeline:
     def is_running(self):
         """ vérifier si le pipeline de vision est en cours d'exécution """
         return self.running
-    
-    def get_periode(self):
-        """ obtenir la période entre chaque cycle de vision en secondes """
-        return self.periode
 
     def capture_frame(self):
         """ capturer une image brute de la caméra """
@@ -181,8 +177,7 @@ class VisionPipeline:
                 return self.camera.capture()
             except Exception as e:
                 if self.debug:
-                    print("Erreur lors de la capture d'une image brute: {}".format(e))
-                
+                    print("Erreur lors de la capture d'une image brute: {}".format(e)) 
 
     def update_last_frame(self, frame):
         """Met à jour le buffer de la dernière image capturée (thread-safe)."""
@@ -205,10 +200,6 @@ class VisionPipeline:
                 return self._last_frame.copy()
             except Exception:
                 return self._last_frame
-
-    # SUPPRIMÉ: set_hires_capture_fn, capture_hires_frame, has_hires_capture
-    # Utiliser change_camera_resolution(width, height) à la place pour un flux vidéo continu
-    # à la résolution désirée
 
     def change_camera_resolution(self, width, height):
         """
@@ -253,7 +244,7 @@ class VisionPipeline:
 # ----------------------------------------
     @staticmethod
     def annotate_frame(frame, detections, box_color=(0, 255, 0), text_color=(0, 255, 0),
-                       thickness=2, font_scale=0.5, debug=False):
+                       thickness=2, font_scale=0.5, previous_distance=None, approximate_distance=True, debug=False):
         """
         Dessine les bounding boxes et labels sur une **copie** de l'image.
 
@@ -263,6 +254,8 @@ class VisionPipeline:
         :param text_color:  Couleur BGR du texte (défaut vert).
         :param thickness:   Épaisseur du trait.
         :param font_scale:  Échelle de la police.
+        :param previous_distance: Distance calculée précédemment (optionnel, pour affichage stable).
+        :param approximate_distance: Si True, calcule et affiche une estimation de la distance de l'objet. pour libérer l'overhead du CPU
         :return: Copie de l'image annotée (BGR).
         """
         annotated = frame.copy()
@@ -284,10 +277,56 @@ class VisionPipeline:
             # distance approximative
             # Attention: l'implémentation ne devrais pas être faite ici si on souhaite utiliser la distance calculé dans le contrôle du robot.
             # on l'a fait ici pour tester vite fais, mais cette fonction ne sert qu'â annoter l'image, pas à faire des calculs de détection ou de contrôle.
-            distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label, debug=debug)
+            if approximate_distance is True:
+                distance_cm = VisionPipeline.approximate_object_distance(det.get('detection_box'), frame_h, label, debug=debug)
+            else :
+                distance_cm = previous_distance
+
             cv2.putText(annotated, "{:.1f} cm".format(distance_cm) if distance_cm else "N/A", (x, y + h + 15), font, font_scale,
                         text_color, 1, cv2.LINE_AA)
-        return annotated
+        return annotated, distance_cm
+    
+    @staticmethod
+    def annotate_detection_result(frame, detector, detection_result, approximate_distance=True, previous_distance=None, debug=False):
+        """
+        Annote une frame avec les résultats de détection d'n'importe quel détecteur.
+        Gère les cas spéciaux (comme LineDetector) et les détecteurs standard.
+        
+        Args:
+            frame: Image BGR originale (copie sera faite si nécessaire)
+            detector: Objet détecteur (pour accéder à ses méthodes d'annotation)
+            detection_result: dict retourné par detector.process()
+            approximate_distance: Si True, calcule distance pour objets bbox
+            previous_distance: Distance calculée précédemment (optionnel) pour affichage stable
+            debug: Mode debug
+            
+        Returns:
+            annotated: Image annotée
+            distance_cm: Distance estimée (si applicatible)
+        """
+        if detection_result is None:
+            return frame.copy(), None
+        
+        # Cas spécial: LineDetector (possède line_offset et annotate_detection)
+        if 'line_offset' in detection_result and hasattr(detector, 'annotate_detection'):
+            annotated = frame.copy()
+            annotated = detector.annotate_detection(annotated)
+            return annotated, None
+        
+        # Cas standard: autres détecteurs avec 'detections'
+        detections = detection_result.get('detections', [])
+        if detections:
+            annotated, distance_cm = VisionPipeline.annotate_frame(
+                frame, 
+                detections,
+                approximate_distance=approximate_distance,
+                previous_distance=previous_distance,
+                debug=debug
+            )
+            return annotated, distance_cm
+        
+        # Aucune détection
+        return frame.copy(), None
     
     @staticmethod
     def approximate_object_distance(detection_box, frame_h, label, debug=False):
@@ -307,10 +346,23 @@ class VisionPipeline:
         hauteur_reelle_cm = {
             'pieton': 4.5,
             'camion_pompier': 7.0,
-            'stop_sign':   4.5
+            'stop_sign':   4.5,
+            'stop_sign Moi':   4.5,
+            'stop_sign Git':   4.5
         }
 
-        f_pixels = 594.0674603  # focale en pixels calculé depuis excel par essai sur des captures a distances fixes de 15 et 30 cm
+        # La distance focale en pixels à été calculée à partir d'images capturées à
+        # 4 points de référence (15, 20, 30, 45 cm). Les résultats ont été régressés
+        # pour obtenir une estimation de la focale en pixels pour chaque objet.
+        # Ces valeurs sont donc spécifique à nos objets et doivent calculer pour tout
+        # nouvel objet ajouté.
+
+        f_pixels_par_objet = {
+            'pieton':          573.6111,  # résultat des moyennes
+            'camion_pompier':  627.6786,
+            'stop_sign':       632.2222,
+        }
+
         object_name = label.lower()
         object_height_pixels = detection_box[3]  # hauteur de la bbox en pixels
 
@@ -335,10 +387,30 @@ class VisionPipeline:
                 print("Objet inconnu pour la distance: {}, utiliser une hauteur par défaut de 5 cm".format(object_name))
             hauteur_réelle_obj_cm = 5.0
 
+
+        # Facteur correctif empirique : ratio entre la taille bbox observée et la taille réelle de l'objet dans l'image
+        # < 1.0 : le détecteur sous-estime la taille (camion) → on amplifie h_pixel
+        # > 1.0 : le détecteur sur-estime la taille (stop)   → on réduit h_pixel
+        bbox_correction = {
+            'pieton':         1.0,   # modèle propre, pas de correction nécessaire
+            'camion_pompier': 0.88,  # détecte à l'intérieur → bbox trop petite
+            'stop_sign':      1.15,  # crop trop large → bbox trop grande
+        }
+
+        # Dans le calcul :
+        corrected_height = normalized_height * bbox_correction.get(object_name, 1.0)
+
         # formule de distance : D = (H * f) / h
         # où H = hauteur réelle de l'objet, f = focale en pixels, h = hauteur apparente de l'objet en pixels (normalisée)
-        if normalized_height > 0:
-            distance_cm = (hauteur_réelle_obj_cm * f_pixels) / normalized_height
+        if corrected_height > 0:
+            if object_name in f_pixels_par_objet:
+                f_pixels = f_pixels_par_objet[object_name]
+            else:
+                if debug:
+                    print("Objet inconnu pour la focale: {}, utiliser une focale par défaut de 600 pixels".format(object_name))
+                f_pixels = 610.0 # valeur par défaut basée sur les moyennes des autres objets
+
+            distance_cm = (hauteur_réelle_obj_cm * f_pixels) / corrected_height
             return distance_cm
         else:
             if debug:
@@ -357,7 +429,7 @@ class VisionPipeline:
         if not detections or not self.CAPTURE_DIR:
             return None, None
 
-        annotated = self.annotate_frame(frame, detections, debug=self.debug)
+        annotated, _ = self.annotate_frame(frame, detections, debug=self.debug)
 
         base, ext = os.path.splitext(filename)
         ann_name = '{}_det_{}{}'.format(base, uuid.uuid4().hex[:6], ext or '.jpg')
@@ -408,14 +480,14 @@ class VisionPipeline:
         S'endort entre chaque détection pour ne pas saturer le CPU.
         Si le mining est activé, les crops des détections sont sauvegardés.
         """
-        
+
         detector_index = 0
         nb_detectors = len(self._passive_detectors)
 
         while self._passive_running:
             # attend si le mode pause est activé
             self._passive_pause_event.wait()
-
+    
             # récupération de la dernière frame du livefeed
             frame = self.get_last_frame()
             if frame is not None and nb_detectors > 0:
@@ -425,6 +497,7 @@ class VisionPipeline:
                     detection_result = detector.process_passive(frame)
                     with self._result_lock:
                         self._last_detection_result = detection_result
+                        self._last_detection_result['Detector'] = str(detector)  # ajouter le nom du détecteur au résultat
 
                     # --- Hard Positive Mining: sauvegarder les crops ---
                     if self._mining_enabled and detection_result.get('Object_detected'):
