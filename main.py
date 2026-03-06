@@ -19,9 +19,8 @@ def draw_progress_bar(screen, percent):
     
     Args:
         screen: Objet Screen du Zumi
+        percent: Pourcentage de progression (0-100)
     """
-    screen.clear_drawing()
-    
     # Paramètres de la barre
     bar_x = 5
     bar_y = 35
