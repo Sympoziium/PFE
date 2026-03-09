@@ -96,7 +96,7 @@ def bootstrap():
     
     # Étape 5 : Créer les contrôleurs
     print("[BOOT] Initialisation des contrôleurs...")
-    from core.control.pid_controller import PIDController
+    from core.control.line_following_pid import PIDController
     from core.control.line_following_state_machine import LineFollowingStateMachine, State
     from core.control.control_manager import ControlManager
     pid_controller = PIDController(
@@ -136,6 +136,10 @@ def bootstrap():
     control_manager = ControlManager(robot=zumi, vision_pipeline=vision_pipeline)
     control_manager.register_pid(pid_controller)
     control_manager.register_state_machine(state_machine)
+
+    from core.control.line_follower_controller import LineFollowerController
+    line_follower_ctrl = LineFollowerController()
+    control_manager.register_controller(line_follower_ctrl)
     
     ctrl.attach_control_manager(control_manager)
     ctrl.state_machine = state_machine

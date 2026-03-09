@@ -32,6 +32,7 @@ MODE_IDLE = 'idle'
 MODE_PID = 'pid'
 MODE_STATE_MACHINE = 'state_machine'
 MODE_STEP_BY_STEP = 'step_by_step'
+MODE_CONTROLLER = 'controller'     # Nouvelle architecture : ControllerBase pluggable
 
 
 class ControlManager:
@@ -67,6 +68,11 @@ class ControlManager:
         self._step_machine = None           # StepByStepStateMachine
         self._line_detector = None          # Référence au détecteur de ligne
 
+        # Nouveau : contrôleur pluggable (architecture standardisée)
+        self._active_controller = None      # ControllerBase instance
+        self._sensor_driver = None          # SensorDriver (init lazy)
+        self._motor_driver = None           # MotorDriver  (init lazy)
+
         # Boucle de contrôle
         self._thread = None
         self._running = False
@@ -97,6 +103,15 @@ class ControlManager:
     def register_line_detector(self, line_detector):
         """Enregistre la référence au détecteur de ligne (pour l'offset)."""
         self._line_detector = line_detector
+
+    def register_controller(self, controller):
+        """Enregistre un contrôleur ControllerBase (nouvelle architecture).
+
+        Ce contrôleur est activé via ``activate(MODE_CONTROLLER)``.
+        Pour en utiliser un autre, appeler register_controller() puis
+        re-activer : le manager garantit qu'un seul mode tourne à la fois.
+        """
+        self._active_controller = controller
 
     # ------------------------------------------------------------------
     #  Accès aux contrôleurs
@@ -198,6 +213,9 @@ class ControlManager:
                 elif current_mode == MODE_STEP_BY_STEP:
                     self._tick_step_machine()
 
+                elif current_mode == MODE_CONTROLLER:
+                    self._tick_controller()
+
             except Exception as e:
                 print("[ControlManager] Erreur dans la boucle de contrôle: {}".format(e))
                 import traceback
@@ -281,6 +299,27 @@ class ControlManager:
             self.last_left_speed = result.get('left_speed', 0)
             self.last_right_speed = result.get('right_speed', 0)
 
+    def _init_new_arch_drivers(self):
+        """Initialise (une seule fois) SensorDriver et MotorDriver."""
+        if self._sensor_driver is None:
+            from core.control.sensor_driver import SensorDriver
+            from core.control.motor_driver import MotorDriver
+            self._sensor_driver = SensorDriver(self.vision_pipeline, self.robot)
+            self._motor_driver = MotorDriver(self.robot)
+
+    def _tick_controller(self):
+        """Un cycle du contrôleur ControllerBase actif (mode ``controller``)."""
+        if self._active_controller is None or self._sensor_driver is None:
+            return
+        state = self._sensor_driver.read()
+        command = self._active_controller.step(state)
+        self._motor_driver.execute(command)
+        with self._data_lock:
+            self.last_line_offset = state.line_offset
+            self.last_left_speed = command.left_speed
+            self.last_right_speed = command.right_speed
+        time.sleep(0.05)
+
     def _detect_line_from_frame(self, frame):
         """Extrait l'offset de ligne depuis une frame pré-capturée (sans appel caméra).
         
@@ -325,6 +364,9 @@ class ControlManager:
             if self._step_machine is None:
                 self._create_step_machine()
 
+        if mode == MODE_CONTROLLER and self._active_controller is None:
+            raise ValueError("Aucun contrôleur enregistré via register_controller().")
+
         # Désactiver le mode courant (arrête la boucle si elle tourne)
         self.deactivate()
 
@@ -345,6 +387,11 @@ class ControlManager:
             self._step_machine.start()
             print("[ControlManager] Mode StepByStep activé.")
 
+        elif mode == MODE_CONTROLLER:
+            self._init_new_arch_drivers()
+            self._active_controller.start()
+            print("[ControlManager] Mode CONTROLLER activé : {}".format(self._active_controller.name))
+
         # Lancer la boucle de contrôle (si pas déjà en cours)
         self._start_loop()
 
@@ -364,6 +411,10 @@ class ControlManager:
         elif prev_mode == MODE_STEP_BY_STEP:
             if self._step_machine and self._step_machine.is_running():
                 self._step_machine.stop()
+
+        elif prev_mode == MODE_CONTROLLER:
+            if self._active_controller:
+                self._active_controller.stop()
 
         # Arrêter la boucle de contrôle (le thread se termine car mode == IDLE)
         self._stop_loop()
@@ -422,5 +473,10 @@ class ControlManager:
             data['state'] = self._step_machine.get_state().name
             data['step_count'] = self._step_machine.step_count
             data['waiting_approval'] = self._step_machine.is_waiting_approval()
+
+        elif self.mode == MODE_CONTROLLER and self._active_controller:
+            data['controller_name'] = self._active_controller.name
+            data['controller_debug'] = self._active_controller.get_debug_info()
+            data['controller_params'] = self._active_controller.get_params()
 
         return data

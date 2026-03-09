@@ -17,9 +17,9 @@ from interface.onglet_control import render_control_tab
 from interface.onglet_vision import render_vision_tab
 from interface.onglet_pid import render_pid_tab
 from interface.onglet_template import render_template_tab  # Exemple d'onglet template générique
-from core.control.pid_controller import PIDController
+from core.control.line_following_pid import PIDController
 from core.control.line_following_state_machine import StepByStepStateMachine
-from core.control.control_manager import ControlManager, MODE_IDLE, MODE_PID, MODE_STATE_MACHINE, MODE_STEP_BY_STEP
+from core.control.control_manager import ControlManager, MODE_IDLE, MODE_PID, MODE_STATE_MACHINE, MODE_STEP_BY_STEP, MODE_CONTROLLER
 from core.control.sensor_driver import SensorDriver # test du nouveau driver de capteurs
 
 # --- Fonction helper pour formater les résultats de détection ---
@@ -1339,7 +1339,50 @@ class controller:
         """
         self.sampling_active = False
         return jsonify({'status': 'sampling stopped'})
-    
+
+    def start_controller(self):
+        """Démarre le contrôleur LineFollower (nouvelle architecture standardisée)."""
+        try:
+            vp = self.vision_pipeline
+            if not vp:
+                return jsonify({'error': 'Vision pipeline non initialisé'}), 400
+            if not vp.is_running():
+                vp.start()
+                time.sleep(0.3)
+            if self.control_manager is None:
+                return jsonify({'error': 'ControlManager non attaché'}), 400
+            if self.control_manager.mode != MODE_IDLE:
+                return jsonify({'error': 'Un autre mode est déjà actif : {}'.format(self.control_manager.mode)}), 400
+            self.control_manager.activate(MODE_CONTROLLER)
+            name = self.control_manager.get_status().get('controller_name', '?')
+            return jsonify({'status': 'started', 'controller': name})
+        except Exception as e:
+            print("[ERROR] start_controller: {}".format(e))
+            return jsonify({'error': str(e)}), 500
+
+    def stop_controller(self):
+        """Arrête le contrôleur actif (nouvelle architecture)."""
+        try:
+            if self.control_manager is None:
+                return jsonify({'error': 'ControlManager non attaché'}), 400
+            if self.control_manager.mode == MODE_CONTROLLER:
+                self.control_manager.deactivate()
+            return jsonify({'status': 'stopped'})
+        except Exception as e:
+            print("[ERROR] stop_controller: {}".format(e))
+            return jsonify({'error': str(e)}), 500
+
+    def controller_status(self):
+        """Retourne l'état courant du contrôleur actif."""
+        try:
+            if self.control_manager is None:
+                return jsonify({'active': False})
+            status = self.control_manager.get_status()
+            status['active'] = (status.get('mode') == MODE_CONTROLLER)
+            return jsonify(status)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     def _collect_sensor_data(self):
 
         if not self.sampling_active:

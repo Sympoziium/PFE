@@ -54,6 +54,9 @@ def register_routes(ctrl):
     # Routes pour l'onglet control
     app.add_url_rule('/start_sampling', 'start_sampling', lambda: ctrl.start_sampling(), methods=['POST'])
     app.add_url_rule('/stop_sampling', 'stop_sampling', lambda: ctrl.stop_sampling(), methods=['POST'])
+    app.add_url_rule('/controller/start', 'controller_start', lambda: ctrl.start_controller(), methods=['POST'])
+    app.add_url_rule('/controller/stop', 'controller_stop', lambda: ctrl.stop_controller(), methods=['POST'])
+    app.add_url_rule('/controller/status', 'controller_status_route', lambda: ctrl.controller_status())
 
     # Routes PID
     app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])

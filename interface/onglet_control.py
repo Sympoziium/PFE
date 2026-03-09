@@ -238,7 +238,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 <!-- AJOUTER VOS BOUTONS ICI -->
                 <div class='left-panel'>
                     <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>🎥 Allume la caméra !</button>
-                    <button class='toggle-btn' id='samplingToggleBtn' onclick='toggleSampling()'>Échantillonnage</button>
+                    <button class='toggle-btn' id='samplingToggleBtn'>Échantillonnage</button>
+                    <button class='primary-btn' id='controllerToggleBtn' style='margin-top:12px; width:85%;'>▶ Activer le contrôleur</button>
 
                     <div id='zone-resultats'>
                         <!-- Conteneur du flux vidéo en direct -->
@@ -343,6 +344,33 @@ def render_control_tab(title: str = "Contrôle") -> str:
             btn.classList.remove('active');
             btn.textContent = 'Échantillonnage';
             fetch('/stop_sampling', { method: 'POST' });
+        }
+    }
+
+    function toggleController() {
+        const btn = document.getElementById('controllerToggleBtn');
+        const isActive = btn.classList.contains('active');
+        if (!isActive) {
+            fetch('/controller/start', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        alert('Erreur : ' + data.error);
+                    } else {
+                        btn.classList.add('active');
+                        btn.textContent = '⏹ Arrêter le contrôleur';
+                        document.getElementById('log-box').innerText = '🤖 Contrôleur actif : ' + (data.controller || 'line_follower');
+                    }
+                })
+                .catch(function(e) { console.error('toggleController start error:', e); });
+        } else {
+            fetch('/controller/stop', { method: 'POST' })
+                .then(function() {
+                    btn.classList.remove('active');
+                    btn.textContent = '▶ Activer le contrôleur';
+                    document.getElementById('log-box').innerText = 'Contrôleur arrêté. 🛑';
+                })
+                .catch(function(e) { console.error('toggleController stop error:', e); });
         }
     }
     
@@ -461,6 +489,10 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var samplingBtn = document.getElementById('samplingToggleBtn');
         if (samplingBtn) samplingBtn.addEventListener('click', toggleSampling);
         
+        // Controller toggle
+        var ctrlBtn = document.getElementById('controllerToggleBtn');
+        if (ctrlBtn) ctrlBtn.addEventListener('click', toggleController);
+        
         // D-pad: register mouse + passive touch events
         var dpadButtons = document.querySelectorAll('.dpad-button[data-direction]');
         Array.prototype.forEach.call(dpadButtons, function(btn) {
@@ -481,6 +513,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
     window.navigateTo = navigateTo;
     window.toggleCamera = toggleCamera;
     window.toggleSampling = toggleSampling;
+    window.toggleController = toggleController;
     window.startMove = startMove;
     window.stopMove = stopMove;
 

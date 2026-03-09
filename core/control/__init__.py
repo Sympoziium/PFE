@@ -24,6 +24,7 @@ from core.control.motor_command import MotorCommand, CommandType
 from core.control.sensor_driver import SensorDriver
 from core.control.motor_driver import MotorDriver
 from core.control.pid_line_follower import PIDLineFollowerController
+from core.control.line_follower_controller import LineFollowerController
 
 __all__ = [
     'ControlManager',
@@ -34,4 +35,5 @@ __all__ = [
     'SensorDriver',
     'MotorDriver',
     'PIDLineFollowerController',
+    'LineFollowerController',
 ]
