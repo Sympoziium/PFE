@@ -7,6 +7,8 @@
 # Référence des fonctions du package Zumi:
 # https://docs.robolink.com/docs/Zumi/Python/Function-Documentation
 
+from time import time
+
 import numpy
 from core.robot.robot_base import RobotBase
 
@@ -30,6 +32,8 @@ class RobotZumi(RobotBase):
         self.camera = ZumiCamera()  # Utilise notre wrapper qui convertit RGB→BGR
         self.screen = Screen()
         self.personality = Personality(self.zumi, self.screen)
+
+        self.calibrate_sensors()  # Calibrage initial des capteurs pour des lectures précises
 
 # ---------------------------------------------------------------------------------
 #                             Contrôle des moteurs
@@ -106,6 +110,9 @@ class RobotZumi(RobotBase):
         except Exception as e:
             print("Erreur self.zumi.brake_lights_on(): {}".format(e))
 
+        self._reset_PID()  # Réinitialise les PIDs pour éviter les dérives après un arrêt
+
+
     def turn(self, angle: float):
         """
         Fait tourner le Zumi d'un angle donné.
@@ -119,9 +126,12 @@ class RobotZumi(RobotBase):
                 self.zumi.turn_left(abs(angle))
             elif angle < 0:
                 self.zumi.turn_right(abs(angle))
-            # Si angle == 0, ne fait rien
+            else:
+                print("turn() appelé avec angle=0, aucune rotation effectuée")  # Si angle == 0, ne fait rien
         except Exception as e:
             print("Erreur lors de la rotation de {} degrés: {}".format(angle, e))
+
+        self._reset_gyro()  # Réinitialise le gyroscope après la rotation pour éviter les dérives
 
 # ---------------------------------------------------------------------------------
 #                             Contrôle de l'écran
@@ -221,6 +231,190 @@ class RobotZumi(RobotBase):
             self.personality.celebrate()
         except Exception as e:
             print("Erreur lors de la réaction célébrer: {}".format(e))
+
+    # --------------------------------------------------------
+    #                   Capteurs (MPU, IR, batterie)
+    # --------------------------------------------------------
+
+    def calibrate_sensors(self):
+        """
+        Calibre les capteurs du Zumi (MPU, IR, etc.).
+        Doit être appelé au démarrage pour assurer des lectures précises.
+        """
+        try:
+            # Reset des états de conduite
+            self._reset_drive_state()
+
+            # Calibration des sensors
+            self.zumi.calibrate_gyro()
+            time.sleep(0.5)  # Pause pour stabiliser les lectures après calibrage
+            self.zumi.calibrate_MPU(count = 500)
+            time.sleep(0.5)  # Pause pour stabiliser les lectures après calibrage
+        except Exception as e:
+            print("Erreur lors du calibrage des capteurs: {}".format(e))
+
+    def _reset_drive_state(self):
+        """
+        Réinitialise les PIDs et le Gyro du Zumi
+        """
+        try:
+            self.zumi.reset_drive()
+        except Exception as e:
+            print("Erreur lors de la réinitialisation de l'état de conduite: {}".format(e))
+
+    def _reset_gyro(self):
+        """
+        Réinitialise le gyroscope du Zumi.
+        Utile pour corriger les dérives après une longue utilisation.
+        """
+        try:
+            self.zumi.reset_gyro()
+        except Exception as e:
+            print("Erreur lors de la réinitialisation du gyroscope: {}".format(e))
+
+    def reset_PID(self):
+        """
+        Réinitialise les PIDs internes du Zumi.
+        Utile pour corriger les dérives après une longue utilisation.
+        """
+        try:
+            self.zumi.reset_PID()
+        except Exception as e:
+            print("Erreur lors de la réinitialisation des PIDs: {}".format(e))
+
+    def forward_step(self, speed, desired_angle):
+        """Un pas en avant avec correction de cap via le PID interne du Zumi.
+
+        Args:
+            speed:         Vitesse de déplacement [0, 127].
+            desired_angle: Cap désiré en degrés.
+        """
+        try:
+            self.zumi.forward_step(speed, desired_angle)
+        except Exception as e:
+            print("Erreur forward_step: {}".format(e))
+
+    def get_angles(self):
+        """Lit les angles gyroscope/accéléromètre via le MPU du Zumi.
+
+        Returns:
+            list: [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y,
+                   Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt_state]
+        """
+        try:
+            return self.zumi.update_angles()
+        except Exception as e:
+            print("Erreur get_angles: {}".format(e))
+            return None
+
+    def get_ir_data(self):
+        """Lit les 6 capteurs IR du Zumi.
+
+        Returns:
+            list: [front_r, bottom_r, back_r, bottom_l, back_l, front_l]
+                  valeurs 0-255.
+        """
+        try:
+            return self.zumi.get_all_IR_data()
+        except Exception as e:
+            print("Erreur get_ir_data: {}".format(e))
+            return None
+        
+    def get_front_right_ir(self):
+        """Lit le capteur IR droit avant du Zumi.
+
+        Returns:
+            int: Valeur du capteur (0-255).
+        """
+        try:
+            return self.zumi.front_right_detect()
+        except Exception as e:
+            print("Erreur get_front_right_ir: {}".format(e))
+            return None
+        
+    def get_front_left_ir(self):
+        """Lit le capteur IR gauche avant du Zumi.
+
+        Returns:
+            int: Valeur du capteur (0-255).
+        """
+        try:
+            return self.zumi.front_left_detect()
+        except Exception as e:
+            print("Erreur get_front_left_ir: {}".format(e))
+            return None
+    
+    def get_bottom_right_ir(self):
+        """Lit le capteur IR droit bas du Zumi.
+
+        Returns:
+            int: Valeur du capteur (0-255).
+        """
+        try:
+            return self.zumi.bottom_right_detect()
+        except Exception as e:
+            print("Erreur get_bottom_right_ir: {}".format(e))
+            return None
+        
+    def get_bottom_left_ir(self):
+        """Lit le capteur IR gauche bas du Zumi.
+
+        Returns:
+            int: Valeur du capteur (0-255).
+        """
+        try:
+            return self.zumi.bottom_left_detect()
+        except Exception as e:
+            print("Erreur get_bottom_left_ir: {}".format(e))
+            return None
+        
+    def get_back_right_ir(self):
+        """Lit le capteur IR droit arrière du Zumi.
+
+        Returns:
+            int: Valeur du capteur (0-255).
+        """
+        try:
+            return self.zumi.back_right_detect()
+        except Exception as e:
+            print("Erreur get_back_right_ir: {}".format(e))
+            return None
+        
+    def get_back_left_ir(self): 
+        """Lit le capteur IR gauche arrière du Zumi.
+
+        Returns:
+            int: Valeur du capteur (0-255).
+        """
+        try:
+            return self.zumi.back_left_detect()
+        except Exception as e:
+            print("Erreur get_back_left_ir: {}".format(e))
+            return None
+
+    def get_orientation(self):
+        """Retourne l'état d'orientation du Zumi.
+
+        Returns:
+            int: -1 à 7 (5 = roues au sol).
+        """
+        try:
+            return self.zumi.get_orientation()
+        except Exception as e:
+            print("Erreur get_orientation: {}".format(e))
+            return -1
+
+    def get_battery_voltage(self):
+        """Retourne la tension de la batterie du Zumi.
+
+        Returns:
+            float: Tension en volts (max 4.2V).
+        """
+        try:
+            return self.zumi.get_battery_voltage()
+        except Exception as e:
+            print("Erreur get_battery_voltage: {}".format(e))
+            return 0.0
 
 
 

@@ -14,7 +14,8 @@ def register_routes(ctrl):
     app.add_url_rule('/', 'home', lambda: ctrl.home())
     app.add_url_rule('/vision', 'vision', lambda: ctrl.vision())
     app.add_url_rule('/onglet_template', 'onglet_template', lambda: ctrl.onglet_template())
-
+    app.add_url_rule('/pid', 'pid_page', lambda: ctrl.pid_page())
+    app.add_url_rule('/onglet_control', 'onglet_control', lambda: ctrl.onglet_control())
     # Système
     app.add_url_rule('/exit', 'exit_server', lambda: ctrl.exit_server(), methods=['POST'])
     app.add_url_rule('/resource_usage', 'resource_usage', lambda: ctrl.get_resource_usage())
@@ -50,8 +51,9 @@ def register_routes(ctrl):
     app.add_url_rule('/zumi/stop', 'stop', lambda: ctrl.stop())
     app.add_url_rule('/zumi/turn', 'manual_turn', lambda: ctrl.manual_turn(), methods=['POST'])
 
-    # Page PID
-    app.add_url_rule('/pid', 'pid_page', lambda: ctrl.pid_page())
+    # Routes pour l'onglet control
+    app.add_url_rule('/start_sampling', 'start_sampling', lambda: ctrl.start_sampling(), methods=['POST'])
+    app.add_url_rule('/stop_sampling', 'stop_sampling', lambda: ctrl.stop_sampling(), methods=['POST'])
 
     # Routes PID
     app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])

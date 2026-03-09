@@ -76,7 +76,7 @@ def bootstrap():
     haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'LBP_Stop_Sign.xml'), scaleFactor=1.03, minNeighbors=3)
     draw_progress_bar(zumi.screen, 40)
     
-    haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Beta_Prime.xml'), scaleFactor=1.03, minNeighbors=2)
+    haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Pieton.xml'), scaleFactor=1.03, minNeighbors=5)
     draw_progress_bar(zumi.screen, 50)
     
     haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion_Beta.xml'), scaleFactor=1.05, minNeighbors=12)

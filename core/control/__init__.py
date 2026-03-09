@@ -3,11 +3,35 @@
 """
 Module de contrôle du robot.
 
-Centralise la logique d'orchestration entre la vision, les contrôleurs PID
-et les machines à états. Le serveur web (interface/) délègue les actions
-de contrôle à ce module plutôt que de les implémenter directement.
+Centralise la logique d'orchestration entre la vision, les contrôleurs
+et les drivers moteur/capteur. Le serveur web (interface/) délègue les
+actions de contrôle à ce module plutôt que de les implémenter directement.
+
+Architecture :
+    ControlManager (orchestrateur pluggable)
+    ├── SensorDriver  → SensorState (entrées standardisées)
+    ├── MotorDriver   → MotorCommand (sorties standardisées)
+    └── ControllerBase (ABC)
+        ├── PIDLineFollowerController
+        ├── MLController (futur)
+        └── ... (extensible)
 """
 
 from core.control.control_manager import ControlManager
+from core.control.controller_base import ControllerBase
+from core.control.sensor_state import SensorState
+from core.control.motor_command import MotorCommand, CommandType
+from core.control.sensor_driver import SensorDriver
+from core.control.motor_driver import MotorDriver
+from core.control.pid_line_follower import PIDLineFollowerController
 
-__all__ = ['ControlManager']
+__all__ = [
+    'ControlManager',
+    'ControllerBase',
+    'SensorState',
+    'MotorCommand',
+    'CommandType',
+    'SensorDriver',
+    'MotorDriver',
+    'PIDLineFollowerController',
+]

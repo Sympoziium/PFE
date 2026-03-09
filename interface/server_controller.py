@@ -13,11 +13,14 @@ import os, uuid, time, cv2, itertools, numpy as np
 from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
 from interface.onglet_acceuil import render_accueil_tab
+from interface.onglet_control import render_control_tab
 from interface.onglet_vision import render_vision_tab
+from interface.onglet_pid import render_pid_tab
 from interface.onglet_template import render_template_tab  # Exemple d'onglet template générique
 from core.control.pid_controller import PIDController
 from core.control.line_following_state_machine import StepByStepStateMachine
 from core.control.control_manager import ControlManager, MODE_IDLE, MODE_PID, MODE_STATE_MACHINE, MODE_STEP_BY_STEP
+from core.control.sensor_driver import SensorDriver # test du nouveau driver de capteurs
 
 # --- Fonction helper pour formater les résultats de détection ---
 def format_detection_result(results, detector_name="Détecteur"):
@@ -131,6 +134,9 @@ class controller:
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
+        # Échantillonnage des données des capteurs
+        self.sampling_active = False
+        self.sampling_data = [] # Liste pour stocker les échantillons de données
 
         
         # --- CONFIGURATION DU PONT ---
@@ -168,6 +174,12 @@ class controller:
     def onglet_template(self):
         return render_template_tab("Template")
     
+    def onglet_control(self):
+        return render_control_tab("Contrôle du Zumi")
+    
+    def pid_page(self):
+        return render_pid_tab("Asservissement PID")
+    
     # --- Système ---
     def exit_server(self):
         func = request.environ.get('werkzeug.server.shutdown')
@@ -201,6 +213,15 @@ class controller:
                     except Exception as e:
                         pass
             
+            # --- Échantillonnage des capteurs toutes les 1s (2 itérations * 0.5s) ---
+            if iteration_count % 2 == 0:
+                if self.sampling_active:
+                    # Collecter les données des capteurs
+                    sensor_data = self._collect_sensor_data()
+                    self.sampling_data.append(sensor_data)
+                    print("[Sampling] Échantillon collecté: {}".format(sensor_data))
+            
+
             # --- Log ressources toutes les 40s (40 itérations * 0.5s) ---
             if iteration_count % 40 == 0:
                 self._log_resource_usage_internal()
@@ -818,10 +839,6 @@ class controller:
 #          Fonctions pour le contrôle PID du suivi de ligne
 # ----------------------------------------------------------------------------
 
-    def pid_page(self):
-        from interface.onglet_pid import render_pid_tab
-        return render_pid_tab("Asservissement PID")
-
     def pid_update_params(self):
         """Met à jour les paramètres du PID."""
         data = request.get_json(silent=True) or {}
@@ -1303,3 +1320,34 @@ class controller:
         except Exception as e:
             print("Erreur Pont Mode Auto:", e)
             return ("Erreur", 500)
+
+
+# ----------------------------------------------------------------------------
+#          Fonctions de callback pour l'onglet de contrôle
+# ----------------------------------------------------------------------------
+ 
+    def start_sampling(self):
+        """ Démare l'échantillonnage des données des capteurs
+        """
+        if self.sampling_active:
+            return jsonify({'error': 'Sampling already active'}), 400
+        self.sampling_active = True
+        return jsonify({'status': 'sampling started'})
+    
+    def stop_sampling(self):
+        """ Arrête l'échantillonnage des données des capteurs
+        """
+        self.sampling_active = False
+        return jsonify({'status': 'sampling stopped'})
+    
+    def _collect_sensor_data(self):
+
+        if not self.sampling_active:
+            return jsonify({'error': 'Sampling not active'}), 400
+        
+        try:
+            capteurs = SensorDriver(vision_pipeline=self.vision_pipeline, robot=self.robot).read()
+            return capteurs
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        
