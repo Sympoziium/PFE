@@ -344,6 +344,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
             btn.textContent = 'Échantillonnage';
             fetch('/stop_sampling', { method: 'POST' });
         }
+    }
     
     // Helper de navigation pour fermer la caméra avant de changer d'onglet
     function navigateTo(path) {
