@@ -7,7 +7,7 @@
 # Référence des fonctions du package Zumi:
 # https://docs.robolink.com/docs/Zumi/Python/Function-Documentation
 
-from time import time
+import time
 
 import numpy
 from core.robot.robot_base import RobotBase
