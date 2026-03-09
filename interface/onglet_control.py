@@ -337,7 +337,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
         if (!isActive) {
             btn.classList.add('active');
-            btn.textContent = '⏹️ Arrête l\'échantillonnage';
+            btn.textContent = '⏹️ Arrête échantillonnage';
             fetch('/start_sampling', { method: 'POST' });
         } else {
             btn.classList.remove('active');
