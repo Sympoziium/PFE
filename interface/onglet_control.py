@@ -238,13 +238,14 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 <!-- AJOUTER VOS BOUTONS ICI -->
                 <div class='left-panel'>
                     <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>🎥 Allume la caméra !</button>
+                    <button class='toggle-btn' id='samplingToggleBtn' onclick='toggleSampling()'>Échantillonnage</button>
+
                     <div id='zone-resultats'>
                         <!-- Conteneur du flux vidéo en direct -->
                         <div class='live-feed' id='liveFeed' style = 'display:none;'>
                             <img id='videoStream' alt='Flux vidéo en direct'>
                         </div>
                     </div>
-                    <button class='toggle-btn' id='samplingToggleBtn' onclick='toggleSampling()'>Échantillonnage</button>
                 </div>
 
                 <div class='right-panel'>
