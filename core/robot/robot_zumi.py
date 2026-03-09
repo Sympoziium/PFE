@@ -248,7 +248,7 @@ class RobotZumi(RobotBase):
             # Calibration des sensors
             self.zumi.calibrate_gyro()
             time.sleep(0.5)  # Pause pour stabiliser les lectures après calibrage
-            self.zumi.calibrate_MPU(count = 500)
+            self.zumi.mpu.calibrate_MPU(count = 500)
             time.sleep(0.5)  # Pause pour stabiliser les lectures après calibrage
         except Exception as e:
             print("Erreur lors du calibrage des capteurs: {}".format(e))
