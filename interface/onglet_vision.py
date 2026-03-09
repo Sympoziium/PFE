@@ -265,7 +265,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 <div class='tab-nav'>
                     <button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
                     <button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
-                    <button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
+                    <button class='primary-btn' data-path="/onglet_control" onclick="navigateTo('/onglet_control')">Contrôle</button>
                     <button class='primary-btn' data-path="/pid" onclick="navigateTo('/pid')">PID</button>
                 </div>
             </div>

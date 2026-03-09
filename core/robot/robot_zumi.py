@@ -272,7 +272,7 @@ class RobotZumi(RobotBase):
         except Exception as e:
             print("Erreur lors de la réinitialisation du gyroscope: {}".format(e))
 
-    def reset_PID(self):
+    def _reset_PID(self):
         """
         Réinitialise les PIDs internes du Zumi.
         Utile pour corriger les dérives après une longue utilisation.
