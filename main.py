@@ -53,12 +53,12 @@ def bootstrap():
     # Étape 2 : Créer les détecteurs
     print("[BOOT] Chargement des détecteurs... (10-30%)")
     
-    from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
+    # from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi # DEPRECATED DEPUIS LA MIGRATION
     from core.vision.detectors.Stop_detector_cv import StopDetectorCV
     from core.vision.detectors.Haar_classifier import HaarDetector
     from core.vision.detectors.Line_detector import LineDetector
-    stop_detector = StopDetectorZumi()
-    draw_progress_bar(zumi.screen, 15)
+    # stop_detector = StopDetectorZumi()
+    # draw_progress_bar(zumi.screen, 15)
     
     line_detector = LineDetector(white_threshold=180, min_area=50, offset_ratio=0.3)
     draw_progress_bar(zumi.screen, 20)
@@ -87,7 +87,7 @@ def bootstrap():
     from core.vision.vision_pipeline import VisionPipeline
     vision_pipeline = VisionPipeline(camera=zumi.camera)
     vision_pipeline.add_detectors(line_detector)
-    vision_pipeline.add_detectors(stop_detector)
+    # vision_pipeline.add_detectors(stop_detector)
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
@@ -116,7 +116,7 @@ def bootstrap():
         robot=zumi,
         vision_pipeline=vision_pipeline,
         pid_controller=pid_controller,
-        stop_condition_detector=stop_detector
+        stop_condition_detector=stop_detector_HSV
     )
     
     state_machine.set_rotation_angle(90)
