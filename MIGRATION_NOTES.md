@@ -122,14 +122,14 @@ ls /dev/i2c*
 ### Étape 2 — Dépendances système via apt
 
 ```bash
-sudo apt install -y python3-picamera2 python3-numpy python3-smbus2 i2c-tools
+sudo apt install -y python3-picamera2 python3-numpy python3-smbus2 i2c-tools libzbar0 libcamera-dev
 ```
 
 ### Étape 3 — Dépendances pip dans le venv
 
 ```bash
 source ~/venv/bin/activate
-pip install rpi-lgpio smbus2 pyzbar pigpio pyserial opencv-python
+pip install rpi-lgpio smbus2 pyzbar pigpio pyserial opencv-python flask
 ```
 
 #### Étape 3.5 — Validation des dépendances 
@@ -139,10 +139,10 @@ pip install rpi-lgpio smbus2 pyzbar pigpio pyserial opencv-python
 echo $VIRTUAL_ENV
 
 # Valider toutes les dépendances pip installées
-pip list | grep -iE "opencv|rpi|lgpio|smbus|pyzbar|pigpio|pyserial|flask|numpy|picamera"
+pip list | grep -iE "opencv|rpi|lgpio|smbus|pyzbar|pigpio|pyserial|flask|numpy|opencv-python|flask"
 
 # Valider les paquets apt
-dpkg -l | grep -iE "python3-picamera2|python3-numpy|python3-smbus2|i2c-tools"
+dpkg -l | grep -iE "python3-picamera2|python3-numpy|python3-smbus2|i2c-tools libzbar0 libcamera-dev"
 ```
 
 ### Étape 4 — Installation de Zumi

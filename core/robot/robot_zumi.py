@@ -29,7 +29,7 @@ TURN_SPEED = 15
 class RobotZumi(RobotBase):
     def __init__(self):
         self.zumi = Zumi()
-        self.camera = PiCam2()  # Utilise notre wrapper qui convertit RGB→BGR
+        self.camera = PiCam2(rotate_180=True)  # Camera montee a l'envers -> rotation 180 deg
         self.screen = Screen()
         self.personality = Personality(self.zumi, self.screen)
 

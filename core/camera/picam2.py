@@ -7,18 +7,32 @@ from picamera2 import Picamera2, Preview
 from .camera_base import CameraBase
 import numpy as np
 import time
+import cv2
+
+try:
+    from libcamera import Transform
+except Exception:
+    Transform = None
 
 
 class PiCam2(CameraBase):
-    def __init__(self, image_w=640, image_h=480):
+    def __init__(self, image_w=640, image_h=480, rotate_180=False):
         self._width = image_w
         self._height = image_h
+        self._rotate_180 = rotate_180
         try: 
             self.picam2 = Picamera2()
-            self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'BGR888', "size": (self._width, self._height)}))
+            self.picam2.configure(self._build_configuration())
         except Exception as e:
             print("Erreur lors de l'initialisation de PiCam2: {}".format(e))
             raise e
+
+    def _build_configuration(self):
+        kwargs = {"main": {"format": "BGR888", "size": (self._width, self._height)}}
+        # Rotation materielle 180 deg quand disponible (plus efficace que post-traitement).
+        if self._rotate_180 and Transform is not None:
+            kwargs["transform"] = Transform(hflip=True, vflip=True)
+        return self.picam2.create_preview_configuration(**kwargs)
         
     def start_camera(self):
         try:
@@ -37,10 +51,21 @@ class PiCam2(CameraBase):
     def capture(self) -> np.ndarray:
         try:
             frame = self.picam2.capture_array()
+
+            # Fallback logiciel si libcamera.Transform n'est pas disponible.
+            if self._rotate_180 and Transform is None:
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
+
+            # Vérifier que c'est bien une image couleur 3 canaux
+            if len(frame.shape) == 3 and frame.shape[2] == 3:
+                # Conversion RGB→BGR pour OpenCV
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                return frame_bgr
+            return frame
         except Exception as e:
             print("Erreur lors de la capture d'une image avec PiCam2: {}".format(e))
             raise e
-        return frame
+       
 
     def reconfigure(self, width: int, height: int):
         """
@@ -55,7 +80,7 @@ class PiCam2(CameraBase):
             print("[PiCam2] Avertissement fermeture avant reconfiguration: {}".format(e))
         try:
             self.picam2 = Picamera2()
-            self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'BGR888', "size": (self._width, self._height)}))
+            self.picam2.configure(self._build_configuration())
             print("[PiCam2] Reconfigurée: {}x{}".format(self._width, self._height))
         except Exception as e:
             print("Erreur lors de la reconfiguration de PiCam2: {}".format(e))
