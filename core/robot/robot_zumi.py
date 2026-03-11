@@ -13,13 +13,13 @@ import numpy
 from core.robot.robot_base import RobotBase
 
 # Import de notre wrapper de caméra Zumi (convertit RGB→BGR)
-from core.camera.zumi_camera import ZumiCamera
+from core.camera.picam2 import PiCam2
 
 # Import du package Zumi
 import sys
 sys.path.append("/usr/local/lib/python3.5/dist-packages")  # chemin du package zumi
 from zumi.zumi import Zumi
-from zumi.util.screen import Screen
+from core.hardware.screen import Screen
 from zumi.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
@@ -29,7 +29,7 @@ TURN_SPEED = 15
 class RobotZumi(RobotBase):
     def __init__(self):
         self.zumi = Zumi()
-        self.camera = ZumiCamera()  # Utilise notre wrapper qui convertit RGB→BGR
+        self.camera = PiCam2()  # Utilise notre wrapper qui convertit RGB→BGR
         self.screen = Screen()
         self.personality = Personality(self.zumi, self.screen)
 
