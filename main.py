@@ -91,7 +91,7 @@ def bootstrap():
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
-    vision_pipeline.set_passive_detection_interval(0.1)  # Détection passive toutes les 0.1s
+    # vision_pipeline.set_passive_detection_interval(0.1)  # Détection passive toutes les 0.1s
     # vision_pipeline.add_passive_detectors(line_detector)
     draw_progress_bar(zumi.screen, 70)
     
@@ -130,7 +130,6 @@ def bootstrap():
     ctrl = flask_controller.controller(zumi, debug=True)
     routes.register_routes(ctrl)
     ctrl.attach_pipeline_vision(vision_pipeline)
-    ctrl.set_livefeed_fps(30) # on fix la limite en FPS du livefeed vidéo
     draw_progress_bar(zumi.screen, 90)
     
     # Étape 7 : Attacher le ControlManager

@@ -427,6 +427,24 @@ class controller:
 
     def set_livefeed_fps(self, fps=None):
         """Met à jour le framerate du flux vidéo en direct."""
+        vp = self.vision_pipeline
+        
+        if vp is None:
+            print("Impossible de définir le FPS: pipeline de vision non initialisé")
+        
+        was_running = vp.is_running()
+        was_passive = vp._passive_running
+
+        # Arrêter la détection passive avant de toucher à la caméra
+        if was_passive:
+            vp.pause_passive_detection()
+
+        # Arrêter le flux vidéo
+        if was_running:
+            vp.stop()
+            time.sleep(0.2)
+
+
         if fps is None:
             data = request.get_json(silent=True) or {}
             fps = data.get('fps')
@@ -435,8 +453,18 @@ class controller:
             if fps < 1 or fps > 60:
                 print("Erreur hors des limites de FPS 1-60: {}".format(fps))
             self.livefeed_fps = fps
+    
+            print("FPS du flux vidéo mis à jour: {} FPS".format(self.livefeed_fps))
         except (ValueError, TypeError):
             print("Erreur de valeur dans set FPS server controler")
+
+        # Relancer le flux si il était actif
+        if was_running:
+            vp.start()
+
+        # Reprendre la détection passive si elle était active
+        if was_passive:
+            vp.resume_passive_detection()
         
     # Flux vidéo
     def video_feed(self):
