@@ -284,13 +284,28 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                         <option value='176x144'>QCIF 176×144</option>
                         <option value='320x240'>QVGA 320×240</option>
                         <option value='640x480'>VGA 640×480</option>
+                        <option value='1280x720'>HD 720p 1280×720</option>
+                        <option value='1920x1080' data-maxfps='30'>FHD 1080p 1920×1080 (max 30 fps)</option>
                     </select>
+                </div>
+                <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;'>
+                    <label class='tab-text' style='min-width:110px;'>FPS Livefeed :</label>
+                    <input type='range' id='fpsSlider' min='1' max='60' value='30' style='width:160px; cursor:pointer;'>
+                    <input type='number' id='fpsNumber' min='1' max='60' value='30' style='width:58px; padding:4px; border-radius:6px; border:1px solid #aaa; font-size:14px;'>
+                    <span style='font-size:13px; color:#555;'>fps</span>
                 </div>
                 <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center;'>
                     <button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
                     <button class='remoteDL-toggle-btn off' id='toggleMiningBtn' aria-pressed='false'>⛏️ Mining Off</button>
                     <span id='miningBadge' style='display:none; background:#8e44ad; color:#fff; padding:4px 10px; border-radius:8px; font-size:13px; font-weight:bold;'>0 crops</span>
                     <button class='primary-btn' id='downloadMiningBtn' style='display:none;'>📦 Download Crops</button>
+                </div>
+                <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px;'>
+                    <label class='tab-text' style='min-width:180px;'>Taux de détection passive :</label>
+                    <input type='range' id='passiveRateSlider' min='1' max='60' value='5' style='width:160px; cursor:pointer;'>
+                    <input type='number' id='passiveRateNumber' min='1' max='60' value='5' style='width:58px; padding:4px; border-radius:6px; border:1px solid #aaa; font-size:14px;'>
+                    <span style='font-size:13px; color:#555;'>img/détection</span>
+                    <button class='primary-btn' id='setPassiveRateBtn'>Appliquer</button>
                 </div>
                 <div id='zone-resultats'></div>
                 <!-- Conteneur unifié pour livefeed et image capturée -->
@@ -474,7 +489,23 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         var parts = sel.value.split('x');
         var w = parseInt(parts[0], 10);
         var h = parseInt(parts[1], 10);
-        console.log('onResolutionChange:', w, 'x', h);
+        var selectedOpt = sel.options[sel.selectedIndex];
+        var maxFps = selectedOpt.getAttribute('data-maxfps');
+        console.log('onResolutionChange:', w, 'x', h, 'maxFps:', maxFps);
+
+        // Appliquer la limite FPS si la résolution l'exige
+        if (maxFps !== null) {
+            maxFps = parseInt(maxFps, 10);
+            var fpsSlider = document.getElementById('fpsSlider');
+            var fpsNumber = document.getElementById('fpsNumber');
+            var currentFps = parseInt(fpsSlider ? fpsSlider.value : 30, 10);
+            if (currentFps > maxFps) {
+                if (fpsSlider) fpsSlider.value = maxFps;
+                if (fpsNumber) fpsNumber.value = maxFps;
+                setLivefeedFps(maxFps);
+                showToast('FPS limité à ' + maxFps + ' fps pour la résolution 1080p', 'warning', 3000);
+            }
+        }
 
         showToast('Changement de résolution: ' + w + '×' + h + '…', 'info', 2000);
 
@@ -921,6 +952,28 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         setTimeout(function() { pollMiningStats(); }, 2000);
     }
 
+    function setLivefeedFps(fps) {
+        fetch('/set_livefeed_fps', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fps: fps })
+        })
+        .then(function(r) { if (!r.ok) throw new Error('set_livefeed_fps failed'); return r.json(); })
+        .then(function(d) { showToast('FPS livefeed: ' + d.fps, 'success', 1500); })
+        .catch(function(err) { logError('setLivefeedFps', err); showToast('Erreur FPS: ' + err.message, 'error'); });
+    }
+
+    function setPassiveDetectionRate(rate) {
+        fetch('/set_passive_detection_rate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ detection_rate: rate })
+        })
+        .then(function(r) { if (!r.ok) return r.json().then(function(b) { throw new Error(b.error || 'failed'); }); return r.json(); })
+        .then(function(d) { showToast('Taux de détection: 1/' + d.detection_rate + ' images', 'success', 2000); })
+        .catch(function(err) { logError('setPassiveDetectionRate', err); showToast('Erreur taux détection: ' + err.message, 'error'); });
+    }
+
     window.addEventListener('DOMContentLoaded', function() {
         loadDetectors();
         // Camera toggle
@@ -958,6 +1011,40 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         if (minBtn) minBtn.addEventListener('click', toggleMining);
         var minDlBtn = document.getElementById('downloadMiningBtn');
         if (minDlBtn) minDlBtn.addEventListener('click', downloadMiningCrops);
+        // FPS Livefeed slider
+        var fpsSlider = document.getElementById('fpsSlider');
+        var fpsNumber = document.getElementById('fpsNumber');
+        if (fpsSlider && fpsNumber) {
+            fpsSlider.addEventListener('change', function() {
+                fpsNumber.value = fpsSlider.value;
+                setLivefeedFps(parseInt(fpsSlider.value, 10));
+            });
+            fpsSlider.addEventListener('input', function() { fpsNumber.value = fpsSlider.value; });
+            fpsNumber.addEventListener('change', function() {
+                var v = Math.max(1, Math.min(60, parseInt(fpsNumber.value, 10) || 30));
+                fpsNumber.value = v;
+                fpsSlider.value = v;
+                setLivefeedFps(v);
+            });
+        }
+        // Passive detection rate controls
+        var passiveRateSlider = document.getElementById('passiveRateSlider');
+        var passiveRateNumber = document.getElementById('passiveRateNumber');
+        if (passiveRateSlider && passiveRateNumber) {
+            passiveRateSlider.addEventListener('input', function() { passiveRateNumber.value = passiveRateSlider.value; });
+            passiveRateNumber.addEventListener('change', function() {
+                var v = Math.max(1, Math.min(60, parseInt(passiveRateNumber.value, 10) || 5));
+                passiveRateNumber.value = v;
+                passiveRateSlider.value = v;
+            });
+        }
+        var setRateBtn = document.getElementById('setPassiveRateBtn');
+        if (setRateBtn) {
+            setRateBtn.addEventListener('click', function() {
+                var v = parseInt(document.getElementById('passiveRateNumber').value, 10) || 5;
+                setPassiveDetectionRate(v);
+            });
+        }
     });
 
     // --- Exposer les fonctions au scope global pour les onclick inline ---
@@ -973,6 +1060,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     window.onDetectorChange = onDetectorChange;
     window.toggleMining = toggleMining;
     window.downloadMiningCrops = downloadMiningCrops;
+    window.setLivefeedFps = setLivefeedFps;
+    window.setPassiveDetectionRate = setPassiveDetectionRate;
     </script>
     </body></html>
     """

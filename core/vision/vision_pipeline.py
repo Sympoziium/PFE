@@ -71,6 +71,12 @@ class VisionPipeline:
         """Met à jour l'intervalle entre chaque cycle de détection passive."""
         self._passive_interval = interval_sec
 
+    def set_passive_detection_FPS(self, nb_frames, livefeed_frame_rate):
+
+        if nb_frames > 0:
+            # On veut déclancher une détection passive toutes les nb_frames du livefeed
+            self.__passive_interval = 1/(livefeed_frame_rate/nb_frames)
+
     def step(self):
         """
         Exécute un cycle complet du pipeline de vision :

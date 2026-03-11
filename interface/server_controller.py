@@ -425,14 +425,17 @@ class controller:
             traceback.print_exc()
             return jsonify({'error': 'diagnose_detector failed', 'details': str(e)}), 500
 
-    def set_livefeed_fps(self,fps):
+    def set_livefeed_fps(self, fps=None):
         """Met à jour le framerate du flux vidéo en direct."""
+        if fps is None:
+            data = request.get_json(silent=True) or {}
+            fps = data.get('fps')
         try:
             fps = int(fps)
             if fps < 1 or fps > 60:
                 print("Erreur hors des limites de FPS 1-60: {}".format(fps))
             self.livefeed_fps = fps
-        except ValueError:
+        except (ValueError, TypeError):
             print("Erreur de valeur dans set FPS server controler")
         
     # Flux vidéo
@@ -696,6 +699,22 @@ class controller:
             return ("", 204)
         vp.resume_passive_detection()
         return ("", 204)
+    
+    def set_passive_detection_rate(self, detection_rate=None):
+        if detection_rate is None:
+            data = request.get_json(silent=True) or {}
+            detection_rate = data.get('detection_rate')
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline vision non initialisé'}), 400
+        try:
+            detection_rate = int(detection_rate)
+            if detection_rate < 1 or detection_rate > 60:
+                return jsonify({'error': 'detection_rate doit être supérieur a 0 (ex: 1 = une détection par image du livefeed)'}), 400
+            vp.set_passive_detection_rate(detection_rate, self.livefeed_fps)
+            return jsonify({'ok': True, 'detection_rate': detection_rate})
+        except (ValueError, TypeError):
+            return jsonify({'error': 'detection_rate doit être un entier valide'}), 400
     
     def get_passive_detection(self):
         """
