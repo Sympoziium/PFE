@@ -430,11 +430,10 @@ class controller:
         try:
             fps = int(fps)
             if fps < 1 or fps > 60:
-                return jsonify({'error': 'fps doit être entre 1 et 60'}), 400
+                print("Erreur hors des limites de FPS 1-60: {}".format(fps))
             self.livefeed_fps = fps
-            return jsonify({'message': 'livefeed FPS mis à jour', 'livefeed_fps': self.livefeed_fps})
         except ValueError:
-            return jsonify({'error': 'fps doit être un entier valide'}), 400
+            print("Erreur de valeur dans set FPS server controler")
         
     # Flux vidéo
     def video_feed(self):
