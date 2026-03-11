@@ -26,7 +26,7 @@ Séquence de démarrage validée (Pi Zero W V1 → Pi Zero 2W V2) :
 Références :
     - SDK Zumi source : zumi/zumi.py (Pi Zero W V1, Python 3.5)
     - Adresses I2C validées par i2cdetect sur matériel réel (V1 et V2)
-    - GPIO 4 validé par test direct sur Pi Zero 2W avec rpi-lgpio
+    - GPIO 4 validé par test direct sur Pi Zero 2W avec rpi-lgpio.
 """
 
 import time
