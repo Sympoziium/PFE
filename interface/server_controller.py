@@ -118,6 +118,7 @@ class controller:
         self.last_move_time = time.time()
         self.debug = debug
         self.watchdog_active = False
+        self.livefeed_fps = 30
         # Rétro-compatibilité : pid_controller local utilisé seulement
         # quand aucun ControlManager n'est attaché.
         self.pid_controller = PIDController()
@@ -424,7 +425,17 @@ class controller:
             traceback.print_exc()
             return jsonify({'error': 'diagnose_detector failed', 'details': str(e)}), 500
 
-
+    def set_livefeed_fps(self,fps):
+        """Met à jour le framerate du flux vidéo en direct."""
+        try:
+            fps = int(fps)
+            if fps < 1 or fps > 60:
+                return jsonify({'error': 'fps doit être entre 1 et 60'}), 400
+            self.livefeed_fps = fps
+            return jsonify({'message': 'livefeed FPS mis à jour', 'livefeed_fps': self.livefeed_fps})
+        except ValueError:
+            return jsonify({'error': 'fps doit être un entier valide'}), 400
+        
     # Flux vidéo
     def video_feed(self):
         vp = self.vision_pipeline
@@ -432,7 +443,7 @@ class controller:
         def generate():
             frames = 0
             previous_distance = None
-            STICKY_SECONDS = 1.5        # Durée pendant laquelle la dernière détection positive reste affichée
+            STICKY_SECONDS = 0.5        # Durée pendant laquelle la dernière détection positive reste affichée
             last_positive_time = 0.0    # time.time() du dernier résultat positif
             last_positive_result = None # dernier résultat positif reçu
             while vp.is_running():
@@ -463,7 +474,7 @@ class controller:
                     # Garder l'annotation visible pendant STICKY_SECONDS après la dernière détection positive
                     active_result = last_positive_result if (now - last_positive_time) < STICKY_SECONDS else None
                     if active_result:
-                        if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
+                        if frames % 3 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
                             # Dessine sur une copie pour ne pas polluer le buffer brut
                             display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
                             frames = 0  # reset du compteur après annotation
@@ -484,7 +495,9 @@ class controller:
                 if not ret:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-                time.sleep(0.05) ### on impose une limite du livefeed a 20fps si on veux faire de la détection passive sa pourrais bloquer le Pi
+                
+                sleep_time = 1.0 / self.livefeed_fps
+                time.sleep(sleep_time)
                 frames += 1 # mise à jour du compteur de frames pour l'annotation de détection passive
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -1329,7 +1342,7 @@ class controller:
     def start_sampling(self):
         """ Démare l'échantillonnage des données des capteurs
         """
-        if self.sampling_active:
+        if self.sampling_active is True:
             return jsonify({'error': 'Sampling already active'}), 400
         self.sampling_active = True
         return jsonify({'status': 'sampling started'})
@@ -1337,7 +1350,8 @@ class controller:
     def stop_sampling(self):
         """ Arrête l'échantillonnage des données des capteurs
         """
-        self.sampling_active = False
+        if self.sampling_active is True:
+            self.sampling_active = False
         return jsonify({'status': 'sampling stopped'})
 
     def start_controller(self):

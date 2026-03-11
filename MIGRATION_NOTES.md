@@ -129,7 +129,7 @@ sudo apt install -y python3-picamera2 python3-numpy python3-smbus2 i2c-tools lib
 
 ```bash
 source ~/venv/bin/activate
-pip install rpi-lgpio smbus2 pyzbar pigpio pyserial opencv-python flask
+pip install rpi-lgpio smbus2 pyzbar pigpio pyserial opencv-python flask psutil
 ```
 
 #### Étape 3.5 — Validation des dépendances 
@@ -139,7 +139,7 @@ pip install rpi-lgpio smbus2 pyzbar pigpio pyserial opencv-python flask
 echo $VIRTUAL_ENV
 
 # Valider toutes les dépendances pip installées
-pip list | grep -iE "opencv|rpi|lgpio|smbus|pyzbar|pigpio|pyserial|flask|numpy|opencv-python|flask"
+pip list | grep -iE "opencv|rpi|lgpio|smbus|pyzbar|pigpio|pyserial|flask|numpy|opencv-python|flask|psutil"
 
 # Valider les paquets apt
 dpkg -l | grep -iE "python3-picamera2|python3-numpy|python3-smbus2|i2c-tools libzbar0 libcamera-dev"

@@ -67,6 +67,10 @@ class VisionPipeline:
             if self.debug:
                 print("Erreur lors du demarrage du pipeline de vision: {}".format(e))
 
+    def set_passive_detection_interval(self, interval_sec):
+        """Met à jour l'intervalle entre chaque cycle de détection passive."""
+        self._passive_interval = interval_sec
+
     def step(self):
         """
         Exécute un cycle complet du pipeline de vision :
