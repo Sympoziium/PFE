@@ -20,7 +20,7 @@ import sys
 sys.path.append("/usr/local/lib/python3.5/dist-packages")  # chemin du package zumi
 from zumi.zumi import Zumi
 from core.hardware.screen import Screen
-from zumi.personality import Personality
+from core.hardware.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
 DRIVE_SPEED = 20
