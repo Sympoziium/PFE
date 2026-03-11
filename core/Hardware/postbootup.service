@@ -1,0 +1,14 @@
+[Unit]
+Description=Zumi boot handshake — Pi vers ATmega
+Documentation=https://github.com/Sympoziium/PFE/tree/main
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/pi/venv/bin/python /home/pi/PFE/core/hardware/boot.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
