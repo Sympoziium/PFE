@@ -59,12 +59,12 @@ class PiCam2(CameraBase):
         # Trier par nombre de pixels croissant
         full_fov.sort(key=lambda m: m['size'][0] * m['size'][1])
 
-        # Prendre le plus petit mode plein-FOV >= sortie demandée
-        for m in full_fov:
-            if m['size'][0] >= self._width and m['size'][1] >= self._height:
-                return m
-        # Sinon le plus grand mode plein-FOV disponible
-        return full_fov[-1]
+        # Toujours préférer le plus petit mode plein-FOV.
+        # L'ISP Broadcom gère le redimensionnement (up et down) vers la
+        # sortie demandée.  Sur Pi Zero 2W + OV5647, le mode 2592×1944
+        # sature le bus CSI et cause des timeouts ; le mode binné 1296×972
+        # est le seul utilisable en temps réel avec plein FOV.
+        return full_fov[0]
 
     # ------------------------------------------------------------------ #
     #  Construction de la configuration Picamera2                         #
