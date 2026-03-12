@@ -29,6 +29,15 @@ class PiCam2(CameraBase):
 
     def _build_configuration(self):
         kwargs = {"main": {"format": "BGR888", "size": (self._width, self._height)}}
+        # Pour les résolutions >= 720p : forcer la lecture plein capteur (ISP hardware downscale)
+        # afin d'éviter le crop central que picamera2 applique par défaut à haute résolution.
+        # En dessous de 720p, laisser picamera2 choisir le mode binning natif du capteur
+        # (moins de bande passante mémoire, meilleur pour les performances à 480p).
+        if self._width >= 1280:
+            try:
+                kwargs["raw"] = {"size": self.picam2.sensor_resolution}
+            except Exception:
+                pass
         # Rotation materielle 180 deg quand disponible (plus efficace que post-traitement).
         if self._rotate_180 and Transform is not None:
             kwargs["transform"] = Transform(hflip=True, vflip=True)
