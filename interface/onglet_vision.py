@@ -155,12 +155,15 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     }
 
     .live-feed img {
-        width: 100%; 
-        max-width: 1920px; 
-        height: auto; 
+        display: block;
+        margin: 10px auto 0;
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 65vh;
+        min-height: 280px;
         border-radius: 8px; 
         border: 4px solid #00BFFF; 
-        margin-top: 10px; 
     }
 
     /* Exemple de style additionnel pour les boutons et zones de résultats */
