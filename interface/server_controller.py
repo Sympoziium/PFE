@@ -444,19 +444,25 @@ class controller:
             vp.stop()
             time.sleep(0.2)
 
-
         if fps is None:
             data = request.get_json(silent=True) or {}
             fps = data.get('fps')
         try:
             fps = int(fps)
             if fps < 1 or fps > 60:
-                print("Erreur hors des limites de FPS 1-60: {}".format(fps))
+                if was_running:
+                    vp.start()
+                if was_passive:
+                    vp.resume_passive_detection()
+                return jsonify({'error': 'FPS doit être entre 1 et 60'}), 400
             self.livefeed_fps = fps
-    
             print("FPS du flux vidéo mis à jour: {} FPS".format(self.livefeed_fps))
         except (ValueError, TypeError):
-            print("Erreur de valeur dans set FPS server controler")
+            if was_running:
+                vp.start()
+            if was_passive:
+                vp.resume_passive_detection()
+            return jsonify({'error': 'FPS doit être un entier valide'}), 400
 
         # Relancer le flux si il était actif
         if was_running:
@@ -465,6 +471,8 @@ class controller:
         # Reprendre la détection passive si elle était active
         if was_passive:
             vp.resume_passive_detection()
+
+        return jsonify({'ok': True, 'fps': fps})
         
     # Flux vidéo
     def video_feed(self):
@@ -739,7 +747,7 @@ class controller:
             detection_rate = int(detection_rate)
             if detection_rate < 1 or detection_rate > 60:
                 return jsonify({'error': 'detection_rate doit être supérieur a 0 (ex: 1 = une détection par image du livefeed)'}), 400
-            vp.set_passive_detection_rate(detection_rate, self.livefeed_fps)
+            vp.set_passive_detection_FPS(detection_rate, self.livefeed_fps)
             return jsonify({'ok': True, 'detection_rate': detection_rate})
         except (ValueError, TypeError):
             return jsonify({'error': 'detection_rate doit être un entier valide'}), 400

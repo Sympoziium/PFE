@@ -75,7 +75,7 @@ class VisionPipeline:
 
         if nb_frames > 0:
             # On veut déclancher une détection passive toutes les nb_frames du livefeed
-            self.__passive_interval = 1/(livefeed_frame_rate/nb_frames)
+            self._passive_interval = 1/(livefeed_frame_rate/nb_frames)
 
     def step(self):
         """
