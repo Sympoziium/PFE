@@ -476,11 +476,10 @@ class controller:
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
                     now = time.time()
+                    active_result = None
                     if result and result.get('Object_detected'):
-                        last_positive_time = now
-                        last_positive_result = result
-                    # Garder l'annotation visible pendant STICKY_SECONDS après la dernière détection positive
-                    active_result = last_positive_result if (now - last_positive_time) < STICKY_SECONDS else None
+                        active_result = result
+                   
                     if active_result:
                         if frames % 3 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
                             # Dessine sur une copie pour ne pas polluer le buffer brut
