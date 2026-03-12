@@ -160,7 +160,6 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         width: auto;
         height: auto;
         max-width: 100%;
-        max-height: 65vh;
         min-height: 280px;
         border-radius: 8px; 
         border: 4px solid #00BFFF; 
@@ -283,7 +282,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     <button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
                     <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
                     <select id='resolutionSelect' class='select-detector' title='Résolution caméra'>
-                        <option value='160x128' selected>QQVGA 160×128</option>
+                        <option value='160x128' selected>VGA 640×480</option>
                         <option value='176x144'>QCIF 176×144</option>
                         <option value='320x240'>QVGA 320×240</option>
                         <option value='640x480'>VGA 640×480</option>

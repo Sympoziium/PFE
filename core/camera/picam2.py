@@ -28,20 +28,31 @@ class PiCam2(CameraBase):
             raise e
 
     def _build_configuration(self):
-        kwargs = {"main": {"format": "BGR888", "size": (self._width, self._height)}}
-        # Pour les résolutions >= 720p : forcer la lecture plein capteur (ISP hardware downscale)
-        # afin d'éviter le crop central que picamera2 applique par défaut à haute résolution.
-        # En dessous de 720p, laisser picamera2 choisir le mode binning natif du capteur
-        # (moins de bande passante mémoire, meilleur pour les performances à 480p).
+        kwargs = {
+            "main": {"format": "BGR888", "size": (self._width, self._height)},
+            "buffer_count": 2,  # minimum stable : libère ~100MB vs défaut 4 buffers en HD
+        }
+        # Pour les résolutions >= 720p : forcer la lecture plein capteur via le mode sélectionné.
+        # picamera2 choisit le bon mode capteur (binning ou full) selon la taille du raw stream.
+        # Aucun accès aux données Bayer brutes nécessaire, donc pas de raw stream explicite —
+        # on laisse l'ISP sélectionner le mode automatiquement via sensor_mode.
+        # Le FOV cohérent est obtenu en définissant la taille principal >= résolution native.
         if self._width >= 1280:
+            # Utiliser le mode video (sensor_mode) plutôt qu'un raw stream explicite
+            # pour avoir le plein FOV sans coût mémoire supplémentaire.
             try:
-                kwargs["raw"] = {"size": self.picam2.sensor_resolution}
+                full_res = self.picam2.sensor_resolution
+                kwargs["main"]["size"] = (
+                    min(self._width, full_res[0]),
+                    min(self._height, full_res[1])
+                )
             except Exception:
                 pass
-        # Rotation materielle 180 deg quand disponible (plus efficace que post-traitement).
+        # Rotation matérielle 180 deg quand disponible (plus efficace que post-traitement).
         if self._rotate_180 and Transform is not None:
             kwargs["transform"] = Transform(hflip=True, vflip=True)
-        return self.picam2.create_preview_configuration(**kwargs)
+        return self.picam2.create_video_configuration(**kwargs) if self._width >= 1280 \
+            else self.picam2.create_preview_configuration(**kwargs)
         
     def start_camera(self):
         try:

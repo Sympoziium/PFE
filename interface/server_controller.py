@@ -581,12 +581,14 @@ class controller:
             ram = psutil.virtual_memory()
             num_threads = psutil.Process().num_threads()
             ram_used_mb = round(ram.used / (1024 * 1024), 1)
-            ram_available_mb = round(ram.available / (1024 * 1024), 1)
+            ram_free_mb = round(ram.available / (1024 * 1024), 1)
+            ram_total_mb = round(ram.total / (1024 * 1024), 1)
             io_wait = psutil.Process().cpu_times().iowait if hasattr(psutil.Process().cpu_times(), 'iowait') else 0
             # Format compact pour vision rapide dans le terminal
             print("[Zumi] CPU: {:.1f}% | RAM: {:.1f}% | Threads: {}".format(
                 cpu_percent, ram.percent, num_threads))
-            print("[Other] RAM Usage: {}/{} MB | IO Wait: {:.2f}s".format(ram_used_mb, ram_available_mb, io_wait))
+            print("[RAM] {:.1f} MB used | {:.1f} MB free | {:.1f} MB total | IO Wait: {:.2f}s".format(
+                ram_used_mb, ram_free_mb, ram_total_mb, io_wait))
             print("[Timestamp] {}".format(time.strftime('%H:%M:%S')))
         except Exception as e:
             pass  # Silencieux si psutil indisponible
