@@ -35,7 +35,7 @@ class VisionPipeline:
         # threads pour la détection passive
         self._passive_thread = None         # instance du thread
         self._passive_running = False       # Flag pour contrôler l'exécution du thread
-        self._passive_interval = 0.5          # Intervalle de 1 seconde entre chaque détection passive
+        self._passive_interval = 0.1          # Intervalle de 1 seconde entre chaque détection passive
         self._passive_pause_event = threading.Event() # Event pour contrôler la pause du thread de détection passive
         self._passive_pause_event.clear()     # pause par défaut
 
@@ -125,10 +125,10 @@ class VisionPipeline:
         # Signaler l'arrêt AVANT de fermer la caméra
         # pour que le générateur vidéo s'arrête proprement
         self.running = False
-        import time
         time.sleep(0.15)  # Laisser le générateur vidéo terminer son cycle
         try:
             self.camera.close()
+            time.sleep(0.1)  # Laisser un peu de temps pour que la caméra se libère complètement
         except Exception as e:
             if self.debug:
                 print("Erreur lors de l'arret du pipeline de vision: {}".format(e))
@@ -385,9 +385,11 @@ class VisionPipeline:
             normalized_height = object_height_pixels * facteur_M['320x240']
         elif frame_h == 480:
             normalized_height = object_height_pixels * facteur_M['640x480']
+        elif frame_h == 972:
+            normalized_height = object_height_pixels * (facteur_M['640x480'] / 2.025)  # comme la référence est à 480p, on divise le facteur lorsqu'on dépasse cette résolution
         else:
             if debug:
-                print("Résolution non reconnue pour la normalisation: hauteur image = {}".format(frame_h))
+                print("Résolution non reconnue pour la normalisation: hauteur image (approximate_object_distance) = {}".format(frame_h))
             normalized_height = object_height_pixels  # pas de normalisation
         
         if object_name in hauteur_reelle_cm:

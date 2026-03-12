@@ -495,7 +495,6 @@ def render_pid_tab(title="Asservissement PID"):
         var img = document.getElementById('videoFeed');
         var placeholder = document.getElementById('videoPlaceholder');
         if (img) {{
-            // Petit délai pour laisser la caméra s'initialiser
             setTimeout(function() {{
                 img.src = '/video?' + Date.now();
                 img.style.display = '';
@@ -827,24 +826,40 @@ def render_pid_tab(title="Asservissement PID"):
         manualTurn(-Math.abs(angle));  // Négatif = droite
     }}
 
-    // Navigation
+    // Navigation avec fermeture propre du PID et caméra
     function navigateTo(path) {{
-        stopStatusPolling();
-        stopStepStatusPolling();
-        
-        var promises = [];
-        if (pidRunning) {{
-            promises.push(fetch('/pid/stop', {{ method: 'POST' }}));
-        }}
-        if (stepModeRunning) {{
-            promises.push(fetch('/pid/step_mode/stop', {{ method: 'POST' }}));
-        }}
-        
-        if (promises.length > 0) {{
-            Promise.all(promises)
-                .then(function() {{ location.href = path; }})
-                .catch(function() {{ location.href = path; }});
-        }} else {{
+        try {{
+            stopStatusPolling();
+            stopStepStatusPolling();
+            
+            var promises = [];
+            
+            // Arrêter le PID s'il est actif
+            if (pidRunning) {{
+                promises.push(fetch('/pid/stop', {{ method: 'POST' }}));
+            }}
+            
+            // Arrêter le mode step s'il est actif
+            if (stepModeRunning) {{
+                promises.push(fetch('/pid/step_mode/stop', {{ method: 'POST' }}));
+            }}
+            
+            // Fermer la caméra
+            promises.push(fetch('/close_camera', {{ method: 'POST' }}));
+            
+            // Attendre la fin de tous les arrêts avant de naviguer
+            if (promises.length > 0) {{
+                Promise.all(promises)
+                    .then(function() {{ location.href = path; }})
+                    .catch(function(err) {{ 
+                        console.error('Erreur lors de la fermeture:', err);
+                        location.href = path; 
+                    }});
+            }} else {{
+                location.href = path;
+            }}
+        }} catch (e) {{
+            console.error('Erreur navigateTo:', e);
             location.href = path;
         }}
     }}
@@ -907,7 +922,6 @@ def render_pid_tab(title="Asservissement PID"):
                 document.getElementById('rotationModeBtn').style.background = '#6c757d';
                 document.getElementById('driveModeBtn').style.background = '#28a745';
             }}
-            
             appendLog('Paramètres chargés depuis le serveur');
         }})
         .catch(function(err) {{
@@ -927,7 +941,7 @@ def render_pid_tab(title="Asservissement PID"):
             appendLog('Impossible de charger les paramètres du détecteur: ' + err.message);
         }});
 
-        // Vérifier si la caméra tourne déjà (ex: PID actif avant navigation)
+        // Vérifier si la caméra tourne déjà
         fetch('/status')
         .then(function(r) {{ return r.json(); }})
         .then(function(data) {{
@@ -948,6 +962,9 @@ def render_pid_tab(title="Asservissement PID"):
         }}
         if (stepModeRunning) {{
             fetch('/pid/step_mode/stop', {{ method: 'POST' }});
+        }}
+        if (document.getElementById('videoFeed').src) {{
+            fetch('/close_camera', {{ method: 'POST' }});
         }}
     }});
     </script>

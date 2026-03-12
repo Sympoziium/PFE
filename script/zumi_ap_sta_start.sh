@@ -57,5 +57,5 @@ nmcli connection up "$AP_PROFILE" || {
 }
 
 echo "$LOG Mode AP+STA actif."
-echo "$LOG   AP  → $VIRT_IF (ssh pi@10.42.0.1)"
+echo "$LOG   AP  → $VIRT_IF (ssh pi@192.168.0.1)"
 echo "$LOG   STA → $PHYS_IF (IP dynamique via DHCP)"

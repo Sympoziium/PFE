@@ -482,80 +482,148 @@ la migration vers le Pi Zero 2W est maintenant fonctionnelle, tous les composant
 
 - les capacités accrue du nouveau CPU m'ont permis d'implémenter une nouvelle résolution HD a la caméra ainsi que l'ajout de paramêtres pour contrôler le frame rate du livefeed (jusqu'à 60 fps maintenant). j'ai également essayer d'ajouter un contrôle de la période de détection passive, mais je ne sais pas si sa fonctionne bien (a valider avant de merger).
 
-## Conception réseau — WiFi + AP
-avant de pouvoir conclure la migration il est important de faire en sorte que lorsqu'on allume le robot il démare son access point wifi afin de permettre de s'y connecter ainsi que de configurer le wifi domestique pour lui permettre de télécharger les mises à jours via git pull. 
 
-Nous avons besoin d'avoir les 2 modes de connexions en même temps (AP + STA) puisque le pont-levi (accessoire développé par l'équipe précédente) utilise une connexion WiFi directe pour communiquer avec le robot.
+---
 
-je part du principe que le programme original du V1 le faisait déjà, mais comme nous avons migré le système vers Bookworm 64-bit Lite, je sais que certains composants critiques ont été modifiés (notamment la gestion du WiFi et des interfaces réseau) et que le code original du V1 n'est pas compatible avec cette nouvelle configuration. il va donc falloir réimplémenter la logique de connexion WiFi + AP en utilisant les outils modernes disponibles sur Bookworm (NetworkManager, systemd-networkd, etc.) et en s'assurant que les deux modes fonctionnent correctement en parallèle.
+## 9. Réseau — Mode AP+STA simultané
 
+### 9.1 Contexte et objectifs
 
-Architecture retenue — wlan1 virtuel + NetworkManager
-BCM43430 (puce physique)
+L'image Robolink originale (V1) expose un point d'accès Wi-Fi natif géré par le firmware du Zumi board, permettant la connexion SSH via `192.168.10.1`. Cette approche n'est pas disponible sur une image Bookworm propre. Il fallait donc concevoir un mécanisme équivalent, tout en ajoutant la capacité de connexion simultanée à un réseau externe (mode STA) pour permettre les mises à jour via `git pull` et la communication avec le pont Arduino.
+
+Les exigences retenues sont les suivantes :
+
+- **AP permanent** — Le robot diffuse son propre réseau Wi-Fi dès le démarrage, quelle que soit la disponibilité d'un réseau externe. Un utilisateur peut s'y connecter et accéder au robot en SSH sans configuration préalable.
+- **STA simultané** — Si un réseau externe configuré est à portée, le robot s'y connecte automatiquement en parallèle, sans interrompre l'AP.
+- **Reconnexion automatique** — Si le réseau STA disparaît puis réapparaît, NetworkManager rétablit la connexion sans intervention.
+
+### 9.2 Contrainte matérielle — puce unique BCM43430
+
+Le Pi Zero 2W ne dispose que d'une seule puce Wi-Fi physique (BCM43430). Le mode AP+STA simultané sur une interface unique (`wlan0`) n'est pas supporté nativement. La solution retenue est la création d'une **interface virtuelle** `wlan1` de type `__ap` par-dessus `wlan0` via la commande `iw`. NetworkManager prend ensuite en charge le profil AP sur `wlan1`, tandis que `wlan0` reste en mode client STA.
+
+```
+BCM43430 (puce physique unique)
 │
-├── wlan0  ──► NetworkManager profil STA (client)
-│              IP dynamique via DHCP
-│              Accès internet / git pull
+├── wlan0  →  NetworkManager profil STA  →  réseau externe (Internet, pont)
+│             IP dynamique DHCP
 │
-└── wlan1  ──► Interface virtuelle (__ap sur wlan0)
-               NetworkManager profil AP
-               IP statique 10.42.0.1
-               SSH utilisateur → ssh pi@192.168.0.1
+└── wlan1  →  NetworkManager profil AP   →  clients SSH directs
+              interface virtuelle __ap        IP statique 192.168.0.1
+              créée au boot par systemd
+```
 
+> **Note :** Le driver `brcmfmac` sur Bookworm 64-bit requiert la désactivation explicite du power save sur les deux interfaces pour maintenir la stabilité du mode concurrent. Cela est géré dans `zumi_ap_sta_start.sh` via `iw dev <if> set power_save off`.
 
-### Ressources utiles
+### 9.3 Livrables — scripts et service
+
+Trois fichiers ont été créés dans `script/` :
+
+| Fichier | Rôle | Fréquence d'exécution |
+|---------|------|-----------------------|
+| `zumi_ap_setup.sh` | Création du profil AP dans NetworkManager (`ZumiAP`) | Une seule fois, lors de la configuration initiale |
+| `zumi_ap_sta_start.sh` | Création de `wlan1`, activation du profil AP | Au démarrage, via `zumi-ap.service` |
+| `zumi_wifi_config.sh` | Configuration interactive du profil STA (`ZumiSTA`) | À chaque changement de réseau externe |
+
+Le service systemd `zumi-ap.service` (déployé dans `/etc/systemd/system/`) appelle `zumi_ap_sta_start.sh` après `NetworkManager.service`. Il est configuré avec `RemainAfterExit=yes` et `Type=oneshot`, et son `ExecStop` supprime proprement `wlan1` à l'arrêt du service.
+
+### 9.4 Procédure de déploiement initial (référence)
+
+```bash
+# 1. Rendre les scripts exécutables
+chmod +x ~/PFE/script/zumi_ap_setup.sh
+chmod +x ~/PFE/script/zumi_ap_sta_start.sh
+chmod +x ~/PFE/script/zumi_wifi_config.sh
+
+# 2. Créer le profil AP dans NetworkManager (une seule fois)
+sudo ~/PFE/script/zumi_ap_setup.sh
+
+# 3. Configurer la connexion STA
+sudo ~/PFE/script/zumi_wifi_config.sh
+
+# 4. Déployer et activer le service systemd
+sudo cp ~/PFE/script/zumi-ap.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable zumi-ap.service
+sudo systemctl start zumi-ap.service
+
+# 5. Vérifier les deux interfaces
+ip addr show wlan0   # doit avoir IP du réseau STA
+ip addr show wlan1   # doit avoir 192.168.0.1
+```
+
+### 9.5 Validation — résultats des tests
+
+Deux scénarios ont été validés expérimentalement le 12 mars 2026 :
+
+**Scénario A — STA disponible au boot**
+
+```
+wlan0 : UP — 192.168.137.240/24  (hotspot laptop, IP dynamique DHCP)
+wlan1 : UP — 192.168.0.1/24      (AP robot, IP statique)
+zumi-ap.service : active (exited) — status=0/SUCCESS
+```
+
+Connexion SSH via AP validée depuis téléphone mobile. Connexion SSH via STA validée depuis laptop. Les deux interfaces actives simultanément sans conflit.
+
+**Scénario B — STA indisponible au boot**
+
+```
+wlan0 : UP — NO-CARRIER (interface levée, pas d'IP — réseau STA absent)
+wlan1 : UP — 192.168.0.1/24      (AP robot, IP statique)
+zumi-ap.service : active (exited) — status=0/SUCCESS
+```
+
+L'AP démarre en moins de 10 secondes après le boot. À l'activation ultérieure du réseau STA, NetworkManager rétablit la connexion `wlan0` automatiquement sans interruption de l'AP.
+
+**Conclusion :** Le comportement est conforme aux exigences dans les deux scénarios. Aucune dépendance logicielle additionnelle n'est requise — tous les outils utilisés (`iw`, `ip`, `nmcli`) sont préinstallés sur Bookworm Lite.
+
+### 9.6 Ressources utilises
 J'ai trouvé quelques ressources utiles qui expliquent comment configurer notre Pi spécifique a notre OS :
 https://www.reddit.com/r/raspberry_pi/comments/1ir3sdb/pi_zero_2w_access_point_networking_over_wifi_or/
 https://themakermedic.com/posts/Pi-AP-Mode/
 https://docs.raspap.com/features-experimental/ap-sta/#when-to-reboot
 
-### Plan d'action
+### 9.7 Statut de `zumi_prepare.sh`
 
-**Approche retenue** — Interface virtuelle wlan1 via iw + NetworkManager
-La méthode validée sur Bookworm consiste à créer une interface virtuelle wlan1 de type __ap par-dessus wlan0 via iw, puis à confier la gestion de l'AP à NetworkManager sur cette interface virtuelle.
+Le script `zumi_prepare.sh` est officiellement **deprecated** à compter de la migration V2. Son rôle principal — arrêter les services Robolink et connecter le Pi au réseau de développement — n'a plus de raison d'être sur Bookworm, où les services Robolink n'existent pas et où la connexion réseau est gérée de façon permanente par NetworkManager.
 
-1. Faire une sauvegarde de l'image actuelle du Pi Zero 2W avant de faire des modifications (au cas ou on aurait besoin de revenir en arrière).
-2. Validation du network manager.
-```bash
-# Vérifier que NetworkManager est installé et actif
-systemctl status NetworkManager
-nmcli general status
-```
-3. Créer les scripts de configuration AP et STA (voir `script/zumi_ap_setup.sh` et `script/zumi_wifi_config.sh`). Créer également un service systemd `zumi-ap.service` pour démarrer l'AP au boot.
+Le fichier est conservé dans le dépôt pour compatibilité avec les robots V1 encore en service. Il ne doit pas être exécuté sur un Pi Zero 2W.
 
-4. Configurer les profils sur le nouveau Pi.
-```bash
-# 1. Rendre les scripts exécutables
-chmod +x ~/PFE/script/zumi_ap_setup.sh
-chmod +x ~/PFE/script/zumi_ap_sta_start.sh
+---
 
-# 2. Créer le profil AP (une seule fois)
-sudo ~/PFE/script/zumi_ap_setup.sh
+## 10. Clôture de la migration — État final au 12 mars 2026
 
-# 3. Configurer le STA (une seule fois, ou après changement de réseau)
-sudo ~/PFE/script/zumi_wifi_config.sh
+### Composants validés
 
-# 4. Déployer le service systemd
-sudo cp ~/PFE/script/zumi-ap.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable zumi-ap.service
+| Composant | État | Notes |
+|-----------|------|-------|
+| Import SDK Zumi (`zumi.zumi`) | ✅ Validé | Shim `rpi-lgpio` opérationnel |
+| Handshake Pi ↔ ATmega (`postbootup.service`) | ✅ Validé | `core/hardware/boot.py` — timeout 30 s |
+| Driver OLED (`luma.oled`) | ✅ Validé | Remplace `Adafruit_SSD1306` |
+| Caméra (`picamera2`) | ✅ Validé | Résolution HD disponible, framerate jusqu'à 60 fps |
+| Vision pipeline + détecteurs | ✅ Validé | Tous les détecteurs fonctionnels sur V2 |
+| Serveur Flask | ✅ Validé | Port 5000, accessible via AP et STA |
+| Mode AP+STA simultané (`zumi-ap.service`) | ✅ Validé | `wlan1` AP permanent, `wlan0` STA automatique |
+| Alimentation | ⚠️ Contournement actif | Batterie LiPo V1 insuffisante — alimentation USB externe requise |
 
-# 5. Tester sans reboot
-sudo systemctl start zumi-ap.service
-sudo systemctl status zumi-ap.service
+### Points en suspens (hors scope migration)
 
-# 6. Vérifier les deux interfaces
-ip addr show wlan0   # doit avoir IP du réseau STA
-ip addr show wlan1   # doit avoir 10.42.0.1
-```
+| Point | Décision |
+|-------|----------|
+| Contrôle de la période de détection passive | À valider fonctionnellement avant le merge dans `Migration-Pi_2` |
+| Remplacement de la batterie LiPo | Adressé en phase de déploiement final — hors scope session courante |
+| Connexion USB Ethernet (backdoor réseau) | **Rejeté** — complexité injustifiée au regard de la robustesse du mode AP+STA |
 
-### Résultat d'implémentation
+### Stratégie de versionnage post-migration
 
-## USB Ethernet backdoor
-Ajout de d'une option de connexion au robot via USB SSH a utiliser comme backdoor en cas de problème de connexion WiFi. cette option devra être doccumenté dans le README et mentionné dans les notes de migration pour que les utilisateurs sachent qu'elle existe et comment l'utiliser en cas de besoin (MODIFIER SEULEMENT APRÈS AVOIR DOCUMENTÉ). 
+La migration étant fonctionnelle sur le premier robot, le développement des nouvelles fonctionnalités (contrôle moteur par MLP, etc.) se poursuit sur des branches `feature/*` issues de `Migration-Pi_2`. La branche `main` reste stable pour les équipiers encore sur V1. Le merge de `Migration-Pi_2` vers `main` sera effectué lorsque le second robot aura été migré sur Pi Zero 2W.
 
-source : https://forums.raspberrypi.com/viewtopic.php?t=376578
+| Branche | Base | Objectif |
+|---------|------|----------|
+| `main` | — | Stable V1 — ne pas modifier |
+| `Migration-Pi_2` | `main` | Migration complète V2 — référence |
+| `feature/*` | `Migration-Pi_2` | Nouveaux développements sur V2 |
 
+---
 
-
-*Dernière mise à jour : migration en cours — validation core Zumi en attente.*
+*Dernière mise à jour : 12 mars 2026 — Migration V2 complétée et validée.*
