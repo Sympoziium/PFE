@@ -54,3 +54,9 @@ echo "  ℹ️  Priorité : 10 (supérieure à l'AP — le STA sera préféré a
 echo ""
 echo "  Pour activer maintenant : sudo nmcli connection up $PROFILE_NAME"
 echo "═══════════════════════════════════════════════════════════"
+
+# --- Optionnel : activer immédiatement (peut échouer si hors de portée) ---
+sudo nmcli connection up $PROFILE_NAME || {
+    echo "⚠️  Impossible d'activer '$PROFILE_NAME' immédiatement."
+    echo "Vérifiez que le réseau est à portée et que les identifiants sont corrects."
+}

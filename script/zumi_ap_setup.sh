@@ -2,7 +2,7 @@
 # =============================================================================
 # zumi_ap_setup.sh — Création du profil AP dans NetworkManager
 # Exécuter UNE SEULE FOIS lors de la post-migration.
-# Usage : sudo ./zumi_ap_setup.sh
+# Usage : sudo ./script/zumi_ap_setup.sh
 # =============================================================================
 
 set -e
@@ -62,6 +62,4 @@ echo ""
 echo "  ⚠️  autoconnect est DÉSACTIVÉ intentionnellement."
 echo "      L'activation est gérée par zumi-ap.service au boot."
 echo ""
-echo "  Prochaine étape : sudo cp zumi-ap.service /etc/systemd/system/"
-echo "                    sudo systemctl enable zumi-ap.service"
 echo "═══════════════════════════════════════════════════════════"

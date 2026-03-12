@@ -521,22 +521,22 @@ La méthode validée sur Bookworm consiste à créer une interface virtuelle wla
 systemctl status NetworkManager
 nmcli general status
 ```
-3. Créer les scripts de configuration AP et STA (voir `core/hardware/zumi_ap_setup.sh` et `core/hardware/zumi_wifi_config.sh`). Créer également un service systemd `zumi-ap.service` pour démarrer l'AP au boot.
+3. Créer les scripts de configuration AP et STA (voir `script/zumi_ap_setup.sh` et `script/zumi_wifi_config.sh`). Créer également un service systemd `zumi-ap.service` pour démarrer l'AP au boot.
 
 4. Configurer les profils sur le nouveau Pi.
 ```bash
 # 1. Rendre les scripts exécutables
-chmod +x ~/PFE/zumi_ap_setup.sh
-chmod +x ~/PFE/zumi_ap_sta_start.sh
+chmod +x ~/PFE/script/zumi_ap_setup.sh
+chmod +x ~/PFE/script/zumi_ap_sta_start.sh
 
 # 2. Créer le profil AP (une seule fois)
-sudo ~/PFE/zumi_ap_setup.sh
+sudo ~/PFE/script/zumi_ap_setup.sh
 
 # 3. Configurer le STA (une seule fois, ou après changement de réseau)
-sudo ~/PFE/zumi_wifi_config.sh
+sudo ~/PFE/script/zumi_wifi_config.sh
 
 # 4. Déployer le service systemd
-sudo cp ~/PFE/zumi-ap.service /etc/systemd/system/
+sudo cp ~/PFE/script/zumi-ap.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable zumi-ap.service
 
