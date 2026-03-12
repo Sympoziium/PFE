@@ -426,53 +426,23 @@ class controller:
             return jsonify({'error': 'diagnose_detector failed', 'details': str(e)}), 500
 
     def set_livefeed_fps(self, fps=None):
-        """Met à jour le framerate du flux vidéo en direct."""
-        vp = self.vision_pipeline
+        """Met à jour le framerate du flux vidéo en direct.
         
-        if vp is None:
-            print("Impossible de définir le FPS: pipeline de vision non initialisé")
-        
-        was_running = vp.is_running()
-        was_passive = vp._passive_running
-
-        # Arrêter la détection passive avant de toucher à la caméra
-        if was_passive:
-            vp.pause_passive_detection()
-
-        # Arrêter le flux vidéo
-        if was_running:
-            vp.stop()
-            time.sleep(0.2)
-
+        Le FPS est contrôlé par le sleep_time dans la boucle du générateur vidéo.
+        Pas besoin de toucher à la caméra — la valeur est lue dynamiquement à chaque itération.
+        """
         if fps is None:
             data = request.get_json(silent=True) or {}
             fps = data.get('fps')
         try:
             fps = int(fps)
             if fps < 1 or fps > 60:
-                if was_running:
-                    vp.start()
-                if was_passive:
-                    vp.resume_passive_detection()
                 return jsonify({'error': 'FPS doit être entre 1 et 60'}), 400
             self.livefeed_fps = fps
             print("FPS du flux vidéo mis à jour: {} FPS".format(self.livefeed_fps))
+            return jsonify({'ok': True, 'fps': fps})
         except (ValueError, TypeError):
-            if was_running:
-                vp.start()
-            if was_passive:
-                vp.resume_passive_detection()
             return jsonify({'error': 'FPS doit être un entier valide'}), 400
-
-        # Relancer le flux si il était actif
-        if was_running:
-            vp.start()
-
-        # Reprendre la détection passive si elle était active
-        if was_passive:
-            vp.resume_passive_detection()
-
-        return jsonify({'ok': True, 'fps': fps})
         
     # Flux vidéo
     def video_feed(self):

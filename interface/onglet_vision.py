@@ -155,8 +155,8 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     }
 
     .live-feed img {
-        width: 50%; 
-        max-width: 650px; 
+        width: 100%; 
+        max-width: 100%; 
         height: auto; 
         border-radius: 8px; 
         border: 4px solid #00BFFF; 
