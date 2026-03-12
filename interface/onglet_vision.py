@@ -286,8 +286,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                         <option value='176x144'>QCIF 176×144</option>
                         <option value='320x240'>QVGA 320×240</option>
                         <option value='640x480'>VGA 640×480</option>
-                        <option value='1280x720'>HD 720p 1280×720</option>
-                        <option value='1920x1080' data-maxfps='30'>FHD 1080p 1920×1080 (max 30 fps)</option>
+                        <option value='1296x972'>HD 1296×972</option>
                     </select>
                 </div>
                 <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;'>

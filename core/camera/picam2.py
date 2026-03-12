@@ -27,48 +27,6 @@ class PiCam2(CameraBase):
             print("Erreur lors de l'initialisation de PiCam2: {}".format(e))
             raise e
 
-    # ------------------------------------------------------------------ #
-    #  Sélection du mode capteur plein-FOV                                #
-    # ------------------------------------------------------------------ #
-    def _find_full_fov_mode(self):
-        """
-        Parcourt les modes capteur et retourne le plus petit mode dont le
-        crop_limits couvre >= 90 % du capteur (= plein champ de vision).
-
-        Sur IMX219 cela sélectionne le mode 2×2 binned 1640×1232 plutôt que
-        le mode crop 1920×1080 qui perd ~40 % du FOV horizontal.
-
-        Retourne None si aucun mode plein-FOV n'est trouvé.
-        """
-        try:
-            modes = self.picam2.sensor_modes
-            full_w, full_h = self.picam2.sensor_resolution
-        except Exception:
-            return None
-        if not modes or full_w == 0:
-            return None
-
-        full_fov = []
-        for m in modes:
-            crop = m.get('crop_limits', (0, 0, 0, 0))
-            if crop[2] >= full_w * 0.9 and crop[3] >= full_h * 0.9:
-                full_fov.append(m)
-        if not full_fov:
-            return None
-
-        # Trier par nombre de pixels croissant
-        full_fov.sort(key=lambda m: m['size'][0] * m['size'][1])
-
-        # Toujours préférer le plus petit mode plein-FOV.
-        # L'ISP Broadcom gère le redimensionnement (up et down) vers la
-        # sortie demandée.  Sur Pi Zero 2W + OV5647, le mode 2592×1944
-        # sature le bus CSI et cause des timeouts ; le mode binné 1296×972
-        # est le seul utilisable en temps réel avec plein FOV.
-        return full_fov[0]
-
-    # ------------------------------------------------------------------ #
-    #  Construction de la configuration Picamera2                         #
-    # ------------------------------------------------------------------ #
     def _build_configuration(self):
         kwargs = {
             "main": {"format": "BGR888", "size": (self._width, self._height)},
@@ -79,22 +37,6 @@ class PiCam2(CameraBase):
         if self._rotate_180 and Transform is not None:
             kwargs["transform"] = Transform(hflip=True, vflip=True)
 
-        # Pour les résolutions HD, forcer un mode capteur plein-FOV afin
-        # que l'ISP recadre/redimensionne depuis le plein capteur plutôt que
-        # de sélectionner le mode crop 1920×1080 (perte massive de FOV).
-        # On passe uniquement 'sensor' (pas de stream raw) → pas de buffer
-        # Bayer supplémentaire, donc impact mémoire nul.
-        if self._width >= 1280 or self._height >= 720:
-            mode = self._find_full_fov_mode()
-            if mode is not None:
-                kwargs["sensor"] = {
-                    "output_size": mode["size"],
-                    "bit_depth": mode.get("bit_depth", 10),
-                }
-                print("[PiCam2] Mode capteur plein-FOV sélectionné: {}".format(mode["size"]))
-
-        # Toujours utiliser preview_configuration : video_configuration
-        # sélectionne souvent le mode crop 1080p du capteur.
         return self.picam2.create_preview_configuration(**kwargs)
         
     def start_camera(self):
