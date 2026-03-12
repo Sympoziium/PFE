@@ -313,7 +313,7 @@ Supprimer tous les appels à `self.disp.begin()` et `self.disp.clear()` — ces 
 ## 7. Notes additionnelles
 
 - **OpenCV** : sur le V1, OpenCV était installé exclusivement via pip (`opencv-python 4.4.0.42`, confirmé par diagnostic). Sur le V2, on conserve la même approche — installation via pip dans le venv. `opencv-python` doit figurer dans l'étape 3 (pip) et **non** dans l'étape apt.
-- **venv** : toujours activer l'environnement virtuel avant toute installation pip (`source ~/venv/bin/activate`). Voir Annexe A pour l'activation automatique au démarrage SSH.
+- **venv** : (**Ces rendu permanents**) toujours activer l'environnement virtuel avant toute installation pip (`source ~/venv/bin/activate`). Voir Annexe A pour l'activation automatique au démarrage SSH.
 - **Environnement PEP 668** : Bookworm bloque l'installation pip système par défaut. Toujours travailler dans le venv.
 
 ---
@@ -475,5 +475,87 @@ Tous les imports Python utiliseront alors les packages installés dans le venv s
 Cette configuration s'applique uniquement aux **sessions SSH interactives**. Elle n'affecte pas les scripts lancés par `systemd` ou `cron`, qui doivent pointer explicitement vers `/home/pi/venv/bin/python` si nécessaire.
 
 ---
+
+
+# Post Migration Notes
+la migration vers le Pi Zero 2W est maintenant fonctionnelle, tous les composants critiques ont été validés notre programme fonctionne correctement sur le nouveau matériel. cependant il reste encore quelques étapes à compléter pour finaliser la migration et assurer une transition fluide pour les utilisateurs finaux.
+
+- les capacités accrue du nouveau CPU m'ont permis d'implémenter une nouvelle résolution HD a la caméra ainsi que l'ajout de paramêtres pour contrôler le frame rate du livefeed (jusqu'à 60 fps maintenant). j'ai également essayer d'ajouter un contrôle de la période de détection passive, mais je ne sais pas si sa fonctionne bien (a valider avant de merger).
+
+## Conception réseau — WiFi + AP
+avant de pouvoir conclure la migration il est important de faire en sorte que lorsqu'on allume le robot il démare son access point wifi afin de permettre de s'y connecter ainsi que de configurer le wifi domestique pour lui permettre de télécharger les mises à jours via git pull. 
+
+Nous avons besoin d'avoir les 2 modes de connexions en même temps (AP + STA) puisque le pont-levi (accessoire développé par l'équipe précédente) utilise une connexion WiFi directe pour communiquer avec le robot.
+
+je part du principe que le programme original du V1 le faisait déjà, mais comme nous avons migré le système vers Bookworm 64-bit Lite, je sais que certains composants critiques ont été modifiés (notamment la gestion du WiFi et des interfaces réseau) et que le code original du V1 n'est pas compatible avec cette nouvelle configuration. il va donc falloir réimplémenter la logique de connexion WiFi + AP en utilisant les outils modernes disponibles sur Bookworm (NetworkManager, systemd-networkd, etc.) et en s'assurant que les deux modes fonctionnent correctement en parallèle.
+
+
+Architecture retenue — wlan1 virtuel + NetworkManager
+BCM43430 (puce physique)
+│
+├── wlan0  ──► NetworkManager profil STA (client)
+│              IP dynamique via DHCP
+│              Accès internet / git pull
+│
+└── wlan1  ──► Interface virtuelle (__ap sur wlan0)
+               NetworkManager profil AP
+               IP statique 10.42.0.1
+               SSH utilisateur → ssh pi@192.168.0.1
+
+
+### Ressources utiles
+J'ai trouvé quelques ressources utiles qui expliquent comment configurer notre Pi spécifique a notre OS :
+https://www.reddit.com/r/raspberry_pi/comments/1ir3sdb/pi_zero_2w_access_point_networking_over_wifi_or/
+https://themakermedic.com/posts/Pi-AP-Mode/
+https://docs.raspap.com/features-experimental/ap-sta/#when-to-reboot
+
+### Plan d'action
+
+**Approche retenue** — Interface virtuelle wlan1 via iw + NetworkManager
+La méthode validée sur Bookworm consiste à créer une interface virtuelle wlan1 de type __ap par-dessus wlan0 via iw, puis à confier la gestion de l'AP à NetworkManager sur cette interface virtuelle.
+
+1. Faire une sauvegarde de l'image actuelle du Pi Zero 2W avant de faire des modifications (au cas ou on aurait besoin de revenir en arrière).
+2. Validation du network manager.
+```bash
+# Vérifier que NetworkManager est installé et actif
+systemctl status NetworkManager
+nmcli general status
+```
+3. Créer les scripts de configuration AP et STA (voir `core/hardware/zumi_ap_setup.sh` et `core/hardware/zumi_wifi_config.sh`). Créer également un service systemd `zumi-ap.service` pour démarrer l'AP au boot.
+
+4. Configurer les profils sur le nouveau Pi.
+```bash
+# 1. Rendre les scripts exécutables
+chmod +x ~/PFE/zumi_ap_setup.sh
+chmod +x ~/PFE/zumi_ap_sta_start.sh
+
+# 2. Créer le profil AP (une seule fois)
+sudo ~/PFE/zumi_ap_setup.sh
+
+# 3. Configurer le STA (une seule fois, ou après changement de réseau)
+sudo ~/PFE/zumi_wifi_config.sh
+
+# 4. Déployer le service systemd
+sudo cp ~/PFE/zumi-ap.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable zumi-ap.service
+
+# 5. Tester sans reboot
+sudo systemctl start zumi-ap.service
+sudo systemctl status zumi-ap.service
+
+# 6. Vérifier les deux interfaces
+ip addr show wlan0   # doit avoir IP du réseau STA
+ip addr show wlan1   # doit avoir 10.42.0.1
+```
+
+### Résultat d'implémentation
+
+## USB Ethernet backdoor
+Ajout de d'une option de connexion au robot via USB SSH a utiliser comme backdoor en cas de problème de connexion WiFi. cette option devra être doccumenté dans le README et mentionné dans les notes de migration pour que les utilisateurs sachent qu'elle existe et comment l'utiliser en cas de besoin (MODIFIER SEULEMENT APRÈS AVOIR DOCUMENTÉ). 
+
+source : https://forums.raspberrypi.com/viewtopic.php?t=376578
+
+
 
 *Dernière mise à jour : migration en cours — validation core Zumi en attente.*
