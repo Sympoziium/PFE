@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # onglet_vision.py
 # ------------------
@@ -6,7 +6,7 @@
 # ------------------
 
 def render_vision_tab(title: str = "Vision du Zumi") -> str:
-	"""Retourne une page HTML complète avec les widgets pour l'onglet de vision."""
+    """Retourne une page HTML complète avec les widgets pour l'onglet de vision."""
 
 	html = """<!DOCTYPE html><html lang='fr'>
 	<head>
@@ -53,628 +53,941 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 			margin: 0;
 		}
 
-		.tab-nav { 
-			display: flex; 
-			align-items: center;
-			gap: 8px;
-			margin-left: auto;
-		}
+    .tab-nav {
+        display: flex; align-items: center;
+        gap: 4px;
+        margin-left: auto; /* pousse la nav à droite */
+    }
 
-		/* --- Sections Pointillées --- */
-		.tab-content, .detection-row {
-			border: 3px dashed #B5FFFC; border-radius: 15px;
-			padding: 15px; margin-bottom: 2vh;
-			background: #FFFDF0; display: flex;
-			gap: 20px; align-items: flex-start;
-		}
+    .tab-btn-group {
+        display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
+        gap: 8px;
+        border: 2px solid #000000;
+        background: #e0e0e0;
+        padding: 8px;
+    }
 
-		/* --- LA COLONNE MAGIQUE (Fixe la largeur) --- */
-		.button-column {
-			display: flex; flex-direction: column;
-			gap: 10px; width: 220px; /* Largeur fixe pour les boutons */
-			flex-shrink: 0; /* Empêche de rétrécir */
-		}
+    .tab-row {
+        display: flex; align-items: flex-start; gap: 12px;
+    }
 
-		/* --- Titres resserrés --- */
-		.tab-subtitle { 
-			font-size: 1.1rem; font-weight: bold; color: #555; 
-			margin: 0 0 5px 0; width: 100%; text-align: left;
-		}
+    .tab-content {
+        border: 2px solid #bcdffb;
+        border-radius: 12px;
+        padding: 16px;
+        min-height: 200px;
+        background: #f7fbff;
+    }
 
-		/* 1. La base pour TOUS les boutons */
-		.primary-btn, .toggle-btn, .remoteDL-toggle-btn, .detector-btn {
-			width: 100%; padding: 10px; border-radius: 10px;
-			border: none; cursor: pointer; font-weight: bold;
-			font-size: 0.9rem; transition: transform 0.1s;
-			text-align: center;
-		}
+    /* --- Styles pour les différents types de texte --- */
+    
+    /* Boite de texte format titre */
+    .tab-title {
+        font-size: 22px; font-weight: bold; margin: 0;
+    }
 
-		/* 2. Les couleurs spécifiques par défaut */
-		.primary-btn { background: #87C7F1; color: white; box-shadow: 0 4px 0 #6BAED6; }
-		.toggle-btn { background: #FFB7D5; color: white; box-shadow: 0 4px 0 #E896B9; }
-		.detector-btn { background: #55efc4; color: #2d3436; box-shadow: 0 4px 0 #00b894; }
+    /* Boite de texte format sous-titre */
+    .tab-subtitle {
+        font-size: 18px; font-weight: bold; margin: 0;
+    }
 
-		/* 3. Les interactions (Survol et Clic) */
-		.primary-btn:hover { background: #76B9E4; transform: translateY(-2px); }
+    /* Boite de texte format texte normal */
+    .tab-text {
+        font-size: 16px; font-weight: normal; margin: 0;
+    }
 
-		.primary-btn:active, .toggle-btn:active, .detector-btn:active { 
-			transform: translateY(2px); 
-			box-shadow: none; 
-		}
+    /* --- Déclarations des différents styles de widgets --- */
 
-		/* 4. L'ÉTAT ACTIF (Prioritaire) */
-		.primary-btn.active {
-			background: #5A99C7;
-			box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
-			transform: none;
-		}
+    /* style bouton cliquable principal */
+    .primary-btn {
+        background: #007acc; color: white; border: none;
+        padding: 10px 18px; border-radius: 10px;
+        cursor: pointer; font-size: 15px;
+    }
 
-		/* 5. Les cas particuliers de téléchargement */
-		.remoteDL-toggle-btn.on { background: #81ecec; box-shadow: 0 4px 0 #00cec9; color: #333; }
-		.remoteDL-toggle-btn.off { background: #fab1a0; box-shadow: 0 4px 0 #e17055; color: white; }
+    .primary-btn:hover { background: #005fa3; }
 
-		/* --- Viewer et Terminal --- */
-		.image-viewer {
-			background: white; border-radius: 20px; padding: 10px;
-			flex-grow: 1; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-			text-align: center; border: 1px solid #eee; display: none;
-		}
+    /* état actif pour le bouton d'onglet courant */
+    .primary-btn.active {
+        background: #00528a;
+        box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
+    }
 
-		.image-viewer img { max-width: 100%; border-radius: 10px; border: 4px solid #00BFFF; }
+    .detector-btn {
+        background: #28a745; color: white; border: none; /* vert */
+        padding: 10px 18px; border-radius: 10px;
+        cursor: pointer; font-size: 15px;
+        active_detector: none;
+    }
 
-		.tab-btn-group {
-			width: 220px; background: white; padding: 12px;
-			border-radius: 15px; border: 2px solid #B5FFFC;
-			display: flex; flex-direction: column; gap: 8px;
-		}
+    .detector-btn:hover { background: #218838; } /* vert foncé au survol */
 
-		.log-terminal {
-			background: #2d3436; color: #55efc4; border-radius: 10px;
-			padding: 10px; flex-grow: 1; height: 120px; overflow-y: auto;
-			font-family: monospace; font-size: 0.8rem;
-		}
-	</style>
-	</head>
-	<body>
+
+
+    /* style bouton toggle */
+    .remoteDL-toggle-btn {
+        color: white; 
+        border: none; 
+        padding: 10px 18px; 
+        border-radius: 10px; 
+        cursor: pointer; 
+        font-size: 15px;
+    }
+
+    /* Etats explicites pour plus de robustesse */
+    .remoteDL-toggle-btn.off { background: #dc3545; }
+    .remoteDL-toggle-btn.off:hover { background: #bd2130; }
+    .remoteDL-toggle-btn.on { background: #28a745; }
+    .remoteDL-toggle-btn.on:hover { background: #218838; }
+
+    /* style bouton toggle */
+    .toggle-btn {
+        background: #007acc; /* bleu par défaut */
+        color: white; 
+        border: none; 
+        padding: 10px 18px; 
+        border-radius: 10px; 
+        cursor: pointer; 
+        font-size: 15px;
+    }
+
+    .toggle-btn:hover { background: #005fa3; } 
+
+    /* --- Styles pour le live feed vidéo --- */
+
+    .live-feed {
+        display: none; 
+        width: 100%; 
+        margin-top: 20px; 
+        padding: 10px; 
+        background-color: #f0f8ff; 
+        border-radius: 20px; 
+        box-shadow: 0 0 10px rgba(0,0,0,0.15); 
+        text-align: center; 
+    }
+
+    .live-feed img {
+        width: 50%; 
+        max-width: 650px; 
+        height: auto; 
+        border-radius: 8px; 
+        border: 4px solid #00BFFF; 
+        margin-top: 10px; 
+    }
+
+    /* Exemple de style additionnel pour les boutons et zones de résultats */
+    /* container : conteneur principal de l'onglet
+       tab-shell : "coquille" de l'onglet avec le fond blanc et les arrondis
+       tab-header : entête de l'onglet avec le titre et les actions globales
+       tab-title : titre de l'onglet
+       tab-content : zone principale de contenu de l'onglet
+       L'ordre des classes CSS suit l'ordre d'apparition dans le HTML.
+       Sections délimitées par <div class='XXX'> ... </div> */
+
+    /* Ajout styles pour select */
+    .select-detector {
+        padding: 8px; border-radius: 8px; border: 1px solid #aaa; background: #fff; font-size: 14px;
+    }
+
+    /* --- Stop Detection UI panel --- */
+    .stop-detect-panel {
+        display: none; /* visible seulement pour le détecteur stop */
+        flex: 1;
+        border: 2px solid #00b894;
+        border-radius: 12px;
+        padding: 12px;
+        background: #f7fbff;
+    }
+
+    .stop-detect-layout {
+        display: flex; gap: 12px; align-items: flex-start;
+    }
+
+    .captured-box {
+        position: relative;
+        flex: 2;
+        background: #f0f8ff;
+        border-radius: 12px;
+        padding: 10px;
+        text-align: center;
+    }
+
+    .captured-box img {
+        max-width: 100%; height: auto; border-radius: 8px; border: 4px solid #00BFFF;
+    }
+
+    /*
+    #bboxOverlay {
+        position: absolute;
+        border: 4px solid #00FF00;
+        border-radius: 4px;
+        display: none;
+        box-shadow: 0 0 8px rgba(0, 255, 0, 0.6);
+        pointer-events: none;
+    }
+    */
+
+    .indicator-and-terminal {
+        flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: stretch;
+    }
+
+    .detect-indicator {
+        border-radius: 10px; padding: 10px; text-align: center; font-weight: bold; color: #fff;
+        background: #bdc3c7; /* défaut: gris */
+    }
+
+    .detect-indicator.on { background: #2ecc71; }
+    .detect-indicator.off { background: #e74c3c; }
+
+    .log-terminal {
+        background: #000; color: #fff; font-family: Consolas, monospace; font-size: 13px;
+        border-radius: 10px; padding: 10px;
+        min-height: 200px; max-height: 50vh; min-width: 100px;
+        overflow-y: auto; overflow-x: auto;
+        white-space: pre-wrap; word-wrap: break-word;
+    }
+
+    /* --- Toast notifications --- */
+    .toast-container {
+        position: fixed; top: 20px; right: 20px; z-index: 9999;
+        display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+        padding: 12px 20px; border-radius: 8px;
+        color: #fff; font-size: 14px; font-family: Arial, sans-serif;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        opacity: 0; transform: translateX(80px);
+        transition: opacity 0.3s, transform 0.3s;
+        max-width: 380px; word-wrap: break-word;
+    }
+    .toast.show { opacity: 1; transform: translateX(0); }
+    .toast.warning { background: #e67e22; }
+    .toast.error { background: #e74c3c; }
+    .toast.info { background: #3498db; }
+    .toast.success { background: #27ae60; }
+
+    </style>
+    </head>
+    <body>
     <div class='container'>
         <div class='tab-shell'>
             <div class='tab-header'>
                 <h2 class='tab-title'>{title}</h2>
+                <!-- Boutons de navigation entre onglets -->
                 <div class='tab-nav'>
-                    <button class='primary-btn' data-path="/">Accueil</button>
-                    <button class='primary-btn' data-path="/vision">Vision</button>
-                    <button class='primary-btn' data-path="/onglet_template">Template</button>
+                    <button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
+                    <button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
+                    <button class='primary-btn' data-path="/onglet_template" onclick="navigateTo('/onglet_template')">Template</button>
+                    <button class='primary-btn' data-path="/pid" onclick="navigateTo('/pid')">PID</button>
                 </div>
             </div>
 
-            <!-- SECTION CAPTURE -->
             <div class='tab-content'>
-                <div class="button-column">
+                <div class='tab-header'>
                     <h3 class='tab-subtitle'>Capture image</h3>
-                    <button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
-                    <button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
-                    <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn'>💾 Off</button>
                 </div>
-                <div class='image-viewer' id='mainImageDisplay'>
-                    <img id='mainImage' alt='Vue du robot'>
+                <!-- AJOUT DES FONCTIONS DE CAPTURE -->
+                <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;'>
+                    <button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
+                    <button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
+                    <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
+                    <select id='resolutionSelect' class='select-detector' title='Résolution caméra'>
+                        <option value='160x128' selected>QQVGA 160×128</option>
+                        <option value='176x144'>QCIF 176×144</option>
+                        <option value='320x240'>QVGA 320×240</option>
+                        <option value='640x480'>VGA 640×480</option>
+                    </select>
+                </div>
+                <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center;'>
+                    <button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
+                    <button class='remoteDL-toggle-btn off' id='toggleMiningBtn' aria-pressed='false'>⛏️ Mining Off</button>
+                    <span id='miningBadge' style='display:none; background:#8e44ad; color:#fff; padding:4px 10px; border-radius:8px; font-size:13px; font-weight:bold;'>0 crops</span>
+                    <button class='primary-btn' id='downloadMiningBtn' style='display:none;'>📦 Download Crops</button>
+                </div>
+                <div id='zone-resultats'></div>
+                <!-- Conteneur unifié pour livefeed et image capturée -->
+                <div class='live-feed' id='mainImageDisplay' style='display:none;'>
+                    <img id='mainImage' alt='Image principale'>
                 </div>
             </div>
 
-            <!-- SECTION DÉTECTION -->
-            <div class='detection-row' style="display: flex; gap: 20px; align-items: flex-start;">
-				<!-- Colonne GAUCHE : Toujours visible -->
-				<div class="button-column">
-					<h3 class='tab-subtitle'>Image Detection</h3>
-					<div class='tab-btn-group'>
-						<label for='detectorSelect' class='tab-text' style="font-size:0.85rem;">Choix du détecteur</label>
-						<select id='detectorSelect' class='select-detector'></select>
-						<button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
-						<button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
-					</div>
-				</div>
-
-				<!-- Colonne DROITE : Cachée par défaut, apparaît avec le détecteur -->
-				<div id='stopDetectPanel' style="display: none; flex-direction: column; flex-grow: 1; gap: 10px;">
-					<h3 class='tab-subtitle'>Diagnostic Stop</h3>
-					<div style="background: white; border-radius: 20px; border: 2px solid #55efc4; padding: 15px; display: flex; flex-direction: column; gap: 10px;">
-						<div id='stopDetectIndicator' class='detect-indicator' style="padding:12px; border-radius:12px; text-align:center; font-weight:bold; color:white; background:#bdc3c7; width: 100%; box-sizing: border-box;">Aucune détection</div>
-						<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
-					</div>
-				</div>
-			</div>
+            <div class='tab-content'>
+                <div class='tab-header'>
+                    <h3 class='tab-subtitle'>Image Detection</h3>
+                </div>
+                <!-- AJOUT DES FONCTIONS DE DÉTECTION -->
+                <div class='tab-row'>
+                    <div class='tab-btn-group'>
+                        <label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
+                        <select id='detectorSelect' class='select-detector'>
+                            <!-- options remplies dynamiquement -->
+                        </select>
+                        <button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
+                        <button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
+                    </div>
+                    <!-- Stop detection diagnostic panel -->
+                    <div class='stop-detect-panel' id='stopDetectPanel'>
+                        <div class='tab-subtitle'>Diagnostic Stop</div>
+                        <div class='indicator-and-terminal'>
+                            <div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
+                            <div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
+                        </div>
+                    </div>
+                    <!-- ajouter la dernière image capturée -->
+                </div>
+            </div>
         </div>
     </div>
 
-	<!-- --- Scripts JavaScript pour les interactions --- -->
+    <!-- Toast container -->
+    <div class='toast-container' id='toastContainer'></div>
 
-	<script>
-	// Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
-	(function() {
-		var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
-		var here = norm(location.pathname);
-		var btns = document.querySelectorAll('.tab-nav .primary-btn');
-		Array.prototype.forEach.call(btns, function(btn) {
-			var p = norm(btn.getAttribute('data-path'));
-			if (p === here) btn.classList.add('active');
-		});
-	})();
+    <!-- --- Scripts JavaScript pour les interactions --- -->
 
-	// --- Terminal helpers: append + trim ---
-	var MAX_TERMINAL_LINES = 300;
-	function appendTerminalLines(lineOrLines) {
-		var term = document.getElementById('stopDetectTerminal');
-		if (!term) return;
-		var newLines = Array.isArray(lineOrLines)
-			? lineOrLines
-			: String(lineOrLines).split('\\n');
-		var oldText = term.textContent || '';
-		var oldLines = oldText ? oldText.split('\\n') : [];
-		var combined = oldLines.concat(newLines);
-		if (combined.length > MAX_TERMINAL_LINES) {
-			combined = combined.slice(-MAX_TERMINAL_LINES);
-		}
-		term.textContent = combined.join('\\n');
-		term.scrollTop = term.scrollHeight;
-	}
+    <script>
+    // Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
+    (function() {
+        var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
+        var here = norm(location.pathname);
+        var btns = document.querySelectorAll('.tab-nav .primary-btn');
+        Array.prototype.forEach.call(btns, function(btn) {
+            var p = norm(btn.getAttribute('data-path'));
+            if (p === here) btn.classList.add('active');
+        });
+    })();
 
-	function clearTerminal() {
-		var term = document.getElementById('stopDetectTerminal');
-		if (term) term.textContent = '';
-	}
+    // --- Terminal helpers: append + trim ---
+    var MAX_TERMINAL_LINES = 300;
+    function appendTerminalLines(lineOrLines) {
+        var term = document.getElementById('stopDetectTerminal');
+        if (!term) return;
+        var newLines = Array.isArray(lineOrLines)
+            ? lineOrLines
+            : String(lineOrLines).split('\\n');
+        var oldText = term.textContent || '';
+        var oldLines = oldText ? oldText.split('\\n') : [];
+        var combined = oldLines.concat(newLines);
+        if (combined.length > MAX_TERMINAL_LINES) {
+            combined = combined.slice(-MAX_TERMINAL_LINES);
+        }
+        term.textContent = combined.join('\\n');
+        term.scrollTop = term.scrollHeight;
+    }
 
-	// --- Unified error logging: console + UI terminal ---
-	function nowTS() { return new Date().toISOString(); }
-	function logError(context, error, extra) {
-		var lines = [];
-		lines.push('[' + nowTS() + '] ERROR in ' + context);
-		if (extra) {
-			try { lines.push('Details: ' + JSON.stringify(extra)); } catch (e) {}
-		}
-		var msg = (error && error.message) ? error.message : String(error);
-		lines.push('Message: ' + msg);
-		if (error && error.stack) { lines.push('Stack: ' + error.stack); }
-		appendTerminalLines(lines);
-		console.error('[UI]', context, error, extra || '');
-	}
+    function clearTerminal() {
+        var term = document.getElementById('stopDetectTerminal');
+        if (term) term.textContent = '';
+    }
 
-	// Global error hooks for maximum visibility
-	window.addEventListener('error', function(e) {
-		logError('window.onerror', e.error || e.message);
-	});
-	window.addEventListener('unhandledrejection', function(e) {
-		logError('window.unhandledrejection', e.reason);
-	});
+    // --- Unified error logging: console + UI terminal ---
+    function nowTS() { return new Date().toISOString(); }
+    function logError(context, error, extra) {
+        var lines = [];
+        lines.push('[' + nowTS() + '] ERROR in ' + context);
+        if (extra) {
+            try { lines.push('Details: ' + JSON.stringify(extra)); } catch (e) {}
+        }
+        var msg = (error && error.message) ? error.message : String(error);
+        lines.push('Message: ' + msg);
+        if (error && error.stack) { lines.push('Stack: ' + error.stack); }
+        appendTerminalLines(lines);
+        console.error('[UI]', context, error, extra || '');
+    }
 
-	// Navigation helper: close camera feed if active before redirecting
-	function navigateTo(path) {
-		try {
-			var mainDisplay = document.getElementById('mainImageDisplay');
-			var isActive = mainDisplay && mainDisplay.style.display === 'block';
-			if (isActive) {
-				fetch('/close_camera', { method: 'POST' })
-					.then(function() { location.href = path; })
-					.catch(function(err) { logError('navigateTo: /close_camera', err, { path: path }); location.href = path; });
-			} else {
-				location.href = path;
-			}
-		} catch (e) {
-			logError('navigateTo', e, { path: path });
-			location.href = path;
-		}
-	}
+    // --- Toast notification system ---
+    function showToast(message, type, duration) {
+        type = type || 'warning';
+        duration = duration || 4000;
+        var container = document.getElementById('toastContainer');
+        if (!container) return;
+        var toast = document.createElement('div');
+        toast.className = 'toast ' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        // Trigger animation
+        setTimeout(function() { toast.classList.add('show'); }, 10);
+        // Auto-dismiss
+        setTimeout(function() {
+            toast.classList.remove('show');
+            setTimeout(function() { container.removeChild(toast); }, 350);
+        }, duration);
+    }
 
-	// État global: mode d'affichage (livefeed ou captured) et état caméra
-	var DISPLAY_MODE = 'livefeed'; // 'livefeed' | 'captured'
-	var CAMERA_ACTIVE = false; // Track si la caméra est démarrée
+    // Global error hooks for maximum visibility
+    window.addEventListener('error', function(e) {
+        logError('window.onerror', e.error || e.message);
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+        logError('window.unhandledrejection', e.reason);
+    });
 
-	function toggleCamera() {
-		console.log('toggleCamera() appelee');
-		var mainDisplay = document.getElementById('mainImageDisplay');
-		var mainImage = document.getElementById('mainImage');
-		var btn = document.getElementById('cameraToggleBtn');
-		var captureBtn = document.getElementById('captureImageBtn');
-		// Stop camera should hide display regardless of whether showing livefeed or captured image
-		var isActive = CAMERA_ACTIVE && mainDisplay.style.display === 'block';
+    // Navigation helper: close camera feed if active before redirecting
+    function navigateTo(path) {
+        try {
+            var mainDisplay = document.getElementById('mainImageDisplay');
+            var isActive = mainDisplay && mainDisplay.style.display === 'block';
+            if (isActive) {
+                fetch('/close_camera', { method: 'POST' })
+                    .then(function() { location.href = path; })
+                    .catch(function(err) { logError('navigateTo: /close_camera', err, { path: path }); location.href = path; });
+            } else {
+                location.href = path;
+            }
+        } catch (e) {
+            logError('navigateTo', e, { path: path });
+            location.href = path;
+        }
+    }
 
-		if (!isActive) {
-			// Démarrer la caméra
-			btn.textContent = '⏹️ Arrêter la caméra';
-			fetch('/start_camera', { method: 'POST' })
-				.then(function(response) {
-					if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
-					mainDisplay.style.display = 'block';
-					mainImage.src = '/video?' + new Date().getTime();
-					DISPLAY_MODE = 'livefeed';
-					CAMERA_ACTIVE = true;
-					captureBtn.textContent = '📸 Capture Image';
-					captureBtn.onclick = captureImage;
-				})
-				.catch(function(err) {
-					logError('toggleCamera: /start_camera', err);
-					btn.textContent = '🎥 Allumer la caméra !';
-					CAMERA_ACTIVE = false;
-				});
-		} else {
-			// Arrêter la caméra
-			mainDisplay.style.display = 'none';
-			btn.textContent = '🎥 Allumer la caméra !';
-			mainImage.src = "";
-			DISPLAY_MODE = 'livefeed';
-			CAMERA_ACTIVE = false;
-			captureBtn.textContent = '📸 Capture Image';
-			captureBtn.onclick = captureImage;
-			fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
-		}
-	}
+    // État global: mode d'affichage (livefeed ou captured) et état caméra
+    var DISPLAY_MODE = 'livefeed'; // 'livefeed' | 'captured'
+    var CAMERA_ACTIVE = false; // Track si la caméra est démarrée
 
-	function toggleDownloadCaptured() {
-		console.log('toggleDownloadCaptured() appelee'); // pour debug
-		var btn = document.getElementById('toggleDownloadCapturedBtn');
-		var isActive = btn.getAttribute('aria-pressed') === 'true';
-		var nextActive = !isActive;
-		btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
-		btn.classList.toggle('on', nextActive);
-		btn.classList.toggle('off', !nextActive);
-		btn.textContent = nextActive ? ' 💾 On' : ' 💾 Off';
-	}
+    function toggleCamera() {
+        console.log('toggleCamera() appelee');
+        var mainDisplay = document.getElementById('mainImageDisplay');
+        var mainImage = document.getElementById('mainImage');
+        var btn = document.getElementById('cameraToggleBtn');
+        var captureBtn = document.getElementById('captureImageBtn');
+        // Stop camera should hide display regardless of whether showing livefeed or captured image
+        var isActive = CAMERA_ACTIVE && mainDisplay.style.display === 'block';
 
-	function captureImage() {
-		console.log('captureImage() appelee');
-		var downloadEnabled = document.getElementById('toggleDownloadCapturedBtn').getAttribute('aria-pressed') === 'true';
+        if (!isActive) {
+            // Démarrer la caméra
+            btn.textContent = '⛔ Stop Camera';
+            fetch('/start_camera', { method: 'POST' })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
+                    mainDisplay.style.display = 'block';
+                    mainImage.src = '/video?' + new Date().getTime();
+                    DISPLAY_MODE = 'livefeed';
+                    CAMERA_ACTIVE = true;
+                    captureBtn.textContent = '📸 Capture Image';
+                })
+                .catch(function(err) {
+                    logError('toggleCamera: /start_camera', err);
+                    btn.textContent = '▶️ Start Camera';
+                    CAMERA_ACTIVE = false;
+                });
+        } else {
+            // Arrêter la caméra
+            mainDisplay.style.display = 'none';
+            btn.textContent = '▶️ Start Camera';
+            mainImage.src = "";
+            DISPLAY_MODE = 'livefeed';
+            CAMERA_ACTIVE = false;
+            captureBtn.textContent = '📸 Capture Image';
+            fetch('/close_camera', { method: 'POST' }).catch(function(err) { logError('toggleCamera: /close_camera', err); });
+        }
+    }
 
-		fetch('/capture_image', { method: 'POST' })
-			.then(function(response) {
-				if (!response.ok) throw new Error('capture_image failed: ' + response.status + ' ' + response.statusText);
-				return response.json();
-			})
-			.then(function(data) {
-				var file_url = data.file_url;
-				var download_url = data.download_url;
-				var filename = data.filename;
-				var error = data.error;
-				if (error) {
-					logError('captureImage: server payload error', new Error(error), { filename: filename });
-					alert('Erreur lors de la capture image : ' + error);
-					return;
-				}
+    function onResolutionChange() {
+        var sel = document.getElementById('resolutionSelect');
+        var parts = sel.value.split('x');
+        var w = parseInt(parts[0], 10);
+        var h = parseInt(parts[1], 10);
+        console.log('onResolutionChange:', w, 'x', h);
 
-				// enregistrement de l'image sur le PC client si demandé
-				if (downloadEnabled) {
-					alert('Image capturee et enregistree sur le serveur : ' + download_url);
-					var link = document.createElement('a');
-					link.href = download_url;
-					link.download = filename;
-					document.body.appendChild(link);
-					link.click();
-					link.remove();
-				}
+        showToast('Changement de résolution: ' + w + '×' + h + '…', 'info', 2000);
 
-				// Basculer vers l'image capturée dans l'affichage principal
-				var mainImage = document.getElementById('mainImage');
-				var mainDisplay = document.getElementById('mainImageDisplay');
-				var captureBtn = document.getElementById('captureImageBtn');
+        fetch('/set_resolution', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ width: w, height: h })
+        })
+        .then(function(r) {
+            if (!r.ok) throw new Error('set_resolution failed: ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            showToast('Résolution appliquée: ' + data.resolution, 'success', 2000);
+            // Si la caméra tournait, le serveur l'a relancée.
+            // Rafraîchir le flux vidéo dans le navigateur.
+            if (CAMERA_ACTIVE && DISPLAY_MODE === 'livefeed') {
+                var mainImage = document.getElementById('mainImage');
+                mainImage.src = '/video?' + new Date().getTime();
+            }
+        })
+        .catch(function(err) {
+            logError('onResolutionChange', err);
+            showToast('Erreur résolution: ' + err.message, 'error');
+        });
+    }
 
-				mainImage.src = file_url;
-				mainDisplay.style.display = 'block';
-				DISPLAY_MODE = 'captured';
-				captureBtn.textContent = '↩️ Return to Livefeed';
-				captureBtn.onclick = returnToLivefeed;
+    function togglePassiveDetection() {
+        console.log('togglePassiveDetection() appelee'); // pour debug
+        var btn = document.getElementById('togglePassiveDetectionBtn');
+        var isActive = btn.getAttribute('aria-pressed') === 'true';
+        var nextActive = !isActive;
+        var endpoint = nextActive ? '/start_passive_detection' : '/stop_passive_detection';
 
-				// Mise à jour de la dernière image capturée (pour diagnostic)
-				imageCapturedCallback(file_url);
-			})
-			.catch(function(err) {
-				logError('captureImage: /capture_image', err);
-				alert('Erreur lors de la communication avec le serveur : ' + err);
-			});
-	}
+        fetch(endpoint, { method: 'POST' })
+            .then(function(response) {
+                if (!response.ok) throw new Error(endpoint + ' failed: ' + response.status);
+                btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+                btn.classList.toggle('on', nextActive);
+                btn.classList.toggle('off', !nextActive);
+                btn.textContent = nextActive ? 'Stop Passive Detection' : 'Start Passive Detection';
+                showToast(nextActive ? 'Détection passive démarrée' : 'Détection passive arrêtée', nextActive ? 'success' : 'info', 2000);
+            })
+            .catch(function(err) {
+                logError('togglePassiveDetection: ' + endpoint, err);
+                showToast('Erreur: ' + err.message, 'error');
+            });
+    }
 
-	function returnToLivefeed() {
-		console.log('returnToLivefeed() appelee');
-		var mainImage = document.getElementById('mainImage');
-		var mainDisplay = document.getElementById('mainImageDisplay');
-		var captureBtn = document.getElementById('captureImageBtn');
+    function toggleDownloadCaptured() {
+        console.log('toggleDownloadCaptured() appelee'); // pour debug
+        var btn = document.getElementById('toggleDownloadCapturedBtn');
+        var isActive = btn.getAttribute('aria-pressed') === 'true';
+        var nextActive = !isActive;
+        btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+        btn.classList.toggle('on', nextActive);
+        btn.classList.toggle('off', !nextActive);
+        btn.textContent = nextActive ? ' 💾 On' : ' 💾 Off';
+    }
 
-		if (CAMERA_ACTIVE) {
-			// Caméra déjà active, juste basculer vers le livestream
-			mainImage.src = '/video?' + new Date().getTime();
-			DISPLAY_MODE = 'livefeed';
-			captureBtn.textContent = '📸 Capture Image';
-			captureBtn.onclick = captureImage;
-		} else {
-			// Caméra pas active, la redémarrer
-			var btn = document.getElementById('cameraToggleBtn');
-			btn.textContent = '⏹️ Arrêter la caméra';
-			fetch('/start_camera', { method: 'POST' })
-				.then(function(response) {
-					if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
-					mainDisplay.style.display = 'block';
-					mainImage.src = '/video?' + new Date().getTime();
-					DISPLAY_MODE = 'livefeed';
-					CAMERA_ACTIVE = true;
-					captureBtn.textContent = '📸 Capture Image';
-					captureBtn.onclick = captureImage;
-				})
-				.catch(function(err) {
-					logError('returnToLivefeed: /start_camera', err);
-					btn.textContent = '▶️ Start Camera';
-					CAMERA_ACTIVE = false;
-					alert('Erreur: impossible de redémarrer la caméra. Utilisez le bouton Start Camera.');
-				});
-		}
-	}
+    function captureImage() {
+        console.log('captureImage() appelee');
+        var downloadEnabled = document.getElementById('toggleDownloadCapturedBtn').getAttribute('aria-pressed') === 'true';
 
-	function imageCapturedCallback(imageUrl) {
-		console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl);
+        fetch('/capture_image', { method: 'POST' })
+            .then(function(response) {
+                if (!response.ok) throw new Error('capture_image failed: ' + response.status + ' ' + response.statusText);
+                return response.json();
+            })
+            .then(function(data) {
+                var file_url = data.file_url;
+                var download_url = data.download_url;
+                var filename = data.filename;
+                var error = data.error;
+                if (error) {
+                    logError('captureImage: server payload error', new Error(error), { filename: filename });
+                    alert('Erreur lors de la capture image : ' + error);
+                    return;
+                }
 
-		// Mettre à jour l'affichage principal si on est en mode captured
-		if (DISPLAY_MODE === 'captured') {
-			var mainImage = document.getElementById('mainImage');
-			mainImage.src = imageUrl;
-		}
-	}
-	
-	// --- Détecteurs: chargement, sélection et exécution ---
-	var DETECTORS_MAP = {}; // index -> name
-	var SELECTED_DETECTOR_NAME = null;
+                // enregistrement de l'image sur le PC client si demandé
+                if (downloadEnabled) {
+                    var link = document.createElement('a');
+                    link.href = download_url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    showToast('Image sauvegardée: ' + filename, 'success', 2000);
+                }
 
-	function loadDetectors() {
-		fetch('/detectors')
-			.then(function(r) { if (!r.ok) throw new Error('detectors failed: ' + r.status + ' ' + r.statusText); return r.json(); })
-			.then(function(resp) {
-				var detectors = resp.detectors;
-				var selected = resp.selected;
-				var sel = document.getElementById('detectorSelect');
-				sel.innerHTML = '';
-				if (!detectors || detectors.length === 0) {
-					var opt = document.createElement('option');
-					opt.value = -1;
-					opt.textContent = 'Aucun détecteur disponible';
-					sel.appendChild(opt);
-					sel.disabled = true;
-					return;
-				}
-				for (var i = 0; i < detectors.length; i++) {
-					var d = detectors[i];
-					var opt2 = document.createElement('option');
-					opt2.value = d.index;
-					opt2.textContent = d.name + ' (#' + d.index + ')';
-					sel.appendChild(opt2);
-					DETECTORS_MAP[d.index] = d.name;
-					console.log('[DEBUG loadDetectors] Loaded detector:', d.index, d.name);
-				}
-				if (selected != null && selected >= 0) {
-					sel.value = String(selected);
-					SELECTED_DETECTOR_NAME = DETECTORS_MAP[selected] || null;
-					console.log('[DEBUG loadDetectors] Selected detector:', selected, SELECTED_DETECTOR_NAME);
-					updateStopUIPanelVisibility();
-				}
-			})
-			.catch(function(err) { logError('loadDetectors: /detectors', err); });
-	}
+                // Basculer vers l'image capturée dans l'affichage principal
+                var mainImage = document.getElementById('mainImage');
+                var mainDisplay = document.getElementById('mainImageDisplay');
+                var captureBtn = document.getElementById('captureImageBtn');
 
-	function onDetectorChange() {
-		var sel = document.getElementById('detectorSelect');
-		var idx = parseInt(sel.value, 10);
-		console.log('[DEBUG onDetectorChange] Selected index:', idx);
-		if (isNaN(idx) || idx < 0) return;
+                mainImage.src = file_url;
+                mainDisplay.style.display = 'block';
+                DISPLAY_MODE = 'captured';
+                CAMERA_ACTIVE = false; // La caméra a été stoppée par le serveur pour la capture hires
+                captureBtn.textContent = '↩️ Return to Livefeed';
 
-		// Reset diagnostic panel when changing detectors
-		var indicator = document.getElementById('stopDetectIndicator');
-		var terminal = document.getElementById('stopDetectTerminal');
-		if (indicator) {
-			indicator.classList.remove('on', 'off');
-			indicator.textContent = 'Aucune détection';
-		}
-		if (terminal) {
-			terminal.textContent = 'Terminal vide';
-		}
+                // Mise à jour de la dernière image capturée (pour diagnostic)
+                imageCapturedCallback(file_url);
+            })
+            .catch(function(err) {
+                logError('captureImage: /capture_image', err);
+                alert('Erreur lors de la communication avec le serveur : ' + err);
+            });
+    }
 
-		fetch('/detector', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ index: idx })
-		}).catch(function(err) { logError('onDetectorChange: /detector', err, { index: idx }); });
-		SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
-		console.log('[DEBUG onDetectorChange] SELECTED_DETECTOR_NAME set to:', SELECTED_DETECTOR_NAME);
-		updateStopUIPanelVisibility();
-	}
+    function returnToLivefeed() {
+        console.log('returnToLivefeed() appelee');
+        var mainImage = document.getElementById('mainImage');
+        var mainDisplay = document.getElementById('mainImageDisplay');
+        var captureBtn = document.getElementById('captureImageBtn');
 
-	function runDetection() {
-		var terminal = document.getElementById('stopDetectTerminal');
-		var indicator = document.getElementById('stopDetectIndicator');
-		clearTerminal();
-		fetch('/run_detection', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText); return r.json(); })
-			.then(function(res) {
-				if (res.logs && Array.isArray(res.logs)) {
-					appendTerminalLines(res.logs);
-				} else {
-					appendTerminalLines(JSON.stringify(res, null, 2));
-				}
+        if (CAMERA_ACTIVE) {
+            // Caméra déjà active, juste basculer vers le livestream
+            mainImage.src = '/video?' + new Date().getTime();
+            DISPLAY_MODE = 'livefeed';
+            captureBtn.textContent = '📸 Capture Image';
+        } else {
+            // Caméra pas active, la redémarrer
+            var btn = document.getElementById('cameraToggleBtn');
+            btn.textContent = '⛔ Stop Camera';
+            fetch('/start_camera', { method: 'POST' })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('start_camera failed: ' + response.status + ' ' + response.statusText);
+                    mainDisplay.style.display = 'block';
+                    mainImage.src = '/video?' + new Date().getTime();
+                    DISPLAY_MODE = 'livefeed';
+                    CAMERA_ACTIVE = true;
+                    captureBtn.textContent = '📸 Capture Image';
+                })
+                .catch(function(err) {
+                    logError('returnToLivefeed: /start_camera', err);
+                    btn.textContent = '▶️ Start Camera';
+                    CAMERA_ACTIVE = false;
+                    alert('Erreur: impossible de redémarrer la caméra. Utilisez le bouton Start Camera.');
+                });
+        }
+    }
 
-				if (res && res.annotated_url) {
-					imageCapturedCallback(res.annotated_url);
-				} else if (res && res.source_file_url) {
-					imageCapturedCallback(res.source_file_url);
-				}
+    function imageCapturedCallback(imageUrl) {
+        console.log("imageCapturedCallback mise a jour de l'image : " + imageUrl);
 
-				// Utiliser Object_detected au lieu de Stop_detected
-				if (res.Object_detected) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
-			})
-			.catch(function(err) {
-				logError('runDetection: /run_detection', err);
-				var terminal = document.getElementById('stopDetectTerminal');
-				terminal.style.display = 'block';
-				appendTerminalLines('Erreur: ' + err);
-			});
-	}
+        // Mettre à jour l'affichage principal si on est en mode captured
+        if (DISPLAY_MODE === 'captured') {
+            var mainImage = document.getElementById('mainImage');
+            mainImage.src = imageUrl;
+        }
+    }
+    
+    // --- Détecteurs: chargement, sélection et exécution ---
+    var DETECTORS_MAP = {}; // index -> name
+    var SELECTED_DETECTOR_NAME = null;
 
-	function updateStopUIPanelVisibility() {
-		var panel = document.getElementById('stopDetectPanel');
-		if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
-		// Afficher pour tout détecteur de stop (Zumi ou CV)
-		panel.style.display = (SELECTED_DETECTOR_NAME.indexOf('StopDetector') !== -1) ? 'block' : 'none';
-	}
+    function loadDetectors() {
+        fetch('/detectors')
+            .then(function(r) { if (!r.ok) throw new Error('detectors failed: ' + r.status + ' ' + r.statusText); return r.json(); })
+            .then(function(resp) {
+                var detectors = resp.detectors;
+                var selected = resp.selected;
+                var sel = document.getElementById('detectorSelect');
+                sel.innerHTML = '';
+                if (!detectors || detectors.length === 0) {
+                    var opt = document.createElement('option');
+                    opt.value = -1;
+                    opt.textContent = 'Aucun détecteur disponible';
+                    sel.appendChild(opt);
+                    sel.disabled = true;
+                    return;
+                }
+                for (var i = 0; i < detectors.length; i++) {
+                    var d = detectors[i];
+                    var opt2 = document.createElement('option');
+                    opt2.value = d.index;
+                    opt2.textContent = d.name + ' (#' + d.index + ')';
+                    sel.appendChild(opt2);
+                    DETECTORS_MAP[d.index] = d.name;
+                    console.log('[DEBUG loadDetectors] Loaded detector:', d.index, d.name);
+                }
+                if (selected != null && selected >= 0) {
+                    sel.value = String(selected);
+                    SELECTED_DETECTOR_NAME = DETECTORS_MAP[selected] || null;
+                    console.log('[DEBUG loadDetectors] Selected detector:', selected, SELECTED_DETECTOR_NAME);
+                    updateDiagnosticPanelVisibility();
+                }
+            })
+            .catch(function(err) { logError('loadDetectors: /detectors', err); });
+    }
 
-	function runStopDiagnostics() {
-		var indicator = document.getElementById('stopDetectIndicator');
-		var terminal = document.getElementById('stopDetectTerminal');
-		indicator.classList.remove('on', 'off');
-		indicator.textContent = 'Diagnostic en cours...';
-		appendTerminalLines('Execution du balayage des parametres...');
-		fetch('/diagnose_stop', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_stop failed: ' + r.status + ' ' + r.statusText); return r.json(); })
-			.then(function(payload) {
-				if (payload.logs && Array.isArray(payload.logs)) {
-					appendTerminalLines(payload.logs);
-				} else {
-					appendTerminalLines(JSON.stringify(payload, null, 2));
-				}
-				var best = payload.best || {};
-				var imgUrl = best.file_url || payload.source_file_url;
-				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				if (best.bbox) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
-			})
-			.catch(function(err) {
-				logError('runStopDiagnostics: /diagnose_stop', err);
-				indicator.classList.remove('on');
-				indicator.classList.add('off');
-				indicator.textContent = 'Erreur';
-			});
-	}
+    function onDetectorChange() {
+        var sel = document.getElementById('detectorSelect');
+        var idx = parseInt(sel.value, 10);
+        console.log('[DEBUG onDetectorChange] Selected index:', idx);
+        if (isNaN(idx) || idx < 0) return;
 
-	function runGenericDiagnostics() {
-		console.log('[DEBUG runGenericDiagnostics] Function called, fetching /diagnose_detector');
-		var indicator = document.getElementById('stopDetectIndicator');
-		var terminal = document.getElementById('stopDetectTerminal');
-		indicator.classList.remove('on', 'off');
-		indicator.textContent = 'Diagnostic en cours...';
-		appendTerminalLines('Exécution du diagnostic...');
-		fetch('/diagnose_detector', { method: 'POST' })
-			.then(function(r) { if (!r.ok) throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText); return r.json(); })
-			.then(function(payload) {
-				// logs
-				if (payload.logs && Array.isArray(payload.logs)) {
-					appendTerminalLines(payload.logs);
-				} else { appendTerminalLines(JSON.stringify(payload, null, 2)); }
-				// Stop detecté - utiliser Object_detected
-				if (payload.Object_detected) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
+        // Reset diagnostic panel when changing detectors
+        var indicator = document.getElementById('stopDetectIndicator');
+        var terminal = document.getElementById('stopDetectTerminal');
+        if (indicator) {
+            indicator.classList.remove('on', 'off');
+            indicator.textContent = 'Aucune détection';
+        }
+        if (terminal) {
+            terminal.textContent = 'Terminal vide';
+        }
 
-				// best bbox overlay - utiliser annotated_url
-				var imgUrl = (payload.steps && payload.steps.length) ? payload.steps[payload.steps.length - 1].url : payload.source_file_url;
-				if (imgUrl) { imageCapturedCallback(imgUrl); }
-				// enleve le draw de la bbox on le fait directement dans le backend sur une copie de l'image qu'on affiche ensuite
-				if (payload.detection_box) {
-					indicator.classList.add('on');
-					indicator.textContent = 'STOP detecte';
-				} else {
-					indicator.classList.add('off');
-					indicator.textContent = 'Aucune detection';
-				}
-				// open gallery in new tab
-				if (payload.steps && payload.steps.length) {
-					var w = window.open('', '_blank');
-					if (w) {
-						var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Diagnostic Gallery</title></head><body style="font-family:Arial; padding:12px;">';
-						html += '<h3>Etapes du diagnostic</h3>';
-						for (var i = 0; i < payload.steps.length; i++) {
-							var s = payload.steps[i];
-							html += '<div style="margin-bottom:12px;"><div><b>' + s.name + '</b></div><img style="max-width:100%;border:1px solid #ccc" src="' + s.url + '"></div>';
-						}
-						html += '</body></html>';
-						w.document.write(html);
-						w.document.close();
-					}
-				}
-			})
-			.catch(function(err) {
-				logError('runGenericDiagnostics: /diagnose_detector', err);
-				indicator.classList.remove('on');
-				indicator.classList.add('off');
-				indicator.textContent = 'Erreur';
-			});
-	}
+        fetch('/detector', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ index: idx })
+        }).catch(function(err) { logError('onDetectorChange: /detector', err, { index: idx }); });
+        SELECTED_DETECTOR_NAME = DETECTORS_MAP[idx] || null;
+        console.log('[DEBUG onDetectorChange] SELECTED_DETECTOR_NAME set to:', SELECTED_DETECTOR_NAME);
+        updateDiagnosticPanelVisibility();
+    }
 
-	function runDiagnostics() {
-		var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
-		console.log('[DEBUG runDiagnostics] SELECTED_DETECTOR_NAME:', detectorName);
+    function runDetection() {
+        var terminal = document.getElementById('stopDetectTerminal');
+        var indicator = document.getElementById('stopDetectIndicator');
+        clearTerminal();
+        fetch('/run_detection', { method: 'POST' })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(body) {
+                        var msg = (body && body.error) ? body.error : 'run_detection failed';
+                        if (msg.indexOf('capture') !== -1 || msg.indexOf('captured') !== -1) {
+                            showToast('\u26a0\ufe0f Veuillez capturer une image avant de lancer la detection.', 'warning');
+                        } else {
+                            showToast('Erreur: ' + msg, 'error');
+                        }
+                        throw new Error(msg);
+                    }).catch(function(parseErr) {
+                        if (parseErr.message && parseErr.message.indexOf('capture') !== -1) throw parseErr;
+                        showToast('Erreur serveur (' + r.status + ')', 'error');
+                        throw new Error('run_detection failed: ' + r.status + ' ' + r.statusText);
+                    });
+                }
+                return r.json();
+            })
+            .then(function(res) {
+                if (res.logs && Array.isArray(res.logs)) {
+                    appendTerminalLines(res.logs);
+                } else {
+                    appendTerminalLines(JSON.stringify(res, null, 2));
+                }
 
-		if (detectorName === 'StopDetectorZumi') {
-			// Détecteur Zumi spécifique avec balayage de paramètres
-			console.log('[DEBUG runDiagnostics] Matched "StopDetectorZumi", calling runStopDiagnostics');
-			runStopDiagnostics();
-		} else if (detectorName.indexOf('StopDetector') !== -1) {
-			// Tous les autres détecteurs de stop (CV, Matt, etc.) utilisent la route générique
-			console.log('[DEBUG runDiagnostics] Matched detector containing "StopDetector", calling runGenericDiagnostics');
-			runGenericDiagnostics();
-		} else {
-			console.log('[DEBUG runDiagnostics] No match, showing alert');
-			alert('Aucun diagnostique disponible pour le détecteur sélectionné : ' + detectorName);
-		}
-	}
+                if (res && res.annotated_url) {
+                    imageCapturedCallback(res.annotated_url);
+                } else if (res && res.source_file_url) {
+                    imageCapturedCallback(res.source_file_url);
+                }
 
-	// Charger la liste des détecteurs au chargement de la page et lier les événements
-	window.addEventListener('DOMContentLoaded', function() {
-		loadDetectors();
-		// Navigation buttons
-		var navBtns = document.querySelectorAll('.tab-nav .primary-btn');
-		Array.prototype.forEach.call(navBtns, function(btn) {
-			btn.addEventListener('click', function() {
-				var path = btn.getAttribute('data-path');
-				navigateTo(path);
-			});
-		});
-		// Camera toggle
-		var camBtn = document.getElementById('cameraToggleBtn');
-		if (camBtn) camBtn.addEventListener('click', toggleCamera);
-		// Capture image
-		var capBtn = document.getElementById('captureImageBtn');
-		if (capBtn) capBtn.addEventListener('click', captureImage);
-		// Toggle download
-		var dlBtn = document.getElementById('toggleDownloadCapturedBtn');
-		if (dlBtn) dlBtn.addEventListener('click', toggleDownloadCaptured);
-		// Run detection
-		var runDetBtn = document.getElementById('runDetectionBtn');
-		if (runDetBtn) runDetBtn.addEventListener('click', runDetection);
-		// Run diagnostics
-		var runDiagBtn = document.getElementById('runDiagnosticsBtn');
-		if (runDiagBtn) runDiagBtn.addEventListener('click', runDiagnostics);
-		// Detector select change
-		var sel = document.getElementById('detectorSelect');
-		if (sel) sel.addEventListener('change', onDetectorChange);
-	});
+                indicator.classList.remove('on', 'off');
+                if (res.Object_detected) {
+                    indicator.classList.add('on');
+                    indicator.textContent = 'Objet detecte';
+                } else {
+                    indicator.classList.add('off');
+                    indicator.textContent = 'Aucune detection';
+                }
+            })
+            .catch(function(err) {
+                logError('runDetection: /run_detection', err);
+                appendTerminalLines('Erreur: ' + err);
+            });
+    }
 
-	// --- Exposer les fonctions au scope global pour les onclick inline ---
-	window.navigateTo = navigateTo;
-	window.toggleCamera = toggleCamera;
-	window.toggleDownloadCaptured = toggleDownloadCaptured;
-	window.captureImage = captureImage;
-	window.returnToLivefeed = returnToLivefeed;
-	window.runDetection = runDetection;
-	window.runDiagnostics = runDiagnostics;
-	window.onDetectorChange = onDetectorChange;
-	</script>
-	</body></html>
-	"""
+    function updateDiagnosticPanelVisibility() {
+        var panel = document.getElementById('stopDetectPanel');
+        // Afficher le panneau diagnostic pour tout détecteur sélectionné
+        if (!SELECTED_DETECTOR_NAME) { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+    }
 
-	# Remplacer uniquement le titre sans interpréter les autres accolades
-	return html.replace("{title}", title)
+    function runDiagnostics() {
+        var detectorName = SELECTED_DETECTOR_NAME || 'Inconnu';
+        console.log('[DEBUG runDiagnostics] Lancement diagnostic pour:', detectorName);
+
+        var indicator = document.getElementById('stopDetectIndicator');
+        var terminal = document.getElementById('stopDetectTerminal');
+        indicator.classList.remove('on', 'off');
+        indicator.textContent = 'Diagnostic en cours...';
+        appendTerminalLines('Execution du diagnostic pour ' + detectorName + '...');
+
+        fetch('/diagnose_detector', { method: 'POST' })
+            .then(function(r) {
+                if (!r.ok) {
+                    return r.json().then(function(body) {
+                        var msg = (body && body.error) ? body.error : 'diagnose_detector failed';
+                        if (msg.indexOf('capture') !== -1 || msg.indexOf('captured') !== -1) {
+                            showToast('\u26a0\ufe0f Veuillez capturer une image avant de lancer le diagnostic.', 'warning');
+                        } else {
+                            showToast('Erreur: ' + msg, 'error');
+                        }
+                        throw new Error(msg);
+                    }).catch(function(parseErr) {
+                        if (parseErr.message && parseErr.message.indexOf('capture') !== -1) throw parseErr;
+                        showToast('Erreur serveur (' + r.status + ')', 'error');
+                        throw new Error('diagnose_detector failed: ' + r.status + ' ' + r.statusText);
+                    });
+                }
+                return r.json();
+            })
+            .then(function(payload) {
+                // Afficher les logs dans le terminal
+                if (payload.logs && Array.isArray(payload.logs)) {
+                    appendTerminalLines(payload.logs);
+                } else {
+                    appendTerminalLines(JSON.stringify(payload, null, 2));
+                }
+
+                // Mettre à jour l'indicateur de détection
+                indicator.classList.remove('on', 'off');
+                if (payload.Object_detected) {
+                    indicator.classList.add('on');
+                    indicator.textContent = 'Objet detecte';
+                } else {
+                    indicator.classList.add('off');
+                    indicator.textContent = 'Aucune detection';
+                }
+
+                // Afficher la dernière image annotée ou source
+                var imgUrl = payload.annotated_url
+                    || (payload.steps && payload.steps.length ? payload.steps[payload.steps.length - 1].url : null)
+                    || payload.source_file_url;
+                if (imgUrl) { imageCapturedCallback(imgUrl); }
+
+                // Ouvrir la galerie des étapes dans un nouvel onglet (si disponible)
+                if (payload.steps && payload.steps.length) {
+                    var w = window.open('', '_blank');
+                    if (w) {
+                        var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Diagnostic Gallery</title></head><body style="font-family:Arial; padding:12px;">';
+                        html += '<h3>Etapes du diagnostic - ' + detectorName + '</h3>';
+                        for (var i = 0; i < payload.steps.length; i++) {
+                            var s = payload.steps[i];
+                            html += '<div style="margin-bottom:12px;"><div><b>' + s.name + '</b></div><img style="max-width:100%;border:1px solid #ccc" src="' + s.url + '"></div>';
+                        }
+                        html += '</body></html>';
+                        w.document.write(html);
+                        w.document.close();
+                    }
+                }
+            })
+            .catch(function(err) {
+                logError('runDiagnostics: /diagnose_detector', err);
+                indicator.classList.remove('on');
+                indicator.classList.add('off');
+                indicator.textContent = 'Erreur';
+            });
+    }
+
+    // Charger la liste des détecteurs au chargement de la page et lier les événements
+    // --- Hard Positive Mining ---
+    var MINING_POLL_INTERVAL = null;
+
+    function toggleMining() {
+        var btn = document.getElementById('toggleMiningBtn');
+        var isActive = btn.getAttribute('aria-pressed') === 'true';
+        var nextActive = !isActive;
+
+        fetch('/toggle_mining', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enable: nextActive })
+        })
+        .then(function(r) { if (!r.ok) throw new Error('toggle_mining failed'); return r.json(); })
+        .then(function(stats) {
+            btn.setAttribute('aria-pressed', nextActive ? 'true' : 'false');
+            btn.classList.toggle('on', nextActive);
+            btn.classList.toggle('off', !nextActive);
+            btn.textContent = nextActive ? '⛏️ Mining On' : '⛏️ Mining Off';
+            showToast(nextActive ? 'Hard positive mining activé' : 'Mining désactivé', nextActive ? 'success' : 'info', 2000);
+
+            if (nextActive) {
+                startMiningPoll();
+            } else {
+                stopMiningPoll();
+                updateMiningBadge(stats);
+            }
+        })
+        .catch(function(err) {
+            logError('toggleMining', err);
+            showToast('Erreur mining: ' + err.message, 'error');
+        });
+    }
+
+    function startMiningPoll() {
+        if (MINING_POLL_INTERVAL) return;
+        pollMiningStats();
+        MINING_POLL_INTERVAL = setInterval(pollMiningStats, 3000);
+    }
+
+    function stopMiningPoll() {
+        if (MINING_POLL_INTERVAL) {
+            clearInterval(MINING_POLL_INTERVAL);
+            MINING_POLL_INTERVAL = null;
+        }
+    }
+
+    function pollMiningStats() {
+        fetch('/mining_stats')
+            .then(function(r) { if (!r.ok) throw new Error('stats failed'); return r.json(); })
+            .then(function(stats) { updateMiningBadge(stats); })
+            .catch(function() {});
+    }
+
+    function updateMiningBadge(stats) {
+        var badge = document.getElementById('miningBadge');
+        var dlBtn = document.getElementById('downloadMiningBtn');
+        var total = stats.total || 0;
+
+        if (total > 0) {
+            // Construire un résumé par objet
+            var parts = [];
+            var perObj = stats.per_object || {};
+            for (var key in perObj) {
+                if (perObj.hasOwnProperty(key)) {
+                    parts.push(key + ': ' + perObj[key]);
+                }
+            }
+            badge.textContent = total + ' crops (' + parts.join(', ') + ')';
+            badge.style.display = 'inline';
+            dlBtn.style.display = 'inline';
+        } else {
+            badge.style.display = 'none';
+            dlBtn.style.display = 'none';
+        }
+    }
+
+    function downloadMiningCrops() {
+        showToast('Préparation du ZIP …', 'info', 2000);
+        // Déclencher le téléchargement via un lien caché
+        var link = document.createElement('a');
+        link.href = '/download_mining_crops';
+        link.download = '';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        // Rafraîchir les stats après un court délai (le serveur supprime les crops)
+        setTimeout(function() { pollMiningStats(); }, 2000);
+    }
+
+    window.addEventListener('DOMContentLoaded', function() {
+        loadDetectors();
+        // Camera toggle
+        var camBtn = document.getElementById('cameraToggleBtn');
+        if (camBtn) camBtn.addEventListener('click', toggleCamera);
+        // Capture image — dispatche selon le mode d'affichage courant
+        var capBtn = document.getElementById('captureImageBtn');
+        if (capBtn) capBtn.addEventListener('click', function() {
+            if (DISPLAY_MODE === 'captured') {
+                returnToLivefeed();
+            } else {
+                captureImage();
+            }
+        });
+        // Toggle download
+        var dlBtn = document.getElementById('toggleDownloadCapturedBtn');
+        if (dlBtn) dlBtn.addEventListener('click', toggleDownloadCaptured);
+        // Resolution dropdown
+        var resSelect = document.getElementById('resolutionSelect');
+        if (resSelect) resSelect.addEventListener('change', onResolutionChange);
+        // Toggle passive detection
+        var pdBtn = document.getElementById('togglePassiveDetectionBtn');
+        if (pdBtn) pdBtn.addEventListener('click', togglePassiveDetection);
+        // Run detection
+        var runDetBtn = document.getElementById('runDetectionBtn');
+        if (runDetBtn) runDetBtn.addEventListener('click', runDetection);
+        // Run diagnostics
+        var runDiagBtn = document.getElementById('runDiagnosticsBtn');
+        if (runDiagBtn) runDiagBtn.addEventListener('click', runDiagnostics);
+        // Detector select change
+        var sel = document.getElementById('detectorSelect');
+        if (sel) sel.addEventListener('change', onDetectorChange);
+        // Mining controls
+        var minBtn = document.getElementById('toggleMiningBtn');
+        if (minBtn) minBtn.addEventListener('click', toggleMining);
+        var minDlBtn = document.getElementById('downloadMiningBtn');
+        if (minDlBtn) minDlBtn.addEventListener('click', downloadMiningCrops);
+    });
+
+    // --- Exposer les fonctions au scope global pour les onclick inline ---
+    window.navigateTo = navigateTo;
+    window.toggleCamera = toggleCamera;
+    window.toggleDownloadCaptured = toggleDownloadCaptured;
+    window.onResolutionChange = onResolutionChange;
+    window.togglePassiveDetection = togglePassiveDetection;
+    window.captureImage = captureImage;
+    window.returnToLivefeed = returnToLivefeed;
+    window.runDetection = runDetection;
+    window.runDiagnostics = runDiagnostics;
+    window.onDetectorChange = onDetectorChange;
+    window.toggleMining = toggleMining;
+    window.downloadMiningCrops = downloadMiningCrops;
+    </script>
+    </body></html>
+    """
+
+    # Remplacer uniquement le titre sans interpréter les autres accolades
+    return html.replace("{title}", title)

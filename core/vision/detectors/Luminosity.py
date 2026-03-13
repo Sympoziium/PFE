@@ -11,6 +11,7 @@ import numpy as np
 class LuminosityDetector(BaseDetector):
     def __init__(self):
         self.name = "LuminosityDetector"
+        self.debug = True  # Mode debug activé pour diagnostiquer le problème
 
     def process(self, frame):
         """
@@ -45,6 +46,10 @@ class LuminosityDetector(BaseDetector):
 
         return frame
     
-    def atach_capture_dir(self, capture_dir):
+    def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
+
+    def process_passive(self, frame):
+        """Détection de luminosité optimisée pour le live feed."""
+        return self.process(frame)

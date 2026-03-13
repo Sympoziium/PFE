@@ -7,7 +7,12 @@
 import cv2
 import numpy as np
 import os, uuid
-from flask import url_for
+import time
+
+try:
+    from flask import url_for
+except ImportError:          # url_for n'est utilisé que par le diagnostic
+    url_for = None
 
 from .detector_base import BaseDetector
 
@@ -38,12 +43,13 @@ class StopDetectorCV(BaseDetector):
         self.w_min = int(w_min)
         self.fill_ratio_min = float(fill_ratio_min)  # ratio aire/boîte englobante minimale
         self.name = "StopDetectorCV"
+        self.debug = False  # Flag de debug pour les fonctions d'annotation et de diagnostic
         self.CAPTURE_DIR = None
         self.DIAGNOSTIC_DIR = None
         self.steps = []  # pour stocker les étapes de diagnostique
         self.logs = []   # pour stocker les logs de diagnostique
 
-    def atach_capture_dir(self, capture_dir):
+    def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
@@ -52,62 +58,51 @@ class StopDetectorCV(BaseDetector):
 
         Returns:
             dict: {
-                "Object_detected": bool,
-                "detection_box": (x, y, w, h) or None,
-                "confidence": float or None,
-                "area": int or None,
-                "logs": list,
-                "source_file_url": str or None,
-                "annotated_url": str or None
+                'Object_detected': bool,
+                'detections': [{object, detection_box, confidence?}, ...],
+                'logs': list
             }
         """
 
-
-        # Réinitialiser et valider l'entrée
         self.steps = []
         self.logs = []
-        if not filename:
-            return {'error': 'no captured image available. Please capture an image first.'}
 
-        img_path = os.path.join(self.CAPTURE_DIR, filename)
-        if not os.path.exists(img_path):
-            return {'error': 'last captured image not found on server'}
-
-        # Crée le dossier de diagnostics s'il n'existe pas (on y stoque les images intermédiaires)
-        self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
-        os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
-
-        try:
-            # Charger l'image capturée en BGR
+        # Déterminer l'image source
+        if filename and self.CAPTURE_DIR:
+            img_path = os.path.join(self.CAPTURE_DIR, filename)
+            if not os.path.exists(img_path):
+                return {'error': 'last captured image not found on server'}
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
+        else:
+            if frame is None:
+                return {'error': 'no frame provided'}
+            frame_bgr = frame
 
+        try:
             self.logs.append('=== DETECTION STOP DETECTOR CV ===')
             self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
             self.logs.append('Config: min_area={}, aspect_tol={}, poly=[{}-{}]'.format(
                 self.min_area, self.aspect_tol, self.poly_min, self.poly_max))
             self.logs.append('HSV: H=[0-10]+[160-180], S=[70-255], V=[50-255]')
 
-            # Étape 2: Conversion en HSV et séparation des canaux
+            # Conversion en HSV et séparation des canaux
             hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             mask = self._make_HSV_mask(hsv)
-            mask = self._fill_holes(mask) # remplir les trous laisser par le texte du panneau
+            mask = self._fill_holes(mask)
 
-            # Étape 3: Opérations morphologiques pour nettoyage et reconstruction de l'image
+            # Opérations morphologiques
             mask_morpho = self._make_morphological_mask(mask)
 
-            # Étape 4: Détection des contours sur le masque final
+            # Détection des contours
             Image_traitée = mask_morpho.copy()
             contours = self._detect_contours(Image_traitée)
 
-            # Étape 5: Analyse des contours et détection finale
+            # Analyse des contours et détection finale
             results = self._analyse_detections(contours, frame_bgr)
 
-            # Étape 6: Formatage de la réponse JSON avec format standardisé
-            source_url = url_for('static', filename='captured_images/{}'.format(filename))
-
-            # Ajouter le résultat aux logs
+            # Journaliser le résultat
             if results.get('detected'):
                 bbox = results.get('detection_box')
                 if bbox:
@@ -121,21 +116,56 @@ class StopDetectorCV(BaseDetector):
 
             self.logs.append('=== FIN DETECTION ===')
 
-            # Format standardisé avec clés cohérentes
-            payload = {
-                'Object_detected': bool(results.get('detected')),
-                'detection_box': results.get('detection_box'),
-                'confidence': 1.0 if results.get('detected') else 0.0,  # CV detector a pas de score, on met 1.0/0.0
-                'area': results.get('area'),
-                'logs': self.logs,
-                'source_file_url': source_url,
-                'annotated_url': self.steps[-1]['url'] if self.steps else None,
-            }
+            # Construire la liste de détections standardisée
+            detections = []
+            if results.get('detected') and results.get('detection_box'):
+                detections.append({
+                    'object': 'Stop Sign',
+                    'detection_box': results['detection_box'],
+                    'confidence': 1.0,
+                })
 
-            return payload
+            return {
+                'Object_detected': len(detections) > 0,
+                'detections': detections,
+                'logs': self.logs,
+            }
 
         except Exception as e:
             return {'error': 'process failed', 'details': str(e)}
+
+    def process_passive(self, frame_bgr):
+        """Détection passive optimisée pour le live feed.
+
+        Retourne le format standardisé (sans overlay ni logs).
+        """
+        if frame_bgr is None:
+            return {'Object_detected': False, 'detections': [], 'timestamp': time.time()}
+
+        try:
+            hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+            mask = self._make_HSV_mask(hsv)
+            mask = self._fill_holes(mask)
+            mask_morpho = self._make_morphological_mask(mask)
+            Image_traitée = mask_morpho.copy()
+            contours = self._detect_contours(Image_traitée, passive_mode=True)
+            results = self._analyse_detections(contours, frame_bgr, passive_mode=True)
+
+            detections = []
+            if results.get('detected') and results.get('detection_box'):
+                detections.append({
+                    'object': 'Stop Sign',
+                    'detection_box': results['detection_box']
+                })
+
+            return {
+                'Object_detected': len(detections) > 0,
+                'detections': detections,
+                'timestamp': time.time()
+            }
+
+        except Exception as e:
+            return {'Object_detected': False, 'detections': [], 'timestamp': time.time()}
 
     
     # Diagnostic CV du stop: export des étapes intermédiaires (HSV, masques, morpho, contours)
@@ -332,7 +362,7 @@ class StopDetectorCV(BaseDetector):
 
         return mask_close
     
-    def _detect_contours(self, mask):
+    def _detect_contours(self, mask, passive_mode=False):
         """
         Docstring for _detect_contours
         
@@ -347,32 +377,33 @@ class StopDetectorCV(BaseDetector):
         else:
             contours, hierarchy = [], None
 
-        if hierarchy is None or (hasattr(hierarchy, '__len__') and len(hierarchy) == 0):
-            print("No contours found. Hierarchy is empty. voir classe StopDetectorCV méthode _detect_contours") # pour debug retirer plus tard
-            self.logs.append('No contours detected.')
-            return []
+        if not passive_mode:
+            if hierarchy is None or (hasattr(hierarchy, '__len__') and len(hierarchy) == 0):
+                self.logs.append('No contours detected.')
+                return []
+            else:
+                self.logs.append('Contours found: {}'.format(len(contours)))
         else:
-            self.logs.append('Contours found: {}'.format(len(contours)))
-     
+            if hierarchy is None or (hasattr(hierarchy, '__len__') and len(hierarchy) == 0):
+                return []
         return contours
 
-    def _analyse_detections(self, contours, frame_bgr):
+    def _analyse_detections(self, contours, frame_bgr, passive_mode=False):
         """
-        Docstring for _analyse_detections
-        
-        :param contours: Description
-        :param frame_bgr: Description
+        Analyse les contours et retourne un résumé de détection.
+        Ne dessine plus sur l'image — l'annotation est centralisée.
+
+        :param contours:     Liste de contours OpenCV.
+        :param frame_bgr:    Image BGR (utilisée seulement pour les dimensions).
+        :param passive_mode: Si True, saute les logs détaillés.
+        :return: dict {'detected': bool, 'detection_box': tuple|None, 'area': int}
         """
-        overlay = frame_bgr.copy()
-        detection_box = None
         best_area = 0
         best_gess_idx = -1
-        # Résumé final
         summary = {'detected': False, 'detection_box': None, 'area': 0}
 
         for idx, c in enumerate(contours):
-            # --- Calcul des caractéristiques du contour ---
-            area = cv2.contourArea(c)                                           # Aire du contour
+            area = cv2.contourArea(c)
             if area < 1:
                 continue
 
@@ -385,20 +416,18 @@ class StopDetectorCV(BaseDetector):
             fill_ratio = float(area) / rect_area if rect_area > 0 else 0.0      # Ratio de remplissage de la boîte
             convex = cv2.isContourConvex(approx)                                # Convexité du contour
 
-            self.logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
+            if not passive_mode:
+                self.logs.append('C{}: area={} vtx={} ratio={:.2f} fill={:.2f} convex={}'.format(idx, int(area), vtx, ratio, fill_ratio, bool(convex)))
 
-            # Dessin du contour détecté
-            cv2.drawContours(overlay, [approx], -1, (255, 0, 0), 2)
-
-            # Vérifications avec messages de rejet explicites
-            # Si l'aire est inférieure au minimum, on ignore
             if area < self.min_area:
-                self.logs.append('  → Rejeté: aire trop petite ({} < {})'.format(int(area), self.min_area))
+                if not passive_mode:
+                    self.logs.append('  → Rejeté: aire trop petite ({} < {})'.format(int(area), self.min_area))
                 continue
 
             # Si le nombre de sommets n'est pas dans l'intervalle, on ignore
             if vtx < self.poly_min or vtx > self.poly_max:
-                self.logs.append('  → Rejeté: nb sommets hors intervalle ({} pas dans [{}, {}])'.format(vtx, self.poly_min, self.poly_max))
+                if not passive_mode:
+                    self.logs.append('  → Rejeté: nombre de sommets non conforme ({} not in [{}-{}])'.format(vtx, self.poly_min, self.poly_max))
                 continue
 
             # Si le contour n'est pas suffisamment convexe, on ignore
@@ -406,49 +435,48 @@ class StopDetectorCV(BaseDetector):
             hull_area = cv2.contourArea(hull)
             solidity = area / hull_area if hull_area > 0 else 0
             if solidity < 0.85:
-                self.logs.append('  → Rejeté: solidité trop faible ({:.2f} < 0.85)'.format(solidity))
+                if not passive_mode:
+                    self.logs.append('  → Rejeté: solidité trop faible ({:.2f} < 0.85)'.format(solidity))
                 continue
 
             # Si la boite englobante est trop petite
             if h < self.h_min or w < self.w_min:
-                self.logs.append('  → Rejeté: dimensions trop petites (w={} h={}, min={})'.format(w, h, min(self.w_min, self.h_min)))
+                if not passive_mode:
+                    self.logs.append('  → Rejeté: boîte englobante trop petite (w={}, h={} < {})'.format(w, h, self.h_min))
                 continue
 
             # Si le ratio largeur/hauteur n'est pas proche de 1 (pas assez carré)
             if abs(ratio - 1.0) > float(self.aspect_tol):
-                self.logs.append('  → Rejeté: ratio W/H trop éloigné de 1.0 ({:.2f}, tolérance={})'.format(ratio, self.aspect_tol))
+                if not passive_mode:
+                    self.logs.append('  → Rejeté: ratio largeur/hauteur non conforme ({:.2f} not in [{:.2f}-{:.2f}])'.format(
+                        ratio, 1.0 - self.aspect_tol, 1.0 + self.aspect_tol))
                 continue
 
             # Si le ratio de remplissage est trop faible
             if fill_ratio < self.fill_ratio_min:
-                self.logs.append('  → Rejeté: ratio de remplissage trop faible ({:.2f} < {})'.format(fill_ratio, self.fill_ratio_min))
+                if not passive_mode:
+                    self.logs.append('  → Rejeté: ratio de remplissage trop faible ({:.2f} < {})'.format(fill_ratio, self.fill_ratio_min))
                 continue
 
             # Si c'est le plus grand jusqu'à présent, on le garde comme détection
-            self.logs.append('  ✓ Accepté comme candidat (aire={})'.format(int(area)))
+            if not passive_mode:
+                self.logs.append('  ✓ Accepté comme candidat (aire={})'.format(int(area)))
             if area > best_area:
                 best_area = area
                 best_gess_idx = idx
-                
-        
+
         if best_gess_idx != -1:
             c = contours[best_gess_idx]
             # Recalculer l'approximation et la bounding box du meilleur contour
             peri_best = cv2.arcLength(c, True)
             approx_best = cv2.approxPolyDP(c, 0.02 * peri_best, True)
             x, y, w, h = cv2.boundingRect(approx_best)
-            detection_box = (x, y, w, h)
-            # Dessiner le rectangle vert autour de la meilleure detection
-            cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            # Journaliser la detection
-            self.logs.append('Stop détecté : Position=({}, {}); Largeur={}; hauteur={};'.format(x, y, w, h))
-            # Mettre à jour le résumé
+            if not passive_mode:
+                self.logs.append('Stop détecté : Position=({}, {}); Largeur={}; hauteur={};'.format(x, y, w, h))
             summary = {
                 'detected': True,
-                'detection_box': detection_box,
+                'detection_box': (x, y, w, h),
                 'area': int(best_area)
             }
-
-        self._save_step(overlay, 'contours_overlay', mode='bgr')
 
         return summary

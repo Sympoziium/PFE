@@ -11,6 +11,7 @@ from zumi.util.camera import Camera
 from .camera_base import CameraBase
 import numpy as np
 import cv2
+import threading
 
 
 class ZumiCamera(CameraBase):
@@ -19,13 +20,28 @@ class ZumiCamera(CameraBase):
 
     La bibliothèque Zumi retourne des images en format RGB, mais OpenCV
     s'attend à du BGR. Cette classe effectue la conversion automatiquement.
+    
+    La résolution par défaut (160×128) est utilisée pour le flux vidéo en
+    direct (Pi Zero V1). Utiliser change_camera_resolution() pour changer de résolution.
     """
 
-    def __init__(self):
-        """Initialise le wrapper de la caméra Zumi."""
+    # Résolution par défaut pour le flux vidéo (Pi Zero V1)
+    DEFAULT_W = 160
+    DEFAULT_H = 128
+
+    def __init__(self, image_w=None, image_h=None):
+        """
+        Initialise le wrapper de la caméra Zumi.
+        
+        :param image_w: Largeur par défaut (None = défaut Zumi 160px)
+        :param image_h: Hauteur par défaut (None = défaut Zumi 128px)
+        """
+        self._default_w = image_w or self.DEFAULT_W
+        self._default_h = image_h or self.DEFAULT_H
         try:
-            self.camera = Camera()
-            print("[ZumiCamera] Initialized - will convert RGB to BGR for OpenCV compatibility")
+            self.camera = Camera(image_w=self._default_w, image_h=self._default_h)
+            print("[ZumiCamera] Initialized ({}x{}) - RGB to BGR conversion active".format(
+                self._default_w, self._default_h))
         except Exception as e:
             print("Erreur lors de l'initialisation de ZumiCamera: {}".format(e))
             raise e
@@ -40,10 +56,14 @@ class ZumiCamera(CameraBase):
             raise e
 
     def close(self):
-        """Ferme la caméra Zumi."""
+        """Ferme la caméra Zumi (tolérant aux erreurs de generator)."""
         try:
             self.camera.close()
             print("[ZumiCamera] Camera closed")
+        except ValueError as e:
+            # "generator already executing" — le flux vidéo était en cours de capture.
+            # La caméra sera libérée quand le générateur se terminera.
+            print("[ZumiCamera] Camera close (generator busy, will release): {}".format(e))
         except Exception as e:
             print("Erreur lors de la fermeture de ZumiCamera: {}".format(e))
             raise e
@@ -77,4 +97,22 @@ class ZumiCamera(CameraBase):
 
         except Exception as e:
             print("Erreur lors de la capture d'une image avec ZumiCamera: {}".format(e))
+            raise e
+
+    def reconfigure(self, width: int, height: int):
+        """
+        Reconfigure ZumiCamera à la résolution demandée.
+        Ferme l'ancienne instance Camera et en crée une nouvelle.
+        """
+        self._default_w = width
+        self._default_h = height
+        try:
+            self.camera.close()
+        except Exception as e:
+            print("[ZumiCamera] Avertissement fermeture avant reconfiguration: {}".format(e))
+        try:
+            self.camera = Camera(image_w=self._default_w, image_h=self._default_h)
+            print("[ZumiCamera] Reconfigurée: {}x{}".format(self._default_w, self._default_h))
+        except Exception as e:
+            print("Erreur lors de la reconfiguration de ZumiCamera: {}".format(e))
             raise e

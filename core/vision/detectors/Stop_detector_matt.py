@@ -9,7 +9,12 @@ import cv2
 import numpy as np
 import os
 import uuid
-from flask import url_for
+import time
+
+try:
+    from flask import url_for
+except ImportError:
+    url_for = None
 
 from .detector_base import BaseDetector
 
@@ -58,13 +63,14 @@ class StopDetectorMatt(BaseDetector):
         self.name = "StopDetectorMatt"
         self.CAPTURE_DIR = None
         self.DIAGNOSTIC_DIR = None
+        self.debug = False  # Flag de debug pour les fonctions d'annotation et de diagnostic
         self.steps = []  # pour stocker les étapes de diagnostic
         self.logs = []   # pour stocker les logs de diagnostic
 
         # Log des paramètres utilisés
         self._log_config()
 
-    def atach_capture_dir(self, capture_dir):
+    def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
 
@@ -77,42 +83,58 @@ class StopDetectorMatt(BaseDetector):
             self.h_high_min, self.h_high_max, self.s_min, self.s_max, self.v_min, self.v_max))
         print('  Detection: min_area={}, min_score={}'.format(self.min_area, self.min_score))
 
-    def process(self, frame, filename=None):
+    def process_passive(self, frame):
+        """Détection passive optimisée pour le live feed.
+
+        Retourne le format standardisé (sans logs ni disk I/O).
         """
-        Analyse une image BGR et retourne un dict de résultat standardisé.
+        if frame is None:
+            return {'Object_detected': False, 'detections': [], 'timestamp': time.time()}
+
+        try:
+            raw_dets = self._detect_stop_signs(frame, diagnostic_mode=False)
+            detections = []
+            for (x, y, w, h, conf) in raw_dets:
+                detections.append({
+                    'object': 'Stop Sign',
+                    'detection_box': (x, y, w, h)
+                })
+            return {
+                'Object_detected': len(detections) > 0,
+                'detections': detections,
+                'timestamp': time.time()
+            }
+        except Exception:
+            return {'Object_detected': False, 'detections': [], 'timestamp': time.time()}
+
+    def process(self, frame, filename=None):
+        """Analyse une image BGR et retourne un dict de résultat standardisé.
 
         Returns:
             dict: {
-                "Object_detected": bool,
-                "detection_box": tuple or None,
-                "confidence": float or None,
-                "area": int or None,
-                "logs": list,
-                "source_file_url": str,
-                "annotated_url": str or None
+                'Object_detected': bool,
+                'detections': [{object, detection_box, confidence?}, ...],
+                'logs': list
             }
         """
         # Réinitialiser
         self.steps = []
         self.logs = []
 
-        if not filename:
-            return {'error': 'no captured image available. Please capture an image first.'}
-
-        img_path = os.path.join(self.CAPTURE_DIR, filename)
-        if not os.path.exists(img_path):
-            return {'error': 'last captured image not found on server'}
-
-        # Créer le dossier de diagnostics
-        self.DIAGNOSTIC_DIR = os.path.join(self.CAPTURE_DIR, 'diagnostics')
-        os.makedirs(self.DIAGNOSTIC_DIR, exist_ok=True)
-
-        try:
-            # Charger l'image en BGR
+        # Déterminer l'image source
+        if filename and self.CAPTURE_DIR:
+            img_path = os.path.join(self.CAPTURE_DIR, filename)
+            if not os.path.exists(img_path):
+                return {'error': 'last captured image not found on server'}
             frame_bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
             if frame_bgr is None:
                 return {'error': 'failed to read captured image'}
+        else:
+            if frame is None:
+                return {'error': 'no frame provided'}
+            frame_bgr = frame
 
+        try:
             self.logs.append('=== DETECTION STOP DETECTOR MATT ===')
             self.logs.append('Image: {}x{}'.format(frame_bgr.shape[1], frame_bgr.shape[0]))
             self.logs.append('Config: min_area={}, min_score={}'.format(self.min_area, self.min_score))
@@ -121,58 +143,31 @@ class StopDetectorMatt(BaseDetector):
                 self.s_min, self.s_max, self.v_min, self.v_max))
 
             # Détection
-            detections = self._detect_stop_signs(frame_bgr, diagnostic_mode=False)
+            raw_dets = self._detect_stop_signs(frame_bgr, diagnostic_mode=False)
 
-            # Créer l'overlay avec les détections
-            overlay = frame_bgr.copy()
-            best_detection = None
-
-            for (x, y, w, h, conf) in detections:
-                # Dessiner les détections
-                cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                cv2.putText(overlay, "STOP {:.0%}".format(conf), (x, y - 8),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-                # Garder la meilleure détection
-                if best_detection is None:
-                    best_detection = (x, y, w, h, conf)
-
-            # Sauvegarder l'overlay
-            self._save_step(overlay, 'final_detections', mode='bgr')
-
-            # Formater la réponse avec format standardisé
-            source_url = url_for('static', filename='captured_images/{}'.format(filename))
-
-            if best_detection:
-                x, y, w, h, conf = best_detection
-                area = w * h  # Approximation de l'aire
+            # Construire la liste de détections standardisée
+            detections = []
+            for (x, y, w, h, conf) in raw_dets:
                 self.logs.append('Résultat: STOP DÉTECTÉ')
                 self.logs.append('  Position: x={}, y={}'.format(x, y))
                 self.logs.append('  Taille: w={}, h={}'.format(w, h))
                 self.logs.append('  Confiance: {:.1%}'.format(conf))
-                payload = {
-                    'source_file_url': source_url,
-                    'annotated_url': self.steps[-1]['url'] if self.steps else None,
-                    'Object_detected': True,
+                detections.append({
+                    'object': 'Stop Sign',
                     'detection_box': (x, y, w, h),
                     'confidence': float(conf),
-                    'area': area,
-                    'logs': self.logs
-                }
-            else:
+                })
+
+            if not detections:
                 self.logs.append('Résultat: Aucun panneau stop détecté')
-                payload = {
-                    'source_file_url': source_url,
-                    'annotated_url': self.steps[-1]['url'] if self.steps else None,
-                    'Object_detected': False,
-                    'detection_box': None,
-                    'confidence': 0.0,
-                    'area': 0,
-                    'logs': self.logs
-                }
 
             self.logs.append('=== FIN DETECTION ===')
-            return payload
+
+            return {
+                'Object_detected': len(detections) > 0,
+                'detections': detections,
+                'logs': self.logs,
+            }
 
         except Exception as e:
             return {'error': 'process failed', 'details': str(e)}

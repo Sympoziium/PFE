@@ -106,6 +106,23 @@ class RobotZumi(RobotBase):
         except Exception as e:
             print("Erreur self.zumi.brake_lights_on(): {}".format(e))
 
+    def turn(self, angle: float):
+        """
+        Fait tourner le Zumi d'un angle donné.
+        Angle positif = rotation à gauche, angle négatif = rotation à droite.
+        
+        Args:
+            angle (float): Angle de rotation en degrés
+        """
+        try:
+            if angle > 0:
+                self.zumi.turn_left(abs(angle))
+            elif angle < 0:
+                self.zumi.turn_right(abs(angle))
+            # Si angle == 0, ne fait rien
+        except Exception as e:
+            print("Erreur lors de la rotation de {} degrés: {}".format(angle, e))
+
 # ---------------------------------------------------------------------------------
 #                             Contrôle de l'écran
 # ---------------------------------------------------------------------------------
