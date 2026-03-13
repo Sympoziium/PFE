@@ -449,63 +449,68 @@ class controller:
         vp = self.vision_pipeline
         if not vp or not vp.is_running(): return "Camera OFF", 503
         def generate():
-            frames = 0
+            frame_counter  = 0
             previous_distance = None
-            STICKY_SECONDS = 0.5        # Durée pendant laquelle la dernière détection positive reste affichée
-            last_positive_time = 0.0    # time.time() du dernier résultat positif
-            last_positive_result = None # dernier résultat positif reçu
+            
             while vp.is_running():
                 try:
-                    # Capture directe depuis la caméra
-                    # (get_last_frame ne fonctionne que si un contrôleur
-                    #  peuple le buffer via vp.step(); ici on capture nous-mêmes)
                     frame_bgr = vp.camera.capture()
                     if frame_bgr is None:
                         time.sleep(0.1)
                         continue
-                    # Mettre à jour le buffer pour les captures instantanées
-                    # NOTE: on stocke la frame BRUTE (sans annotations) pour que
-                    # le thread de détection passive travaille sur une image propre.
                     vp.update_last_frame(frame_bgr)
                 except Exception:
                     time.sleep(0.1)
                     continue
+
+                # --- Déclencher la détection passive selon detection_rate ---
+                if vp._passive_running:
+                    frame_counter += 1
+                    if frame_counter % vp._detection_rate == 0:
+                        vp._detection_trigger.set()  # signal au thread de détection
 
                 # --- Overlay détection passive sur la frame d'affichage ---
                 display_frame = frame_bgr
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
                     now = time.time()
-                    active_result = None
-                    if result and result.get('Object_detected'):
-                        active_result = result
-                   
-                    if active_result:
-                        if frames % 3 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
-                            # Dessine sur une copie pour ne pas polluer le buffer brut
-                            display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
-                            frames = 0  # reset du compteur après annotation
-                        else:
-                            # Dessin des contours détecté sans recalculer la distance pour économiser du CPU
-                            display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
 
-                elif self.control_manager and self.control_manager.mode != MODE_IDLE:
+                    # vérifier que la détection est récente (ex: dans les 2-5 dernières Frames)
+                    max_age = (vp._detection_rate / self.livefeed_fps) * 2
+                    result_age = now - result.get('timestamp', 0) if result else float('inf')
+
+                    # On annote seulement si la détection est récente pour éviter d'afficher des résultats obsolètes
+                    if result and result.get('Object_detected') and result_age <= max_age:
+                        # Calcul de distance seulement toutes les 3 frames pour économiser le CPU
+                        if frame_counter % 3 == 0:
+                            display_frame, previous_distance = self._draw_passive_overlay(
+                                frame_bgr.copy(), result,
+                                approximate_distance=True,
+                                previous_distance=previous_distance,
+                                debug=self.debug
+                            )
+                        else:
+                            display_frame, _ = self._draw_passive_overlay(
+                                frame_bgr.copy(), result,
+                                approximate_distance=False,
+                                previous_distance=previous_distance,
+                                debug=self.debug
+                            )
+
+                if self.control_manager and self.control_manager.mode != MODE_IDLE:
                     # Mode actif (PID / state machine) — annoter avec les données du dernier cycle
                     for det in vp.detectors:
                         if getattr(det, 'name', '') == 'line' and getattr(det, '_last_annotation_data', None) is not None:
                             display_frame = det.annotate_detection(frame_bgr.copy())
                             break
                 
-
                 # Encodage direct en JPEG depuis BGR
                 ret, jpeg = cv2.imencode('.jpg', display_frame)
                 if not ret:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
                 
-                sleep_time = 1.0 / self.livefeed_fps
-                time.sleep(sleep_time)
-                frames += 1 # mise à jour du compteur de frames pour l'annotation de détection passive
+                time.sleep(1.0 / self.livefeed_fps)
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
@@ -718,7 +723,7 @@ class controller:
             detection_rate = int(detection_rate)
             if detection_rate < 1 or detection_rate > 60:
                 return jsonify({'error': 'detection_rate doit être supérieur a 0 (ex: 1 = une détection par image du livefeed)'}), 400
-            vp.set_passive_detection_FPS(detection_rate, self.livefeed_fps)
+            vp.set_passive_detection_FPS(detection_rate)
             return jsonify({'ok': True, 'detection_rate': detection_rate})
         except (ValueError, TypeError):
             return jsonify({'error': 'detection_rate doit être un entier valide'}), 400

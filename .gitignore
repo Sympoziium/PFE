@@ -1,15 +1,18 @@
 __pycache__/
 *.pdf
 *.jpg
-TODO.md
-zumi_prepare.sh
+*.md
 *.png
 *.bmp
 *.tiff
 *.jpeg
 *.txt
+*.log
 *.vec
-stage_*.xml
+LBP_*.xml
+stage*.xml
+cascade.xml
+params.xml
 oli readme.md
 .vscode/
 .DS_Store

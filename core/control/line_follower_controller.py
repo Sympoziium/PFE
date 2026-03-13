@@ -13,6 +13,14 @@ Stratégie de commutation automatique basée sur l'offset courant :
 
 Aucun flag externe n'est nécessaire. La logique de mode est entièrement
 encapsulée ici et décidée dynamiquement à chaque step().
+
+REMARQUE:
+la détection de ligne par vision fonctionne bien mais on a un bottleneck
+que a une certaine distance/orientation la ligne n'est plus visible.
+il faudrais intégrer la lecture des capteurs IR du bas pour faire le suivit primaire
+et utiliser la vision comme système d'entisipation, il permettrait de corriger 
+les dérives du suivi IR et de recadrer la ligne en cas de virage serré ou de décalage important.
+
 """
 
 from core.control.controller_base import ControllerBase

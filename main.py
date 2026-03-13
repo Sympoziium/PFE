@@ -91,7 +91,6 @@ def bootstrap():
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
-    # vision_pipeline.set_passive_detection_interval(0.1)  # Détection passive toutes les 0.1s
     # vision_pipeline.add_passive_detectors(line_detector)
     draw_progress_bar(zumi.screen, 70)
     
