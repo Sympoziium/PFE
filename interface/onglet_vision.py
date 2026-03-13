@@ -14,213 +14,176 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
 	<meta name='viewport' content='width=device-width, initial-scale=1'>
 	<title>{title}</title>
 	<link rel='icon' href='data:,'>
-	<style>
+		<style>
 		body {
-		margin: 0; padding: 0;
-		width: 100vw; min-height: 100vh;
-		font-family: 'Segoe UI', Arial, sans-serif;
-		background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
-		color: #333; display: flex; flex-direction: column;
-		overflow: auto;
-	}
+			margin: 0; padding: 0;
+			width: 100vw; min-height: 100vh;
+			font-family: 'Segoe UI', Arial, sans-serif;
+			background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
+			color: #333; display: flex; flex-direction: column;
+			overflow-y: auto;
+		}
 
-	.container {
-		display: flex; justify-content: center; align-items: flex-start;
-		padding: 2vh; min-height: 96vh;
-	}
+		.container {
+			display: flex; justify-content: center; align-items: flex-start;
+			padding: 2vh; min-height: 96vh;
+		}
 
-	.tab-shell {
-		background: rgba(247, 253, 255, 0.95);
-		border-radius: 20px;
-		padding: 2%;
-		box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-		width: 92%; max-width: 1150px;
-		min-height: fit-content;
-		margin-bottom: 4vh;
-		display: flex; flex-direction: column;
-	}
+		.tab-shell {
+			background: rgba(247, 253, 255, 0.95);
+			border-radius: 20px; padding: 20px;
+			box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+			width: 92%; max-width: 1100px;
+			min-height: fit-content; margin-bottom: 4vh;
+			display: flex; flex-direction: column;
+		}
 
-	.tab-header {
-		display: flex; align-items: center;
-		margin-bottom: 2vh;
-		padding-bottom: 1vh;
-		border-bottom: 2px solid #e0f4ff;
-	}
+		.tab-header {
+			display: flex; 
+			align-items: center; /* Aligne titre et boutons sur la même ligne */
+			margin-bottom: 2vh;
+			padding-bottom: 1vh;
+			border-bottom: 2px solid #e0f4ff;
+		}
 
-	/* Correction des onglets : ils ne sont plus étirés */
-	.tab-nav {
-		display: flex; align-items: center;
-		gap: 8px;
-		margin-left: auto; /* Pousse les onglets à droite */
-	}
+		.tab-title {
+			font-size: 1.8rem; 
+			font-weight: bold; 
+			color: #5A99C7; 
+			margin: 0;
+		}
 
-	.tab-content {
-		border: 3px dashed #B5FFFC;
-		border-radius: 15px;
-		padding: 2%;
-		margin-bottom: 2vh;
-		background: #FFFDF0; 
-		display: flex;
-		flex-direction: row; /* Aligne boutons à gauche et viewer à droite */
-		align-items: flex-start;
-		gap: 30px;
-	}
+		.tab-nav { 
+			display: flex; 
+			align-items: center;
+			gap: 8px;
+			margin-left: auto;
+		}
 
-	/* --- Alignement et Largeur des boutons --- */
-	.button-column {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		width: 280px; /* Largeur fixe pour tous les boutons de commande */
-	}
+		/* --- Sections Pointillées --- */
+		.tab-content, .detection-row {
+			border: 3px dashed #B5FFFC; border-radius: 15px;
+			padding: 15px; margin-bottom: 2vh;
+			background: #FFFDF0; display: flex;
+			gap: 20px; align-items: flex-start;
+		}
 
-	.primary-btn, .toggle-btn, .remoteDL-toggle-btn, .detector-btn {
-		width: 100%; /* Prend toute la largeur de la colonne (280px) */
-		padding: 12px;
-		border-radius: 12px;
-		border: none;
-		cursor: pointer;
-		font-weight: bold;
-		font-size: 0.95rem;
-		transition: transform 0.1s, background 0.2s;
-		text-align: center;
-	}
+		/* --- LA COLONNE MAGIQUE (Fixe la largeur) --- */
+		.button-column {
+			display: flex; flex-direction: column;
+			gap: 10px; width: 220px; /* Largeur fixe pour les boutons */
+			flex-shrink: 0; /* Empêche de rétrécir */
+		}
 
-	.primary-btn { background: #87C7F1; color: white; box-shadow: 0 4px 0 #6BAED6; }
-	.toggle-btn { background: #FFB7D5; color: white; box-shadow: 0 4px 0 #E896B9; }
-	.detector-btn { background: #55efc4; color: #2d3436; box-shadow: 0 4px 0 #00b894; }
+		/* --- Titres resserrés --- */
+		.tab-subtitle { 
+			font-size: 1.1rem; font-weight: bold; color: #555; 
+			margin: 0 0 5px 0; width: 100%; text-align: left;
+		}
 
-	.primary-btn:active, .toggle-btn:active, .detector-btn:active {
-		transform: translateY(3px);
-		box-shadow: 0 1px 0 rgba(0,0,0,0.1);
-	}
+		/* 1. La base pour TOUS les boutons */
+		.primary-btn, .toggle-btn, .remoteDL-toggle-btn, .detector-btn {
+			width: 100%; padding: 10px; border-radius: 10px;
+			border: none; cursor: pointer; font-weight: bold;
+			font-size: 0.9rem; transition: transform 0.1s;
+			text-align: center;
+		}
 
-	.remoteDL-toggle-btn.on { background: #81ecec; box-shadow: 0 4px 0 #00cec9; color: #333; }
-	.remoteDL-toggle-btn.off { background: #fab1a0; box-shadow: 0 4px 0 #e17055; color: white; }
+		/* 2. Les couleurs spécifiques par défaut */
+		.primary-btn { background: #87C7F1; color: white; box-shadow: 0 4px 0 #6BAED6; }
+		.toggle-btn { background: #FFB7D5; color: white; box-shadow: 0 4px 0 #E896B9; }
+		.detector-btn { background: #55efc4; color: #2d3436; box-shadow: 0 4px 0 #00b894; }
 
-	/* --- Viewer d'image --- */
-	.image-viewer {
-		display: none;
-		background: white;
-		border-radius: 25px;
-		padding: 15px;
-		flex-grow: 1; /* Prend l'espace restant à droite */
-		max-width: 600px;
-		box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-		text-align: center;
-		border: 1px solid #eee;
-	}
+		/* 3. Les interactions (Survol et Clic) */
+		.primary-btn:hover { background: #76B9E4; transform: translateY(-2px); }
 
-	.image-viewer img {
-		max-width: 100%;
-		border-radius: 15px;
-		border: 5px solid #00BFFF;
-	}
+		.primary-btn:active, .toggle-btn:active, .detector-btn:active { 
+			transform: translateY(2px); 
+			box-shadow: none; 
+		}
 
-	/* --- Section Détection (Bas) --- */
-	.detection-row {
-		display: flex;
-		width: 100%;
-		gap: 20px;
-		align-items: flex-start;
-		justify-content: flex-start; /* Aligne à GAUCHE */
-	}
+		/* 4. L'ÉTAT ACTIF (Prioritaire) */
+		.primary-btn.active {
+			background: #5A99C7;
+			box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+			transform: none;
+		}
 
-	.tab-btn-group {
-		width: 280px; /* Même largeur que la colonne du haut pour l'alignement */
-		background: white;
-		padding: 15px;
-		border-radius: 20px;
-		border: 2px solid #B5FFFC;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
+		/* 5. Les cas particuliers de téléchargement */
+		.remoteDL-toggle-btn.on { background: #81ecec; box-shadow: 0 4px 0 #00cec9; color: #333; }
+		.remoteDL-toggle-btn.off { background: #fab1a0; box-shadow: 0 4px 0 #e17055; color: white; }
 
-	.select-detector {
-		padding: 10px;
-		border-radius: 10px;
-		border: 2px solid #87C7F1;
-		font-weight: bold;
-	}
+		/* --- Viewer et Terminal --- */
+		.image-viewer {
+			background: white; border-radius: 20px; padding: 10px;
+			flex-grow: 1; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+			text-align: center; border: 1px solid #eee; display: none;
+		}
 
-	.stop-detect-panel {
-		flex-grow: 1;
-		background: white;
-		border-radius: 20px;
-		border: 2px solid #55efc4;
-		padding: 15px;
-		display: none;
-	}
+		.image-viewer img { max-width: 100%; border-radius: 10px; border: 4px solid #00BFFF; }
 
-	.log-terminal {
-		background: #2d3436; color: #55efc4;
-		border-radius: 10px; padding: 10px;
-		height: 120px; overflow-y: auto; font-family: monospace;
-	}
+		.tab-btn-group {
+			width: 220px; background: white; padding: 12px;
+			border-radius: 15px; border: 2px solid #B5FFFC;
+			display: flex; flex-direction: column; gap: 8px;
+		}
 
-	.tab-title { font-size: 1.8rem; font-weight: bold; color: #5A99C7; }
-	.tab-subtitle { font-size: 1.2rem; font-weight: bold; color: #666; margin-bottom: 10px;}
+		.log-terminal {
+			background: #2d3436; color: #55efc4; border-radius: 10px;
+			padding: 10px; flex-grow: 1; height: 120px; overflow-y: auto;
+			font-family: monospace; font-size: 0.8rem;
+		}
 	</style>
 	</head>
 	<body>
-	<div class='container'>
-		<div class='tab-shell'>
-			<div class='tab-header'>
-				<h2 class='tab-title'>{title}</h2>
-				<!-- Boutons de navigation entre onglets -->
-				<div class='tab-nav'>
-					<button class='primary-btn' data-path="/">Accueil</button>
-					<button class='primary-btn' data-path="/vision">Vision</button>
-					<button class='primary-btn' data-path="/onglet_template">Template</button>
-				</div>
-			</div>
+    <div class='container'>
+        <div class='tab-shell'>
+            <div class='tab-header'>
+                <h2 class='tab-title'>{title}</h2>
+                <div class='tab-nav'>
+                    <button class='primary-btn' data-path="/">Accueil</button>
+                    <button class='primary-btn' data-path="/vision">Vision</button>
+                    <button class='primary-btn' data-path="/onglet_template">Template</button>
+                </div>
+            </div>
 
-		<div class='tab-content'>
-			<div class='tab-header'>
-				<h3 class='tab-subtitle'>Capture image</h3>
-			</div>
-			
-			<!-- Les boutons sont maintenant superposés et alignés à gauche -->
-			<div class="button-row">
-				<button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
-				<button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
-				<button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn'>💾 Off</button>
-			</div>
+            <!-- SECTION CAPTURE -->
+            <div class='tab-content'>
+                <div class="button-column">
+                    <h3 class='tab-subtitle'>Capture image</h3>
+                    <button class='toggle-btn' id='cameraToggleBtn'>🎥 Allumer la caméra !</button>
+                    <button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
+                    <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn'>💾 Off</button>
+                </div>
+                <div class='image-viewer' id='mainImageDisplay'>
+                    <img id='mainImage' alt='Vue du robot'>
+                </div>
+            </div>
 
-			<!-- Le cadre blanc "Viewer" apparaîtra sous les boutons -->
-			<div class='image-viewer' id='mainImageDisplay'>
-				<img id='mainImage' alt='Vue du robot'>
-			</div>
-		</div>
-
-			<div class='tab-content'>
-				<div class='tab-header'>
+            <!-- SECTION DÉTECTION -->
+            <div class='detection-row' style="display: flex; gap: 20px; align-items: flex-start;">
+				<!-- Colonne GAUCHE : Toujours visible -->
+				<div class="button-column">
 					<h3 class='tab-subtitle'>Image Detection</h3>
-				</div>
-				<!-- AJOUT DES FONCTIONS DE DÉTECTION -->
-				<div class='tab-row'>
 					<div class='tab-btn-group'>
-						<label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
-						<select id='detectorSelect' class='select-detector'>
-							<!-- options remplies dynamiquement -->
-						</select>
+						<label for='detectorSelect' class='tab-text' style="font-size:0.85rem;">Choix du détecteur</label>
+						<select id='detectorSelect' class='select-detector'></select>
 						<button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
 						<button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
 					</div>
-					<!-- Stop detection diagnostic panel -->
-					<div class='stop-detect-panel' id='stopDetectPanel'>
-						<div class='tab-subtitle'>Diagnostic Stop</div>
-						<div class='indicator-and-terminal'>
-							<div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
-							<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
-						</div>
+				</div>
+
+				<!-- Colonne DROITE : Cachée par défaut, apparaît avec le détecteur -->
+				<div id='stopDetectPanel' style="display: none; flex-direction: column; flex-grow: 1; gap: 10px;">
+					<h3 class='tab-subtitle'>Diagnostic Stop</h3>
+					<div style="background: white; border-radius: 20px; border: 2px solid #55efc4; padding: 15px; display: flex; flex-direction: column; gap: 10px;">
+						<div id='stopDetectIndicator' class='detect-indicator' style="padding:12px; border-radius:12px; text-align:center; font-weight:bold; color:white; background:#bdc3c7; width: 100%; box-sizing: border-box;">Aucune détection</div>
+						<div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
 					</div>
-					<!-- ajouter la dernière image capturée -->
 				</div>
 			</div>
-		</div>
-	</div>
+        </div>
+    </div>
 
 	<!-- --- Scripts JavaScript pour les interactions --- -->
 
