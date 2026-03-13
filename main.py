@@ -96,8 +96,8 @@ def bootstrap():
     
     # Étape 5 : Créer les contrôleurs
     print("[BOOT] Initialisation des contrôleurs...")
-    from core.control.line_following_pid import PIDController
-    from core.control.line_following_state_machine import LineFollowingStateMachine, State
+    from core.control.legacy.line_following_pid import PIDController
+    from core.control.legacy.line_following_state_machine import LineFollowingStateMachine, State
     from core.control.control_manager import ControlManager
     pid_controller = PIDController(
         kp=0.2, 

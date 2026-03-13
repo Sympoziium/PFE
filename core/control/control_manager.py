@@ -435,7 +435,7 @@ class ControlManager:
 
     def _create_step_machine(self):
         """Crée la StepByStepStateMachine à la demande."""
-        from core.control.line_following_state_machine import StepByStepStateMachine
+        from core.control.legacy.line_following_state_machine import StepByStepStateMachine
 
         self._step_machine = StepByStepStateMachine(
             robot=self.robot,
