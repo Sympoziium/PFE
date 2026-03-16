@@ -302,8 +302,8 @@ class ControlManager:
     def _init_new_arch_drivers(self):
         """Initialise (une seule fois) SensorDriver et MotorDriver."""
         if self._sensor_driver is None:
-            from core.control.sensor_driver import SensorDriver
-            from core.control.motor_driver import MotorDriver
+            from core.control.IO_drivers.sensor_driver import SensorDriver
+            from core.control.IO_drivers.motor_driver import MotorDriver
             self._sensor_driver = SensorDriver(self.vision_pipeline, self.robot)
             self._motor_driver = MotorDriver(self.robot)
 

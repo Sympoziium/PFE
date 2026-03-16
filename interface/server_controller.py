@@ -20,7 +20,7 @@ from interface.onglet_template import render_template_tab  # Exemple d'onglet te
 from core.control.legacy.line_following_pid import PIDController
 from core.control.legacy.line_following_state_machine import StepByStepStateMachine
 from core.control.control_manager import ControlManager, MODE_IDLE, MODE_PID, MODE_STATE_MACHINE, MODE_STEP_BY_STEP, MODE_CONTROLLER
-from core.control.sensor_driver import SensorDriver # test du nouveau driver de capteurs
+from core.control.IO_drivers.sensor_driver import SensorDriver # test du nouveau driver de capteurs
 
 # --- Fonction helper pour formater les résultats de détection ---
 def format_detection_result(results, detector_name="Détecteur"):

@@ -15,7 +15,7 @@ Fonctions Zumi SDK utilisées :
     - Gestion des LEDs (clignotants, freins, phares)
 """
 
-from core.control.motor_command import MotorCommand, CommandType
+from core.control.IO_drivers.motor_command import MotorCommand, CommandType
 
 
 class MotorDriver:

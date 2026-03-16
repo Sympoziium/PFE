@@ -19,10 +19,10 @@ Architecture :
 
 from core.control.control_manager import ControlManager
 from core.control.controller_base import ControllerBase
-from core.control.sensor_state import SensorState
-from core.control.motor_command import MotorCommand, CommandType
-from core.control.sensor_driver import SensorDriver
-from core.control.motor_driver import MotorDriver
+from core.control.IO_drivers.sensor_state import SensorState
+from core.control.IO_drivers.motor_command import MotorCommand, CommandType
+from core.control.IO_drivers.sensor_driver import SensorDriver
+from core.control.IO_drivers.motor_driver import MotorDriver
 from core.control.legacy.pid_line_follower import PIDLineFollowerController
 from core.control.line_follower_controller import LineFollowerController
 
