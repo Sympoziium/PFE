@@ -15,7 +15,7 @@ Fonctions Zumi SDK utilisées :
 """
 
 import time
-from core.control.sensor_state import SensorState
+from core.control.IO_drivers.sensor_state import SensorState
 
 
 class SensorDriver:
@@ -40,7 +40,7 @@ class SensorDriver:
                 return i
         return None
 
-    def read(self):
+    def read(self, Line_detection = True):
         """Lit tous les capteurs et retourne un SensorState.
 
         Returns:
@@ -57,8 +57,8 @@ class SensorDriver:
         if self.vision_pipeline is not None:
             frame = self.vision_pipeline.get_last_frame()
 
-            # Détection de ligne
-            if frame is not None and self._line_detector_index is not None:
+            # Détection de ligne (il faudrais trouver une méthode pour empècher de le faire pour l'inférence ML si on veut libérer du overhead à la lecture des capteurs)
+            if Line_detection and frame is not None and self._line_detector_index is not None:
                 try:
                     result = self.vision_pipeline.process_frame(
                         frame.copy(), self._line_detector_index

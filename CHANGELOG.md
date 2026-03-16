@@ -5,6 +5,34 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publié] — Refactor complet du control manager (2026-03-16)
+
+### Objectif
+Refonte architecturale intégrale du module de contrôle (`core/control/`) pour adopter le patron de conception **Strategy**. Le but est de rendre l'orchestrateur (`ControlManager`) complètement agnostique (aveugle) aux détails d'implémentation des algorithmes de contrôle (PID, State Machine, ML), permettant un système 100% "Plug & Play". 
+
+![Architecture de Contrôle V2](control_module_architecture_v2.svg)
+
+### Modifications apportées
+- **Standardisation des Entrées/Sorties (DTO)** :
+  - Création de `SensorState` : DTO encapsulant de manière uniforme toutes les lectures des capteurs du robot à l' instant T (IR, IMU, offset ligne, batterie, détections).
+  - Création de `MotorCommand` : DTO décrivant les intentions de mouvement (`CommandType` : SPEED, TURN, STOP, FORWARD_STEP) pour abstraire l'interface matérielle.
+- **Couche Drivers IO (`core/control/IO_drivers/`)** :
+  - `SensorDriver` : Lit l'état du SDK robotique et de la vision pour construire et retourner un objet `SensorState` propre.
+  - `MotorDriver` : Interprète les objets `MotorCommand` et les traduit en commandes hardware spécifiques de notre Zumi.
+- **Contrat d'interface (Pattern Strategy)** :
+  - Création de `ControllerBase` : Classe de base abstraite (ABC) dictant le format d'un contrôleur. Tout nouveau contrôleur implémente obligatoirement `step(sensor_state) -> MotorCommand`.
+- **Refonte de l'orchestrateur (`ControlManager`)** :
+  - Disparition complète des constantes de mode hardcodés (`MODE_PID`, etc.) et des fonctions `_tick_pid`.
+  - Intégration d'un registre dynamique sous forme de dictionnaire (`_controllers`) alimenté via `register_controller(name, controller)`. 
+  - La boucle principale de contrôle est désormais universelle : `1. Lecture capteurs -> 2. Inférence du contrôleur actif -> 3. Exécution de la commande moteur`.
+- **Nouveaux Contrôleurs (`core/control/controlers/`)** :
+  - Adaptation de la logique existante en un `LineFollowerController` unifié et compatible avec la nouvelle baseline.
+  - Création à blanc d'un `MLController`, conçu comme prochain jalon utilisant un Multi-Layer Perceptron (MLP) en inférence via TFLite.
+- **Adaptateur Vision** :
+  - Création de `VisionAdapter` (`core/vision/vision_adapter.py`) responsable de prendre un `SensorState` en entrée et de la vectoriser mathématiquement (Bounding Boxes, encodage one-hot des classes, normalisation MPU/IR). Ce qui retire cette lourde logique anciennement codée en dur dans les objets DTO.
+- **Assainissement du module de contrôle** :
+  - Déplacement des anciens outils ou algorithmes obsolètes/déclinés dans un sous-dossier de maintien `legacy/`.
+
 
 ## [Non publié] — Rework complet du LineDetector et intégration VisionPipeline (2026-03-05)
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # sensor_state.py
 # ------------------
@@ -12,7 +12,7 @@ Cela découple complètement les contrôleurs de la source des données
 import time
 import numpy as np
 from typing import Optional, List
-from core.vision.vision_adapter import VisionAdapter
+
 
 
 class SensorState:

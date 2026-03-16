@@ -24,6 +24,9 @@ Ce projet s'inscrit dans la continuité d'un PFE multi-session dont l'objectif e
 
 ## 2. Architecture logicielle
 
+![Architecture du module de contrôle v2](control_module_architecture_v2.svg)
+*Aperçu du module de contrôle (v2) réécrit en utilisant le pattern Strategy pour garantir isolation et flexibilité.*
+
 ```
 PFE/
 ├── main.py                          # Point d'entrée principal (robot)
@@ -45,16 +48,20 @@ PFE/
 │   │
 │   ├── control/
 │   │   ├── __init__.py
-│   │   ├── controller_base.py       # Interface abstraite du contrôleur
-│   │   ├── control_manager.py       # Orchestrateur des modes de contrôle
-│   │   ├── line_follower_controller.py
-│   │   ├── line_following_pid.py
-│   │   ├── line_following_state_machine.py
-│   │   ├── motor_command.py
-│   │   ├── motor_driver.py
-│   │   ├── pid_line_follower.py
-│   │   ├── sensor_driver.py
-│   │   └── sensor_state.py
+│   │   ├── control_manager.py       # Orchestrateur (dynamique) des contrôleurs
+│   │   ├── controller_base.py       # Interface abstraite (pattern strategy)
+│   │   ├── controlers/              # Implémentations concrètes
+│   │   │   ├── line_follower_controller.py
+│   │   │   └── ml_controller.py     # Contrôleur prédictif par réseau de neurones 
+│   │   ├── IO_drivers/              # Couche traductrice robotique/framework avec DTOs
+│   │   │   ├── motor_command.py
+│   │   │   ├── motor_driver.py
+│   │   │   ├── sensor_driver.py
+│   │   │   └── sensor_state.py
+│   │   └── legacy/                  # Anciennes implémentations et algorithmes retirés
+│   │       ├── line_following_pid.py
+│   │       ├── line_following_state_machine.py
+│   │       └── pid_line_follower.py
 │   │
 │   ├── hardware/
 │   │   ├── boot.py                  # Handshake Pi ↔ ATmega (patch compatibilité V2)
@@ -68,6 +75,7 @@ PFE/
 │   │   └── Archive/                 # Code legacy conservé pour référence
 │   │
 │   └── vision/
+│       ├── vision_adapter.py        # Vecteurisateur numérique mathématique (Inférences ML)
 │       ├── vision_pipeline.py       # Orchestrateur : capture → détection → résultats
 │       └── detectors/
 │           ├── detector_base.py     # Classe de base pour tous les détecteurs

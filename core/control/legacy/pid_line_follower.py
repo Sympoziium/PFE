@@ -13,7 +13,7 @@ C'est l'exemple de référence de l'architecture standardisée :
 """
 
 from core.control.controller_base import ControllerBase
-from core.control.motor_command import MotorCommand
+from core.control.IO_drivers.motor_command import MotorCommand
 
 
 class PIDLineFollowerController(ControllerBase):

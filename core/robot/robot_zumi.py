@@ -243,7 +243,7 @@ class RobotZumi(RobotBase):
         """
         try:
             # Reset des états de conduite
-            self._reset_drive_state()
+            self.reset_drive_state()
 
             # Calibration des sensors
             self.zumi.calibrate_gyro()
@@ -253,7 +253,7 @@ class RobotZumi(RobotBase):
         except Exception as e:
             print("Erreur lors du calibrage des capteurs: {}".format(e))
 
-    def _reset_drive_state(self):
+    def reset_drive_state(self):
         """
         Réinitialise les PIDs et le Gyro du Zumi
         """
