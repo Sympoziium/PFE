@@ -12,7 +12,7 @@ C'est l'exemple de référence de l'architecture standardisée :
     SensorState → PIDLineFollowerController → MotorCommand
 """
 
-from core.control.controller_base import ControllerBase
+from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 
 

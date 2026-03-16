@@ -7,7 +7,7 @@ import os
 import signal
 import threading
 import time
-from core.robot.robot_zumi import RobotZumi
+from core.robot.robot_zumi import RobotZumi # nécessaire pour le bootstrap
 
 # ═════════════════════════════════════════════════════════════════════
 #  Fonctions de bootstrap avec affichage de progression
@@ -134,12 +134,10 @@ def bootstrap():
     # Étape 7 : Attacher le ControlManager
     print("[BOOT] Initialisation du ControlManager...")
     control_manager = ControlManager(robot=zumi, vision_pipeline=vision_pipeline)
-    control_manager.register_pid(pid_controller)
-    control_manager.register_state_machine(state_machine)
 
     from core.control.controlers.line_follower_controller import LineFollowerController
     line_follower_ctrl = LineFollowerController()
-    control_manager.register_controller(line_follower_ctrl)
+    control_manager.register_controller(line_follower_ctrl.name, line_follower_ctrl)
     
     ctrl.attach_control_manager(control_manager)
     ctrl.state_machine = state_machine

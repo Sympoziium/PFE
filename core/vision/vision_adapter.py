@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# vision_pipeline.py
+# vision_adapter.py
 # ------------------
 """
 ce module sert a convertir les résultats de détection de la vision en vecteur

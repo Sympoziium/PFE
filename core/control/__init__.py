@@ -18,7 +18,7 @@ Architecture :
 """
 
 from core.control.control_manager import ControlManager
-from core.control.controller_base import ControllerBase
+from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.sensor_state import SensorState
 from core.control.IO_drivers.motor_command import MotorCommand, CommandType
 from core.control.IO_drivers.sensor_driver import SensorDriver

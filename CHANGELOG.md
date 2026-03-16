@@ -32,6 +32,16 @@ Refonte architecturale intégrale du module de contrôle (`core/control/`) pour 
   - Création de `VisionAdapter` (`core/vision/vision_adapter.py`) responsable de prendre un `SensorState` en entrée et de la vectoriser mathématiquement (Bounding Boxes, encodage one-hot des classes, normalisation MPU/IR). Ce qui retire cette lourde logique anciennement codée en dur dans les objets DTO.
 - **Assainissement du module de contrôle** :
   - Déplacement des anciens outils ou algorithmes obsolètes/déclinés dans un sous-dossier de maintien `legacy/`.
+- **Sampling MLP (dataset)** :
+  - Export ZIP en `captures.jsonl` + `labels.jsonl` (entrees vectorisees + labels moteurs par ligne).
+  - Vectorisation alignee sur `VisionAdapter` avec classes inferees depuis les detecteurs.
+  - Labels derives de la derniere commande moteur (SPEED/FORWARD_STEP, STOP/TURN -> zeros).
+- **Controle modulaire via ControlManager** :
+  - Routes controleur mises a jour (start/stop/status) avec selection par nom de controleur.
+  - Override manuel: la croix directionnelle force le basculement sur `manual_controller`.
+- **UI onglet controle** :
+  - Ajout d'un selecteur de controleur + bouton toggle.
+  - Ajout d'un bouton de telechargement des echantillons.
 
 
 ## [Non publié] — Rework complet du LineDetector et intégration VisionPipeline (2026-03-05)

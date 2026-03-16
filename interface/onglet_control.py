@@ -239,7 +239,15 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 <div class='left-panel'>
                     <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>🎥 Allume la caméra !</button>
                     <button class='toggle-btn' id='samplingToggleBtn'>Échantillonnage</button>
-                    <button class='primary-btn' id='controllerToggleBtn' style='margin-top:12px; width:85%;'>▶ Activer le contrôleur</button>
+                    <button class='primary-btn' id='samplingDownloadBtn' style='margin-top:10px; width:85%;'>⬇️ Télécharger échantillons</button>
+
+                    <div style='width:85%; margin-top:12px;'>
+                        <select id='controllerSelect' style='width:100%; padding:10px; border-radius:10px; border:2px solid #B5FFFC; font-weight:bold;'>
+                            <option value='line_follower'>line_follower</option>
+                            <option value='manual_controller'>manual_controller</option>
+                        </select>
+                    </div>
+                    <button class='primary-btn' id='controllerToggleBtn' style='margin-top:10px; width:85%;'>▶ Activer le contrôleur</button>
 
                     <div id='zone-resultats'>
                         <!-- Conteneur du flux vidéo en direct -->
@@ -347,11 +355,40 @@ def render_control_tab(title: str = "Contrôle") -> str:
         }
     }
 
+    function downloadSampling() {
+        fetch('/sampling/download')
+            .then(function(resp) {
+                if (!resp.ok) {
+                    return resp.json().then(function(data) {
+                        throw new Error(data.error || 'Download failed');
+                    });
+                }
+                return resp.blob();
+            })
+            .then(function(blob) {
+                var url = window.URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'sampling.zip';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(function(e) { alert('Erreur download: ' + e.message); });
+    }
+
     function toggleController() {
         const btn = document.getElementById('controllerToggleBtn');
+        const select = document.getElementById('controllerSelect');
+        const controllerName = select ? select.value : 'line_follower';
         const isActive = btn.classList.contains('active');
         if (!isActive) {
-            fetch('/controller/start', { method: 'POST' })
+            fetch('/controller/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: controllerName })
+            })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.error) {
@@ -488,10 +525,30 @@ def render_control_tab(title: str = "Contrôle") -> str:
         // Sampling toggle
         var samplingBtn = document.getElementById('samplingToggleBtn');
         if (samplingBtn) samplingBtn.addEventListener('click', toggleSampling);
+
+        var samplingDownloadBtn = document.getElementById('samplingDownloadBtn');
+        if (samplingDownloadBtn) samplingDownloadBtn.addEventListener('click', downloadSampling);
         
         // Controller toggle
         var ctrlBtn = document.getElementById('controllerToggleBtn');
         if (ctrlBtn) ctrlBtn.addEventListener('click', toggleController);
+
+        var controllerSelect = document.getElementById('controllerSelect');
+        if (controllerSelect) {
+            fetch('/controller/list')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.controllers || data.controllers.length === 0) return;
+                    controllerSelect.innerHTML = '';
+                    data.controllers.forEach(function(name) {
+                        var opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = name;
+                        controllerSelect.appendChild(opt);
+                    });
+                })
+                .catch(function(e) { console.error('controller list error:', e); });
+        }
         
         // D-pad: register mouse + passive touch events
         var dpadButtons = document.querySelectorAll('.dpad-button[data-direction]');
@@ -513,6 +570,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
     window.navigateTo = navigateTo;
     window.toggleCamera = toggleCamera;
     window.toggleSampling = toggleSampling;
+    window.downloadSampling = downloadSampling;
     window.toggleController = toggleController;
     window.startMove = startMove;
     window.stopMove = stopMove;

@@ -23,7 +23,7 @@ les dérives du suivi IR et de recadrer la ligne en cas de virage serré ou de d
 
 """
 
-from core.control.controller_base import ControllerBase
+from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 from core.control.legacy.line_following_pid import PIDController
 

@@ -10,7 +10,7 @@ et convertit la sortie en MotorCommand.
 """
 
 import numpy as np
-from core.control.controller_base import ControllerBase
+from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 
 class MLController(ControllerBase):

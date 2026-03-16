@@ -13,8 +13,8 @@ de façon polymorphe : il appelle ``step(state)`` et reçoit un ``MotorCommand``
 
 from abc import ABC, abstractmethod
 
-from core.control.sensor_state import SensorState
-from core.control.motor_command import MotorCommand
+from core.control.IO_drivers.sensor_state import SensorState
+from core.control.IO_drivers.motor_command import MotorCommand
 
 
 class ControllerBase(ABC):

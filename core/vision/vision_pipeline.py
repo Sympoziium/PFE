@@ -132,15 +132,15 @@ class VisionPipeline:
         """ ajouter un détecteur au pipeline de vision """
         self._passive_detectors.append(detectors)
 
-    def process_frame(self, frame, detetor_index=0, filename=None):
+    def process_frame(self, frame, detector_index=0, filename=None):
         """ traiter un frame spécifique avec un détecteur spécifique """
 
-        if detetor_index < 0 or detetor_index >= len(self.detectors):
+        if detector_index < 0 or detector_index >= len(self.detectors):
             raise IndexError("Index de détecteur invalide.")
 
         start_time = time.time() # pour mesurer le temps de traitement
 
-        detector = self.detectors[detetor_index]
+        detector = self.detectors[detector_index]
 
         try:
             # Vérifier si le détecteur accepte le paramètre filename

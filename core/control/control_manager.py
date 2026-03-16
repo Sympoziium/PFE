@@ -225,6 +225,7 @@ class ControlManager:
         with self._data_lock: # récupération des commandes de vitesses aux roues
             self.last_left_speed = command.left_speed
             self.last_right_speed = command.right_speed
+            self.last_motor_command = command
 
     # ------------------------------------------------------------------
     #  Helpers
