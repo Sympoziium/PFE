@@ -311,9 +311,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
                     <div id='zone-resultats'>
                         <!-- Conteneur du flux vidéo en direct -->
-                        <div class='live-feed' id='liveFeed' style = 'display:none;'>
-                            <img id='videoStream' alt='Flux vidéo en direct'>
-                        </div>
+                        
                     </div>
                 </div>
 
@@ -321,7 +319,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     <div class='driving-mode'>
                         <h3>Contrôle du Zumi</h3>
                         <!-- La boîte apparaît grâces à cette ligne -->
-                        <div id="log-box">Coucou ! Je suis prêt à rouler ! 🤖</div>
+                        <div class='live-feed' id='liveFeed' style = 'display:none;'>
+                            <img id='videoStream' alt='Flux vidéo en direct'>
+                        </div>
                         
                         <div class="dpad-container">
                             <!-- HAUT -->
