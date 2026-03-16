@@ -930,7 +930,9 @@ class controller:
                 'drive_speed': self.manual_drive_speed,
                 'turn_speed': self.manual_turn_speed,
                 'left_trim': getattr(self.robot, 'left_trim', None),
-                'right_trim': getattr(self.robot, 'right_trim', None)
+                'right_trim': getattr(self.robot, 'right_trim', None),
+                'left_reverse_trim': getattr(self.robot, 'left_reverse_trim', None),
+                'right_reverse_trim': getattr(self.robot, 'right_reverse_trim', None)
             }
             return jsonify(payload)
 
@@ -942,14 +944,17 @@ class controller:
 
         left_trim = data.get('left_trim')
         right_trim = data.get('right_trim')
-        if left_trim is not None or right_trim is not None:
+        left_reverse_trim = data.get('left_reverse_trim')
+        right_reverse_trim = data.get('right_reverse_trim')
+        
+        if any(x is not None for x in [left_trim, right_trim, left_reverse_trim, right_reverse_trim]):
             if hasattr(self.robot, 'set_trim'):
-                self.robot.set_trim(left_trim=left_trim, right_trim=right_trim)
+                self.robot.set_trim(left_trim=left_trim, right_trim=right_trim, left_reverse_trim=left_reverse_trim, right_reverse_trim=right_reverse_trim)
             else:
-                if left_trim is not None:
-                    self.robot.left_trim = float(left_trim)
-                if right_trim is not None:
-                    self.robot.right_trim = float(right_trim)
+                if left_trim is not None: self.robot.left_trim = float(left_trim)
+                if right_trim is not None: self.robot.right_trim = float(right_trim)
+                if left_reverse_trim is not None: self.robot.left_reverse_trim = float(left_reverse_trim)
+                if right_reverse_trim is not None: self.robot.right_reverse_trim = float(right_reverse_trim)
 
         if self.control_manager:
             ctrl = self.control_manager.get_controller('manual_controller')

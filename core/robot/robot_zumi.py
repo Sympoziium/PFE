@@ -29,6 +29,8 @@ TURN_SPEED = 1
 
 LEFT_TRIM  =  8   # Ajuster expérimentalement — positif = booste le gauche
 RIGHT_TRIM =  1
+LEFT_REVERSE_TRIM = 8 # Trim spécifique pour la marche arrière
+RIGHT_REVERSE_TRIM = 1
 
 class RobotZumi(RobotBase):
     def __init__(self):
@@ -40,6 +42,8 @@ class RobotZumi(RobotBase):
         self._PID_RESET_DELAY = 1.5  # Secondes d'arrêt continu avant reset PID
         self.left_trim = LEFT_TRIM
         self.right_trim = RIGHT_TRIM
+        self.left_reverse_trim = LEFT_REVERSE_TRIM
+        self.right_reverse_trim = RIGHT_REVERSE_TRIM
         self.drive_speed_limit = DRIVE_SPEED
         self.turn_speed_limit = TURN_SPEED
 
@@ -58,8 +62,8 @@ class RobotZumi(RobotBase):
             left_speed_trim  = roue_g_speed + self.left_trim
             right_speed_trim = roue_d_speed + self.right_trim
         elif roue_g_speed < 0 and roue_d_speed < 0: # si on recule (inversion)
-            left_speed_trim  = roue_g_speed - self.left_trim
-            right_speed_trim = roue_d_speed - self.right_trim
+            left_speed_trim  = roue_g_speed - self.left_reverse_trim
+            right_speed_trim = roue_d_speed - self.right_reverse_trim
         else: # Rotation ou autres
             left_speed_trim = roue_g_speed
             right_speed_trim = roue_d_speed
@@ -72,11 +76,15 @@ class RobotZumi(RobotBase):
         self._stop_since = None  # ← Le robot bouge, on annule le timer d'arrêt
         self.zumi.control_motors(right_speed, left_speed)
 
-    def set_trim(self, left_trim=None, right_trim=None):
+    def set_trim(self, left_trim=None, right_trim=None, left_reverse_trim=None, right_reverse_trim=None):
         if left_trim is not None:
             self.left_trim = float(left_trim)
         if right_trim is not None:
             self.right_trim = float(right_trim)
+        if left_reverse_trim is not None:
+            self.left_reverse_trim = float(left_reverse_trim)
+        if right_reverse_trim is not None:
+            self.right_reverse_trim = float(right_reverse_trim)
 
     def set_speed_limits(self, drive_speed=None, turn_speed=None):
         if drive_speed is not None:

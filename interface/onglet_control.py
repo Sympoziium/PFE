@@ -297,6 +297,16 @@ def render_control_tab(title: str = "Contrôle") -> str:
                             <span class='param-value' id='trimRightVal'>0</span>
                         </div>
                         <div class='param-row'>
+                            <label for='trimReverseLeft'>Trim arr. gauche</label>
+                            <input id='trimReverseLeft' type='range' min='-20' max='20' step='1' value='0'>
+                            <span class='param-value' id='trimReverseLeftVal'>0</span>
+                        </div>
+                        <div class='param-row'>
+                            <label for='trimReverseRight'>Trim arr. droit</label>
+                            <input id='trimReverseRight' type='range' min='-20' max='20' step='1' value='0'>
+                            <span class='param-value' id='trimReverseRightVal'>0</span>
+                        </div>
+                        <div class='param-row'>
                             <label for='driveSpeed'>Vitesse manuelle</label>
                             <input id='driveSpeed' type='range' min='0' max='60' step='1' value='20'>
                             <span class='param-value' id='driveSpeedVal'>20</span>
@@ -477,6 +487,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var payload = {
             left_trim: parseFloat(document.getElementById('trimLeft').value),
             right_trim: parseFloat(document.getElementById('trimRight').value),
+            left_reverse_trim: parseFloat(document.getElementById('trimReverseLeft').value),
+            right_reverse_trim: parseFloat(document.getElementById('trimReverseRight').value),
             drive_speed: parseFloat(document.getElementById('driveSpeed').value),
             turn_speed: parseFloat(document.getElementById('turnSpeed').value)
         };
@@ -520,6 +532,12 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 if (data.right_trim !== null && data.right_trim !== undefined) {
                     document.getElementById('trimRight').value = data.right_trim;
                 }
+                if (data.left_reverse_trim !== null && data.left_reverse_trim !== undefined) {
+                    document.getElementById('trimReverseLeft').value = data.left_reverse_trim;
+                }
+                if (data.right_reverse_trim !== null && data.right_reverse_trim !== undefined) {
+                    document.getElementById('trimReverseRight').value = data.right_reverse_trim;
+                }
                 if (data.drive_speed !== null && data.drive_speed !== undefined) {
                     document.getElementById('driveSpeed').value = data.drive_speed;
                 }
@@ -528,6 +546,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 }
                 bindRange('trimLeft');
                 bindRange('trimRight');
+                bindRange('trimReverseLeft');
+                bindRange('trimReverseRight');
                 bindRange('driveSpeed');
                 bindRange('turnSpeed');
             })
