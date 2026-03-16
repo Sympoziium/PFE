@@ -147,6 +147,41 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
     .toggle-btn:hover { background: #FFA3C8; }
 
+    .params-card {
+        width: 85%;
+        margin-top: 12px;
+        background: #FFFFFF;
+        border-radius: 14px;
+        padding: 12px;
+        border: 2px solid #B5FFFC;
+        box-shadow: 0 4px 0 #D0D0D0;
+    }
+
+    .param-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .param-row label {
+        flex: 1;
+        font-weight: bold;
+        color: #555;
+        font-size: 0.95rem;
+    }
+
+    .param-row input[type='range'] {
+        flex: 2;
+    }
+
+    .param-value {
+        width: 48px;
+        text-align: right;
+        font-weight: bold;
+        color: #5A99C7;
+    }
+
     /* --- Le D-Pad (Contrôle Robot) --- */
 
     .driving-mode {
@@ -248,6 +283,31 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         </select>
                     </div>
                     <button class='primary-btn' id='controllerToggleBtn' style='margin-top:10px; width:85%;'>▶ Activer le contrôleur</button>
+
+                    <div class='params-card'>
+                        <div class='tab-subtitle'>Réglages manuels</div>
+                        <div class='param-row'>
+                            <label for='trimLeft'>Trim gauche</label>
+                            <input id='trimLeft' type='range' min='-20' max='20' step='1' value='0'>
+                            <span class='param-value' id='trimLeftVal'>0</span>
+                        </div>
+                        <div class='param-row'>
+                            <label for='trimRight'>Trim droit</label>
+                            <input id='trimRight' type='range' min='-20' max='20' step='1' value='0'>
+                            <span class='param-value' id='trimRightVal'>0</span>
+                        </div>
+                        <div class='param-row'>
+                            <label for='driveSpeed'>Vitesse manuelle</label>
+                            <input id='driveSpeed' type='range' min='0' max='60' step='1' value='20'>
+                            <span class='param-value' id='driveSpeedVal'>20</span>
+                        </div>
+                        <div class='param-row'>
+                            <label for='turnSpeed'>Vitesse rotation</label>
+                            <input id='turnSpeed' type='range' min='0' max='60' step='1' value='15'>
+                            <span class='param-value' id='turnSpeedVal'>15</span>
+                        </div>
+                        <button class='primary-btn' id='applyManualSettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
+                    </div>
 
                     <div id='zone-resultats'>
                         <!-- Conteneur du flux vidéo en direct -->
@@ -410,6 +470,69 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 .catch(function(e) { console.error('toggleController stop error:', e); });
         }
     }
+
+    var manualSettingsTimer = null;
+
+    function applyManualSettings() {
+        var payload = {
+            left_trim: parseFloat(document.getElementById('trimLeft').value),
+            right_trim: parseFloat(document.getElementById('trimRight').value),
+            drive_speed: parseFloat(document.getElementById('driveSpeed').value),
+            turn_speed: parseFloat(document.getElementById('turnSpeed').value)
+        };
+
+        fetch('/manual/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) console.error('manual settings error:', data.error);
+            })
+            .catch(function(e) { console.error('manual settings fetch error:', e); });
+    }
+
+    function scheduleManualSettingsUpdate() {
+        if (manualSettingsTimer) clearTimeout(manualSettingsTimer);
+        manualSettingsTimer = setTimeout(applyManualSettings, 250);
+    }
+
+    function bindRange(id) {
+        var input = document.getElementById(id);
+        var valueEl = document.getElementById(id + 'Val');
+        if (!input || !valueEl) return;
+        var update = function() { valueEl.textContent = input.value; };
+        input.addEventListener('input', function() {
+            update();
+            scheduleManualSettingsUpdate();
+        });
+        update();
+    }
+
+    function loadManualSettings() {
+        fetch('/manual/settings')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.left_trim !== null && data.left_trim !== undefined) {
+                    document.getElementById('trimLeft').value = data.left_trim;
+                }
+                if (data.right_trim !== null && data.right_trim !== undefined) {
+                    document.getElementById('trimRight').value = data.right_trim;
+                }
+                if (data.drive_speed !== null && data.drive_speed !== undefined) {
+                    document.getElementById('driveSpeed').value = data.drive_speed;
+                }
+                if (data.turn_speed !== null && data.turn_speed !== undefined) {
+                    document.getElementById('turnSpeed').value = data.turn_speed;
+                }
+                bindRange('trimLeft');
+                bindRange('trimRight');
+                bindRange('driveSpeed');
+                bindRange('turnSpeed');
+            })
+            .catch(function(e) { console.error('load manual settings error:', e); });
+    }
     
     // Helper de navigation pour fermer la caméra avant de changer d'onglet
     function navigateTo(path) {
@@ -549,6 +672,11 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 })
                 .catch(function(e) { console.error('controller list error:', e); });
         }
+
+        var applyManualBtn = document.getElementById('applyManualSettingsBtn');
+        if (applyManualBtn) applyManualBtn.addEventListener('click', applyManualSettings);
+
+        loadManualSettings();
         
         // D-pad: register mouse + passive touch events
         var dpadButtons = document.querySelectorAll('.dpad-button[data-direction]');
@@ -574,6 +702,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
     window.toggleController = toggleController;
     window.startMove = startMove;
     window.stopMove = stopMove;
+    window.applyManualSettings = applyManualSettings;
 
     </script>
     </body></html>

@@ -38,6 +38,10 @@ class RobotZumi(RobotBase):
         self.personality = Personality(self.zumi, self.screen)
         self._stop_since = None  # Timestamp du début de l'arrêt courant
         self._PID_RESET_DELAY = 1.5  # Secondes d'arrêt continu avant reset PID
+        self.left_trim = LEFT_TRIM
+        self.right_trim = RIGHT_TRIM
+        self.drive_speed_limit = DRIVE_SPEED
+        self.turn_speed_limit = TURN_SPEED
 
         self.calibrate_sensors()  # Calibrage initial des capteurs pour des lectures précises
 
@@ -52,13 +56,13 @@ class RobotZumi(RobotBase):
         clamp_speed = None
         # Correction de trim pour compenser les déséquilibres mécaniques (ajuster expérimentalement)
         if roue_g_speed > 0 and  roue_d_speed > 0: # si on va vers l'avant
-            left_speed_trim  = roue_g_speed + LEFT_TRIM
-            right_speed_trim = roue_d_speed + RIGHT_TRIM
-            clamp_speed = DRIVE_SPEED
+            left_speed_trim  = roue_g_speed + self.left_trim
+            right_speed_trim = roue_d_speed + self.right_trim
+            clamp_speed = self.drive_speed_limit
         else:
             left_speed_trim = roue_g_speed
             right_speed_trim = roue_d_speed
-            clamp_speed = TURN_SPEED
+            clamp_speed = self.turn_speed_limit
 
         # Clamp
         left_speed  = max(-clamp_speed, min(clamp_speed, left_speed_trim))
@@ -66,6 +70,18 @@ class RobotZumi(RobotBase):
 
         self._stop_since = None  # ← Le robot bouge, on annule le timer d'arrêt
         self.zumi.control_motors(right_speed, left_speed)
+
+    def set_trim(self, left_trim=None, right_trim=None):
+        if left_trim is not None:
+            self.left_trim = float(left_trim)
+        if right_trim is not None:
+            self.right_trim = float(right_trim)
+
+    def set_speed_limits(self, drive_speed=None, turn_speed=None):
+        if drive_speed is not None:
+            self.drive_speed_limit = float(drive_speed)
+        if turn_speed is not None:
+            self.turn_speed_limit = float(turn_speed)
 
     def stop(self):
         """

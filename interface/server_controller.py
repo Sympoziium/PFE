@@ -145,6 +145,8 @@ class controller:
         self.sampling_vectors = [] # Vecteurs d'entrées (NDJSON)
         self.sampling_labels = []  # Vecteurs labels (NDJSON)
         self._ml_classes = []
+        self.manual_drive_speed = DRIVE_SPEED
+        self.manual_turn_speed = TURN_SPEED
 
         
         # --- CONFIGURATION DU PONT ---
@@ -169,7 +171,7 @@ class controller:
         # --- Enregistrement du contrôleur manuel ---
         # Si le contrôleur manuel n'est pas encore enregistré dans le ControlManager, on le fait ici.
         if "manual_controller" not in self.control_manager._controllers:
-            self.control_manager.register_controller("manual_controller", ManualController(default_speed=DRIVE_SPEED))
+            self.control_manager.register_controller("manual_controller", ManualController(default_speed=self.manual_drive_speed))
 
     # --- Navigation ---
     def home(self):
@@ -818,16 +820,16 @@ class controller:
         return "ok"
 
     def forward(self): 
-        return self._dispatch_manual_action("forward", DRIVE_SPEED)
+        return self._dispatch_manual_action("forward", self.manual_drive_speed)
 
     def reverse(self): 
-        return self._dispatch_manual_action("reverse", DRIVE_SPEED)
+        return self._dispatch_manual_action("reverse", self.manual_drive_speed)
         
     def left(self): 
-        return self._dispatch_manual_action("left", TURN_SPEED)
+        return self._dispatch_manual_action("left", self.manual_turn_speed)
         
     def right(self): 
-        return self._dispatch_manual_action("right", TURN_SPEED)
+        return self._dispatch_manual_action("right", self.manual_turn_speed)
         
     def stop(self): 
         print("[HTTP] /zumi/stop reçu")
@@ -922,6 +924,44 @@ class controller:
 # ----------------------------------------------------------------------------
 #          Fonctions de callback pour l'onglet de contrôle
 # ----------------------------------------------------------------------------
+    def manual_settings(self):
+        if request.method == 'GET':
+            payload = {
+                'drive_speed': self.manual_drive_speed,
+                'turn_speed': self.manual_turn_speed,
+                'left_trim': getattr(self.robot, 'left_trim', None),
+                'right_trim': getattr(self.robot, 'right_trim', None)
+            }
+            return jsonify(payload)
+
+        data = request.get_json(silent=True) or {}
+        if 'drive_speed' in data:
+            self.manual_drive_speed = float(data['drive_speed'])
+        if 'turn_speed' in data:
+            self.manual_turn_speed = float(data['turn_speed'])
+
+        left_trim = data.get('left_trim')
+        right_trim = data.get('right_trim')
+        if left_trim is not None or right_trim is not None:
+            if hasattr(self.robot, 'set_trim'):
+                self.robot.set_trim(left_trim=left_trim, right_trim=right_trim)
+            else:
+                if left_trim is not None:
+                    self.robot.left_trim = float(left_trim)
+                if right_trim is not None:
+                    self.robot.right_trim = float(right_trim)
+
+        if self.control_manager:
+            ctrl = self.control_manager.get_controller('manual_controller')
+            if ctrl:
+                ctrl.update_params(default_speed=self.manual_drive_speed)
+
+        return jsonify({
+            'drive_speed': self.manual_drive_speed,
+            'turn_speed': self.manual_turn_speed,
+            'left_trim': getattr(self.robot, 'left_trim', None),
+            'right_trim': getattr(self.robot, 'right_trim', None)
+        })
  
     def start_sampling(self):
         """ Démare l'échantillonnage des données des capteurs
