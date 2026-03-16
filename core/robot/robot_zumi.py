@@ -27,8 +27,8 @@ DRIVE_SPEED = 10
 TURN_SPEED = 1
 
 
-LEFT_TRIM  =  5   # Ajuster expérimentalement — positif = booste le gauche
-RIGHT_TRIM =  -2
+LEFT_TRIM  =  8   # Ajuster expérimentalement — positif = booste le gauche
+RIGHT_TRIM =  -4
 
 class RobotZumi(RobotBase):
     def __init__(self):
