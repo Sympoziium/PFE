@@ -14,7 +14,7 @@ from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 
 class ManualController(ControllerBase):
-    def __init__(self, default_speed=30, watchdog_timeout=0.8):
+    def __init__(self, default_speed=30, watchdog_timeout=0.6):
         self._name = "manual_controller"
         self.default_speed = default_speed
         self.watchdog_timeout = watchdog_timeout
@@ -53,8 +53,8 @@ class ManualController(ControllerBase):
             return MotorCommand.stop()
             
         elif self._current_action == "forward":
-            # Maintient le cap courant (angle=None) via le système Zumi (forward_step)
-            return MotorCommand.make_forward_step(self.default_speed, desired_angle=None)
+            # Contrôle manuel direct des moteurs, sans correction de cap.
+            return MotorCommand.make_speed(self.default_speed, self.default_speed)
             
         elif self._current_action == "reverse":
             return MotorCommand.make_speed(-self.default_speed, -self.default_speed)

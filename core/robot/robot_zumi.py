@@ -23,7 +23,7 @@ from core.hardware.screen import Screen
 from core.hardware.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
-DRIVE_SPEED = 20
+DRIVE_SPEED = 40
 TURN_SPEED = 15
 
 class RobotZumi(RobotBase):
@@ -32,6 +32,8 @@ class RobotZumi(RobotBase):
         self.camera = PiCam2(rotate_180=True)  # Camera montee a l'envers -> rotation 180 deg
         self.screen = Screen()
         self.personality = Personality(self.zumi, self.screen)
+        self._stop_since = None  # Timestamp du début de l'arrêt courant
+        self._PID_RESET_DELAY = 1.5  # Secondes d'arrêt continu avant reset PID
 
         self.calibrate_sensors()  # Calibrage initial des capteurs pour des lectures précises
 
@@ -43,61 +45,11 @@ class RobotZumi(RobotBase):
         Définit la vitesse des moteurs du Zumi.
     
         """
-        ## les leds semble causer probleme
-        try: 
-            self.zumi.brake_lights_off()
-        except Exception as e:
-            print("Erreur self.zumi.brake_lights_off(): {}".format(e))
+        # Clamp
+        left_speed  = max(-DRIVE_SPEED, min(DRIVE_SPEED, roue_g_speed))
+        right_speed = max(-DRIVE_SPEED, min(DRIVE_SPEED, roue_d_speed))
         
-        try: 
-            self.zumi.headlights_on()
-        except Exception as e:
-            print("Erreur self.zumi.headlights_on(): {}".format(e))
-
-        if roue_g_speed > DRIVE_SPEED:
-            left_speed = DRIVE_SPEED
-        elif roue_g_speed < -DRIVE_SPEED:
-            left_speed = -DRIVE_SPEED
-        else:
-            left_speed = roue_g_speed
-
-        if roue_d_speed > DRIVE_SPEED:
-            right_speed = DRIVE_SPEED
-        elif roue_d_speed < -DRIVE_SPEED:
-            right_speed = -DRIVE_SPEED
-        else:
-            right_speed = roue_d_speed
-
-
-        # contrôle des clignotants
-        if right_speed > left_speed:
-            try:
-                self.zumi.signal_right_on()
-            except Exception as e:
-                print("Erreur self.zumi.signal_right_on(): {}".format(e))
-            try:    
-                self.zumi.signal_left_off()
-            except Exception as e:
-                print("Erreur self.zumi.signal_left_off(): {}".format(e))
-        elif left_speed > right_speed:
-            try:
-                self.zumi.signal_left_on()
-            except Exception as e:
-                print("Erreur self.zumi.signal_left_on(): {}".format(e))
-            try:
-                self.zumi.signal_right_off()
-            except Exception as e:
-                print("Erreur self.zumi.signal_right_off(): {}".format(e))
-        else:
-            try:
-                self.zumi.signal_left_off()
-            except Exception as e:
-                print("Erreur self.zumi.signal_left_off(): {}".format(e))
-            try:
-                self.zumi.signal_right_off()
-            except Exception as e:
-                print("Erreur self.zumi.signal_right_off(): {}".format(e))
-        
+        self._stop_since = None  # ← Le robot bouge, on annule le timer d'arrêt
         self.zumi.control_motors(left_speed, right_speed)
 
     def stop(self):
@@ -105,12 +57,13 @@ class RobotZumi(RobotBase):
         Arrête les moteurs du Zumi.
         """
         self.zumi.stop()
-        try:
-            self.zumi.brake_lights_on()
-        except Exception as e:
-            print("Erreur self.zumi.brake_lights_on(): {}".format(e))
-
-        self._reset_PID()  # Réinitialise les PIDs pour éviter les dérives après un arrêt
+        now = time.time()
+        if self._stop_since is None:
+            self._stop_since = now  # Début d'un arrêt
+        elif now - self._stop_since >= self._PID_RESET_DELAY:
+            self._reset_PID()
+            self._reset_gyro()
+            self._stop_since = now  # Réarme pour le prochain arrêt prolongé
 
 
     def turn(self, angle: float):
