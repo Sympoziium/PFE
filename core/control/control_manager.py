@@ -100,6 +100,7 @@ class ControlManager:
             
         self._active_controller = self._controllers[name]
         self._active_controller.start()  # On laisse le contrôleur s'initialiser
+        self.vp.start_passive_detection() # On démarre la détection passive
         self._start_loop()
 
     def deactivate_controller(self):
@@ -109,6 +110,7 @@ class ControlManager:
             
         self._active_controller = None
         self._stop_loop()
+        self.vp.stop_passive_detection()
         
         # SÉCURITÉ : Forcer l'arrêt du robot physiquement quand aucun contrôleur n'est actif
         if self._motor_driver:
