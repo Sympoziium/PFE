@@ -53,20 +53,21 @@ class RobotZumi(RobotBase):
         Définit la vitesse des moteurs du Zumi.
     
         """    
-        clamp_speed = None
-        # Correction de trim pour compenser les déséquilibres mécaniques (ajuster expérimentalement)
-        if roue_g_speed > 0 and  roue_d_speed > 0: # si on va vers l'avant
+        # Application du trim : on l'applique prioritairement pour les mouvements droits
+        if roue_g_speed > 0 and roue_d_speed > 0: # si on va vers l'avant
             left_speed_trim  = roue_g_speed + self.left_trim
             right_speed_trim = roue_d_speed + self.right_trim
-            clamp_speed = self.drive_speed_limit
-        else:
+        elif roue_g_speed < 0 and roue_d_speed < 0: # si on recule (inverser trim ?)
+            left_speed_trim  = roue_g_speed - self.left_trim
+            right_speed_trim = roue_d_speed - self.right_trim
+        else: # Rotation ou autres
             left_speed_trim = roue_g_speed
             right_speed_trim = roue_d_speed
-            clamp_speed = self.turn_speed_limit
 
-        # Clamp
-        left_speed  = max(-clamp_speed, min(clamp_speed, left_speed_trim))
-        right_speed = max(-clamp_speed, min(clamp_speed, right_speed_trim))
+        # Clamp matériel final absolu (Zumi accepte typiquement -126 à 127, on limite à 100 par sécurité absolue)
+        # On ne se restreint plus à "drive_speed_limit" qui écrasait le trim !
+        left_speed  = int(max(-100, min(100, left_speed_trim)))
+        right_speed = int(max(-100, min(100, right_speed_trim)))
 
         self._stop_since = None  # ← Le robot bouge, on annule le timer d'arrêt
         self.zumi.control_motors(right_speed, left_speed)
