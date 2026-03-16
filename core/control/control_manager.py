@@ -66,6 +66,9 @@ class ControlManager:
         
         self.last_left_speed = 0 # voir si on garde
         self.last_right_speed = 0
+        
+        # Callbacks pour l'échantillonnage par le serveur
+        self.on_tick_callback = None
 
         self._init_new_arch_drivers() # Initialise les drivers de la nouvelle architecture (SensorDriver et MotorDriver)
         self._init_robot_sensors() # Initialise les capteurs du robot (MPU, IR, batterie) au demarrage du manager
@@ -190,6 +193,10 @@ class ControlManager:
                 
                 # Exécution d'un cycle du contrôleur actif
                 self._tick_controller()
+                
+                # Exécution du callback après le tic (pour l'échantillonnage de données)
+                if self.on_tick_callback is not None:
+                    self.on_tick_callback()
 
                 # délais du cycle de contrôle pour accomoder les autes modules du robot
                 time.sleep(self._loop_delay)

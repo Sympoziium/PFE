@@ -172,6 +172,9 @@ class controller:
         # Si le contrôleur manuel n'est pas encore enregistré dans le ControlManager, on le fait ici.
         if "manual_controller" not in self.control_manager._controllers:
             self.control_manager.register_controller("manual_controller", ManualController(default_speed=self.manual_drive_speed))
+            
+        # Hook pour l'échantillonnage de données
+        self.control_manager.on_tick_callback = self._on_control_loop_tick
 
     # --- Navigation ---
     def home(self):
@@ -207,23 +210,22 @@ class controller:
 
         while True:
             iteration_count += 1
-
-            # --- Échantillonnage des capteurs toutes les 1s (2 itérations * 0.5s) ---
-            if iteration_count % 2 == 0:
-                if self.sampling_active:
-                    vector, label = self._collect_sensor_sample()
-                    if vector is not None and label is not None:
-                        self.sampling_vectors.append(vector)
-                        self.sampling_labels.append(label)
-                        print("[Sampling] Échantillon collecté")
-
-
-            # --- Log ressources toutes les 40s (40 itérations * 0.5s) ---
+            
+            # --- Logs des ressources système toutes les 20 secondes (40 itérations * 0.5s) ---
             if iteration_count % 40 == 0:
                 self._log_resource_usage_internal()
-                iteration_count = 0 
 
             time.sleep(0.5)
+
+    def _on_control_loop_tick(self):
+        """Appelée à chaque tic de la boucle de contrôle pour un échantillonnage synchronisé."""
+        if getattr(self, 'sampling_active', False):
+            vector, label = self._collect_sensor_sample()
+            if vector is not None and label is not None:
+                self.sampling_vectors.append(vector)
+                self.sampling_labels.append(label)
+                print("[Sampling] Échantillon collecté")
+
 
 
 # ----------------------------------------------------------------------------
