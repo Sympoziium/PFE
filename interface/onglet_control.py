@@ -237,7 +237,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
             <div class='tab-content'>
                 <!-- AJOUTER VOS BOUTONS ICI -->
                 <div class='left-panel'>
-                    <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>🎥 Allume la caméra !</button>
+                    <button class='toggle-btn' id='cameraToggleBtn'>🎥 Allume la caméra !</button>
                     <button class='toggle-btn' id='samplingToggleBtn'>Échantillonnage</button>
                     <button class='primary-btn' id='samplingDownloadBtn' style='margin-top:10px; width:85%;'>⬇️ Télécharger échantillons</button>
 

@@ -60,6 +60,8 @@ class VisionPipeline:
 
     def start(self):
         """ appeler pour démarrer le pipeline de vision """
+        if self.running:
+            return
         try:
             self.camera.start_camera()
             self.running = True

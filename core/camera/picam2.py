@@ -41,6 +41,8 @@ class PiCam2(CameraBase):
         
     def start_camera(self):
         try:
+            if hasattr(self.picam2, "started") and self.picam2.started:
+                return
             self.picam2.start()
         except Exception as e:
             print("Erreur lors du demarrage de PiCam2: {}".format(e))
@@ -48,6 +50,8 @@ class PiCam2(CameraBase):
 
     def close(self):
         try: 
+            if hasattr(self.picam2, "started") and not self.picam2.started:
+                return
             self.picam2.stop()
         except Exception as e:
             print("Erreur lors de l'arret de PiCam2: {}".format(e))
