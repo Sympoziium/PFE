@@ -27,7 +27,7 @@ DRIVE_SPEED = 15
 TURN_SPEED = 5
 
 
-LEFT_TRIM  =  11   # Ajuster expérimentalement — positif = booste le gauche
+LEFT_TRIM  =  13   # Ajuster expérimentalement — positif = booste le gauche
 RIGHT_TRIM =  0
 
 class RobotZumi(RobotBase):
