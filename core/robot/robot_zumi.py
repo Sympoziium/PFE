@@ -290,7 +290,9 @@ class RobotZumi(RobotBase):
             desired_angle: Cap désiré en degrés.
         """
         try:
-            self.zumi.forward_step(speed, desired_angle)
+            if desired_angle is None:
+                desired_angle = 0.0
+            self.zumi.forward_step(speed = speed, desired_angle = desired_angle)
         except Exception as e:
             print("Erreur forward_step: {}".format(e))
 
