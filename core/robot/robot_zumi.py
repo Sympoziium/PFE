@@ -55,7 +55,9 @@ class RobotZumi(RobotBase):
             left_speed_trim  = roue_g_speed + LEFT_TRIM
             right_speed_trim = roue_d_speed + RIGHT_TRIM
             clamp_speed = DRIVE_SPEED
-        else :
+        else:
+            left_speed_trim = roue_g_speed
+            right_speed_trim = roue_d_speed
             clamp_speed = TURN_SPEED
 
         # Clamp
