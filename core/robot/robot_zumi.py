@@ -23,12 +23,12 @@ from core.hardware.screen import Screen
 from core.hardware.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
-DRIVE_SPEED = 15
-TURN_SPEED = 3
+DRIVE_SPEED = 10
+TURN_SPEED = 1
 
 
-LEFT_TRIM  =  8   # Ajuster expérimentalement — positif = booste le gauche
-RIGHT_TRIM =  0
+LEFT_TRIM  =  5   # Ajuster expérimentalement — positif = booste le gauche
+RIGHT_TRIM =  -2
 
 class RobotZumi(RobotBase):
     def __init__(self):
