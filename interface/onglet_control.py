@@ -76,26 +76,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
         align-items: center;
     }
     
-        #log-box {
-        background: #FFFFFF; 
-        border-radius: 15px;
-        padding: 15px;
-        width: 85%; /* Occupe presque toute la largeur du panneau */
-        
-        height: 60px;          /* On force une hauteur fixe */
-        display: flex;         /* Utilise Flexbox pour centrer le texte */
-        align-items: center;   /* Centre le texte verticalement */
-        justify-content: center; /* Centre le texte horizontalement */
-        overflow: hidden;      /* Empêche le texte de dépasser si c'est trop long */
-        
-        margin-bottom: 2vh;
-        text-align: center;
-        font-size: 1.1rem;
-        font-weight: bold;
-        border: 3px solid #87C7F1; 
-        box-shadow: 0 4px 0 #D0D0D0;
-        color: #555;
-    }
 
     /* --- Styles pour les textes --- */
     
@@ -466,7 +446,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     } else {
                         btn.classList.add('active');
                         btn.textContent = '⏹ Arrêter le contrôleur';
-                        document.getElementById('log-box').innerText = '🤖 Contrôleur actif : ' + (data.controller || 'line_follower');
                     }
                 })
                 .catch(function(e) { console.error('toggleController start error:', e); });
@@ -475,7 +454,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 .then(function() {
                     btn.classList.remove('active');
                     btn.textContent = '▶ Activer le contrôleur';
-                    document.getElementById('log-box').innerText = 'Contrôleur arrêté. 🛑';
                 })
                 .catch(function(e) { console.error('toggleController stop error:', e); });
         }
@@ -580,34 +558,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
     function startMove(direction) {
         if (isMoving) return;
         isMoving = true;
-           
-        // --- NOUVEAU : Texte affiche pour etat du robot ---
-        //document.getElementById('log-box').innerText = "🤖 État : " + direction;
-        
-        const log = document.getElementById('log-box');
-        log.style.color = "#000000"; // Couleur de texte par défaut (noir)
-
-        // Logique pour afficher le message approprié
-        switch (direction)
-        {
-            case 'forward':
-                log.innerText = "En avant ! 🚀";
-                log.style.color = "#28a745"; // Vert pour avancer
-                break;
-            case 'reverse':
-                log.innerText = "En arrière ! ⏪";
-                log.style.color = "#dc3545"; // Rouge pour reculer
-                break;
-            case 'left':
-                log.innerText = "À gauche toute ! ↪️";
-                log.style.color = "#007bff"; // Bleu pour tourner
-                break;
-            case 'right':
-                log.innerText = "À droite ! ↩️";
-                log.style.color = "#007bff"; // Bleu pour tourner
-                break;
-        }
-
                 
         // Fonction interne pour envoyer la commande
         const sendMoveCommand = () => {
@@ -628,13 +578,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
     function stopMove() {
         if (!isMoving) return; // Évite les 'stop' inutiles
         isMoving = false;
-        
-        
-        // --- NOUVEAU : Ajout du message d'arret ---
-        const log = document.getElementById('log-box');
-        log.innerText = "Ouf, je fais une pause. 🛑";
-        log.style.color = "#6c757d"; // Gris neutre pour la pause
-        
         
         // 1. Arrêter l'envoi de commandes en continu
         if (moveInterval) {
