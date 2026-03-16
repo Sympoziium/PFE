@@ -137,7 +137,7 @@ def bootstrap():
     control_manager.register_pid(pid_controller)
     control_manager.register_state_machine(state_machine)
 
-    from core.control.line_follower_controller import LineFollowerController
+    from core.control.controlers.line_follower_controller import LineFollowerController
     line_follower_ctrl = LineFollowerController()
     control_manager.register_controller(line_follower_ctrl)
     
