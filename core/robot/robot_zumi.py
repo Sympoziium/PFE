@@ -23,9 +23,9 @@ from core.hardware.screen import Screen
 from core.hardware.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
-DRIVE_SPEED = 30
+DRIVE_SPEED = 20
 TURN_SPEED = 15
-CLAMP_SPEED = None
+
 
 LEFT_TRIM  =  10   # Ajuster expérimentalement — positif = booste le gauche
 RIGHT_TRIM =  0
@@ -49,18 +49,18 @@ class RobotZumi(RobotBase):
         Définit la vitesse des moteurs du Zumi.
     
         """    
-        
+        clamp_speed = None
         # Correction de trim pour compenser les déséquilibres mécaniques (ajuster expérimentalement)
         if roue_g_speed == roue_d_speed: # si on va dans la même direction(avant arrière), on applique le trim
             left_speed_trim  = roue_g_speed + LEFT_TRIM
             right_speed_trim = roue_d_speed + RIGHT_TRIM
-            CLAMP_SPEED = DRIVE_SPEED
+            clamp_speed = DRIVE_SPEED
         else :
-            CLAMP_SPEED = TURN_SPEED
+            clamp_speed = TURN_SPEED
 
         # Clamp
-        left_speed  = max(-CLAMP_SPEED, min(CLAMP_SPEED, left_speed_trim))
-        right_speed = max(-CLAMP_SPEED, min(CLAMP_SPEED, right_speed_trim))
+        left_speed  = max(-clamp_speed, min(clamp_speed, left_speed_trim))
+        right_speed = max(-clamp_speed, min(clamp_speed, right_speed_trim))
 
         self._stop_since = None  # ← Le robot bouge, on annule le timer d'arrêt
         self.zumi.control_motors(right_speed, left_speed)
