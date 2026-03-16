@@ -23,11 +23,11 @@ from core.hardware.screen import Screen
 from core.hardware.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
-DRIVE_SPEED = 20
-TURN_SPEED = 15
+DRIVE_SPEED = 15
+TURN_SPEED = 5
 
 
-LEFT_TRIM  =  10   # Ajuster expérimentalement — positif = booste le gauche
+LEFT_TRIM  =  11   # Ajuster expérimentalement — positif = booste le gauche
 RIGHT_TRIM =  0
 
 class RobotZumi(RobotBase):
@@ -51,7 +51,7 @@ class RobotZumi(RobotBase):
         """    
         clamp_speed = None
         # Correction de trim pour compenser les déséquilibres mécaniques (ajuster expérimentalement)
-        if roue_g_speed == roue_d_speed: # si on va dans la même direction(avant arrière), on applique le trim
+        if roue_g_speed > 0 and  roue_d_speed > 0: # si on va vers l'avant
             left_speed_trim  = roue_g_speed + LEFT_TRIM
             right_speed_trim = roue_d_speed + RIGHT_TRIM
             clamp_speed = DRIVE_SPEED
