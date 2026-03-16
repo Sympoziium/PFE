@@ -24,10 +24,10 @@ from core.hardware.personality import Personality
 
 # Vitesses de référence pour les moteurs du Zumi
 DRIVE_SPEED = 15
-TURN_SPEED = 5
+TURN_SPEED = 3
 
 
-LEFT_TRIM  =  13   # Ajuster expérimentalement — positif = booste le gauche
+LEFT_TRIM  =  8   # Ajuster expérimentalement — positif = booste le gauche
 RIGHT_TRIM =  0
 
 class RobotZumi(RobotBase):
