@@ -57,9 +57,9 @@ class RobotZumi(RobotBase):
         if roue_g_speed > 0 and roue_d_speed > 0: # si on va vers l'avant
             left_speed_trim  = roue_g_speed + self.left_trim
             right_speed_trim = roue_d_speed + self.right_trim
-        elif roue_g_speed < 0 and roue_d_speed < 0: # si on recule 
-            left_speed_trim  = roue_g_speed + self.left_trim
-            right_speed_trim = roue_d_speed + self.right_trim
+        elif roue_g_speed < 0 and roue_d_speed < 0: # si on recule (inversion)
+            left_speed_trim  = roue_g_speed - self.left_trim
+            right_speed_trim = roue_d_speed - self.right_trim
         else: # Rotation ou autres
             left_speed_trim = roue_g_speed
             right_speed_trim = roue_d_speed
