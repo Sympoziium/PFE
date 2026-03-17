@@ -141,6 +141,7 @@ class controller:
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
         # Échantillonnage des données des capteurs
+        self.debug_control_sampling = True # Affiche les données collectées dans les logs pour le debug
         self.sampling_active = False
         self.sampling_vectors = [] # Vecteurs d'entrées (NDJSON)
         self.sampling_labels = []  # Vecteurs labels (NDJSON)
@@ -220,13 +221,22 @@ class controller:
     def _on_control_loop_tick(self):
         """Appelée à chaque tic de la boucle de contrôle pour un échantillonnage synchronisé."""
         if getattr(self, 'sampling_active', False):
-            vector, label = self._collect_sensor_sample()
-            if vector is not None and label is not None:
-                self.sampling_vectors.append(vector)
-                self.sampling_labels.append(label)
-                print("[Sampling] Échantillon collecté")
-
-
+            result = self._collect_sensor_sample()
+            if result and len(result) == 3:
+                vector, label, adapter = result
+                if vector is not None and label is not None and adapter is not None:
+                    # DEBUG: VALIDATION DES DONNÉES COLLECTÉES
+                    import numpy as np
+                    v_array = np.array(vector)
+                    l_array = np.array(label)
+                    
+                    if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                        self.sampling_vectors.append(vector)
+                        self.sampling_labels.append(label)
+                        if self.debug_control_sampling:
+                            adapter.debug_print_state(v_array, l_array)
+                    else:
+                        print("[Sampling] Échantillon rejeté lors de la validation !")
 
 # ----------------------------------------------------------------------------
 #            Fonctions de callback pour les actions de vision
@@ -1084,18 +1094,49 @@ class controller:
         """Collecte un échantillon de données des capteurs (vision + IMU + IR) et son label de commande moteur.
             Vectorisé déja ready pour l'entraînement ML"""
         if not self.sampling_active:
-            return None, None
+            return None, None, None
 
         try:
             state = SensorDriver(vision_pipeline=self.vision_pipeline, robot=self.robot).read()
-            vector = self._vectorize_state(state)
-            label = self._get_current_label()
-            if vector is None or label is None:
-                return None, None
-            return vector, label
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+            raw_label = self._get_current_label()
+            if vector is None or raw_label is None:
+                return None, None, None
+            
+            # Normalisation du vecteur label de commande
+            label = adapter.encode_label(raw_label[0], raw_label[1]).tolist()
+            
+            return vector, label, adapter
         except Exception as e:
             print("[Sampling] Erreur: {}".format(e))
-            return None, None
+            return None, None, None
+
+    def _vectorize_state_with_adapter(self, state, adapter):
+        if state is None:
+            return None
+
+        detections = state.detections or []
+        vision_result = {'detections': detections}
+
+        imu_data = {}
+        if state.gyro_angles and len(state.gyro_angles) >= 5:
+            imu_data = {
+                'gx': float(state.gyro_angles[0]),
+                'gy': float(state.gyro_angles[1]),
+                'gz': float(state.gyro_angles[2]),
+                'ax': float(state.gyro_angles[3]),
+                'ay': float(state.gyro_angles[4]),
+                'az': float(state.gyro_angles[5]) if len(state.gyro_angles) > 5 else 0.0,
+            }
+
+        ir_data = state.ir_sensors if state.ir_sensors is not None else None
+        vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data)
+        return vector.tolist()
+
+    def _vectorize_state(self, state):
+        adapter = self._get_ml_adapter(state)
+        return self._vectorize_state_with_adapter(state, adapter)
 
     def _infer_ml_classes(self):
         """Infère dynamiquement les classes de détection disponibles à partir des détecteurs du pipeline vision."""
@@ -1125,7 +1166,7 @@ class controller:
             if frame is not None:
                 h, w = frame.shape[:2]
             else:
-                w, h = 320, 240
+                w, h = 640, 480 # résolution par défaut
         if not self._ml_classes:
             self._ml_classes = self._infer_ml_classes()
         return VisionAdapter(image_width=w, image_height=h, classes=self._ml_classes)
