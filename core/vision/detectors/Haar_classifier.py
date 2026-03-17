@@ -40,6 +40,11 @@ class HaarDetector(BaseDetector):
         self.logs = []
         self.steps = []
         
+    @property
+    def classes(self):
+        """Retourne la liste des noms de classes (les noms des classifieurs chargés)."""
+        return list(self.classifiers.keys())
+        
     def add_classifier(self, name, cascade_path, scaleFactor=1.1, minNeighbors=5):
         """Ajoute un classifieur .xml à la liste.
         

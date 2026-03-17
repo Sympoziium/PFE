@@ -70,9 +70,11 @@ class SensorDriver:
                     pass
 
             # Détections passives (Haar, etc.)
-            if hasattr(self.vision_pipeline, 'get_passive_results'):
+            if hasattr(self.vision_pipeline, 'get_last_detection_result'):
                 try:
-                    detections = self.vision_pipeline.get_passive_results()
+                    passive_result = self.vision_pipeline.get_last_detection_result()
+                    if passive_result and 'detections' in passive_result:
+                        detections = passive_result['detections']
                 except Exception:
                     pass
 
