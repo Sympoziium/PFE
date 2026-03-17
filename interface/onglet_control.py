@@ -162,6 +162,51 @@ def render_control_tab(title: str = "Contrôle") -> str:
         color: #5A99C7;
     }
 
+    .top-buttons-container {
+        display: flex;
+        gap: 10px;
+        width: 85%;
+        margin-bottom: 10px;
+    }
+
+    .top-buttons-container button {
+        flex: 1;
+    }
+
+    .settings-menu-container {
+        position: relative;
+        width: 85%;
+    }
+
+    .settings-toggle-btn {
+        width: 100%;
+    }
+
+    .params-card.hidden {
+        display: none;
+    }
+
+    .settings-close-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #FF6B9D;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+        font-size: 1.2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .settings-close-btn:hover {
+        background: #FF5585;
+    }
+
     /* --- Le D-Pad (Contrôle Robot) --- */
 
     .driving-mode {
@@ -252,9 +297,12 @@ def render_control_tab(title: str = "Contrôle") -> str:
             <div class='tab-content'>
                 <!-- AJOUTER VOS BOUTONS ICI -->
                 <div class='left-panel'>
-                    <button class='toggle-btn' id='cameraToggleBtn'>🎥 Allume la caméra !</button>
-                    <button class='toggle-btn' id='samplingToggleBtn'>Échantillonnage</button>
-                    <button class='primary-btn' id='samplingDownloadBtn' style='margin-top:10px; width:85%;'>⬇️ Télécharger échantillons</button>
+                    <!-- Conteneur des 3 boutons en horizontal -->
+                    <div class='top-buttons-container'>
+                        <button class='toggle-btn' id='cameraToggleBtn'>🎥 Allume la caméra !</button>
+                        <button class='toggle-btn' id='samplingToggleBtn'>Échantillonnage</button>
+                        <button class='primary-btn' id='samplingDownloadBtn'>⬇️ Télécharger</button>
+                    </div>
 
                     <div style='width:85%; margin-top:12px;'>
                         <select id='controllerSelect' style='width:100%; padding:10px; border-radius:10px; border:2px solid #B5FFFC; font-weight:bold;'>
@@ -264,44 +312,47 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     </div>
                     <button class='primary-btn' id='controllerToggleBtn' style='margin-top:10px; width:85%;'>▶ Activer le contrôleur</button>
 
-                    <div class='params-card'>
-                        <div class='tab-subtitle'>Réglages manuels</div>
-                        <div class='param-row'>
-                            <label for='trimLeft'>Trim gauche</label>
-                            <input id='trimLeft' type='range' min='-20' max='20' step='1' value='0'>
-                            <span class='param-value' id='trimLeftVal'>0</span>
-                        </div>
-                        <div class='param-row'>
-                            <label for='trimRight'>Trim droit</label>
-                            <input id='trimRight' type='range' min='-20' max='20' step='1' value='0'>
-                            <span class='param-value' id='trimRightVal'>0</span>
-                        </div>
-                        <div class='param-row'>
-                            <label for='trimReverseLeft'>Trim arr. gauche</label>
-                            <input id='trimReverseLeft' type='range' min='-20' max='20' step='1' value='0'>
-                            <span class='param-value' id='trimReverseLeftVal'>0</span>
-                        </div>
-                        <div class='param-row'>
-                            <label for='trimReverseRight'>Trim arr. droit</label>
-                            <input id='trimReverseRight' type='range' min='-20' max='20' step='1' value='0'>
-                            <span class='param-value' id='trimReverseRightVal'>0</span>
-                        </div>
-                        <div class='param-row'>
-                            <label for='driveSpeed'>Vitesse manuelle</label>
-                            <input id='driveSpeed' type='range' min='0' max='60' step='1' value='20'>
-                            <span class='param-value' id='driveSpeedVal'>20</span>
-                        </div>
-                        <div class='param-row'>
-                            <label for='turnSpeed'>Vitesse rotation</label>
-                            <input id='turnSpeed' type='range' min='0' max='60' step='1' value='15'>
-                            <span class='param-value' id='turnSpeedVal'>15</span>
-                        </div>
-                        <button class='primary-btn' id='applyManualSettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
-                    </div>
+                    <!-- Conteneur du menu de réglages collapsible -->
+                    <div class='settings-menu-container' style='margin-top:12px;'>
+                        <button class='primary-btn settings-toggle-btn' id='settingsToggleBtn'>⚙️ Réglages manuels</button>
 
-                    <div id='zone-resultats'>
-                        <!-- Conteneur du flux vidéo en direct -->
-                        
+                        <div class='params-card hidden' id='settingsCard'>
+                            <div style='position:relative;'>
+                                <div class='tab-subtitle'>Réglages manuels</div>
+                                <button type='button' class='settings-close-btn' id='settingsCloseBtn'>✕</button>
+                            </div>
+                            <div class='param-row'>
+                                <label for='trimLeft'>Vit gauche ⬅️</label>
+                                <input id='trimLeft' type='range' min='-20' max='20' step='1' value='0'>
+                                <span class='param-value' id='trimLeftVal'>0</span>
+                            </div>
+                            <div class='param-row'>
+                                <label for='trimRight'>Vit droit ➡️</label>
+                                <input id='trimRight' type='range' min='-20' max='20' step='1' value='0'>
+                                <span class='param-value' id='trimRightVal'>0</span>
+                            </div>
+                            <div class='param-row'>
+                                <label for='trimReverseLeft'>Vit arr. gauche ⬅️</label>
+                                <input id='trimReverseLeft' type='range' min='-20' max='20' step='1' value='0'>
+                                <span class='param-value' id='trimReverseLeftVal'>0</span>
+                            </div>
+                            <div class='param-row'>
+                                <label for='trimReverseRight'>Vit arr. droit ➡️</label>
+                                <input id='trimReverseRight' type='range' min='-20' max='20' step='1' value='0'>
+                                <span class='param-value' id='trimReverseRightVal'>0</span>
+                            </div>
+                            <div class='param-row'>
+                                <label for='driveSpeed'>Vitesse avant (0-60)</label>
+                                <input id='driveSpeed' type='range' min='0' max='60' step='1' value='20'>
+                                <span class='param-value' id='driveSpeedVal'>20</span>
+                            </div>
+                            <div class='param-row'>
+                                <label for='turnSpeed'>Vitesse rotation (0-60)</label>
+                                <input id='turnSpeed' type='range' min='0' max='60' step='1' value='15'>
+                                <span class='param-value' id='turnSpeedVal'>15</span>
+                            </div>
+                            <button class='primary-btn' id='applyManualSettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
+                        </div>
                     </div>
                 </div>
 
@@ -461,6 +512,19 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
     var manualSettingsTimer = null;
 
+    function toggleSettingsMenu() {
+        const settingsCard = document.getElementById('settingsCard');
+        const settingsToggleBtn = document.getElementById('settingsToggleBtn');
+
+        if (settingsCard.classList.contains('hidden')) {
+            settingsCard.classList.remove('hidden');
+            settingsToggleBtn.textContent = '⬆️ Masquer réglages';
+        } else {
+            settingsCard.classList.add('hidden');
+            settingsToggleBtn.textContent = '⚙️ Réglages manuels';
+        }
+    }
+
     function applyManualSettings() {
         var payload = {
             left_trim: parseFloat(document.getElementById('trimLeft').value),
@@ -492,7 +556,11 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var input = document.getElementById(id);
         var valueEl = document.getElementById(id + 'Val');
         if (!input || !valueEl) return;
-        var update = function() { valueEl.textContent = input.value; };
+        var update = function() {
+            var value = parseInt(input.value);
+            var displayValue = value > 0 ? '+' + value : value;
+            valueEl.textContent = displayValue;
+        };
         input.addEventListener('input', function() {
             update();
             scheduleManualSettingsUpdate();
@@ -639,6 +707,13 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var applyManualBtn = document.getElementById('applyManualSettingsBtn');
         if (applyManualBtn) applyManualBtn.addEventListener('click', applyManualSettings);
 
+        // Settings menu toggle
+        var settingsToggleBtn = document.getElementById('settingsToggleBtn');
+        if (settingsToggleBtn) settingsToggleBtn.addEventListener('click', toggleSettingsMenu);
+
+        var settingsCloseBtn = document.getElementById('settingsCloseBtn');
+        if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', toggleSettingsMenu);
+
         loadManualSettings();
         
         // D-pad: register mouse + passive touch events
@@ -663,6 +738,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
     window.toggleSampling = toggleSampling;
     window.downloadSampling = downloadSampling;
     window.toggleController = toggleController;
+    window.toggleSettingsMenu = toggleSettingsMenu;
     window.startMove = startMove;
     window.stopMove = stopMove;
     window.applyManualSettings = applyManualSettings;
