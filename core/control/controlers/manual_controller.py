@@ -18,6 +18,11 @@ class ManualController(ControllerBase):
         self._name = "manual_controller"
         self.default_speed = default_speed
         self.watchdog_timeout = watchdog_timeout
+
+        # Contrôle PWM logiciel pour réduire la vitesse des virages
+        self._turn_tick = 0
+        self.turn_duty_on  = 1   # ticks actifs  (configurable depuis l'interface)
+        self.turn_duty_off = 3   # ticks inactifs → vitesse effective ÷ 4
         
         self._current_action = "stop"
         self._last_action_time = time.time()
@@ -48,6 +53,13 @@ class ManualController(ControllerBase):
         if time.time() - self._last_action_time > self.watchdog_timeout:
             self._current_action = "stop"
 
+        # Contrôle PWM logiciel pour les virages : on n'envoie la commande de virage que turn_duty_on tick sur turn_duty_on + turn_duty_off, pour réduire la vitesse effective.
+        if self._current_action in ("left", "right"):
+            self._turn_tick += 1
+            active = (self._turn_tick % (self.turn_duty_on + self.turn_duty_off)) < self.turn_duty_on
+            if not active:
+                return MotorCommand.stop()
+
         # 2. Traduction de l'action en MotorCommand
         if self._current_action == "stop":
             return MotorCommand.stop()
@@ -75,7 +87,7 @@ class ManualController(ControllerBase):
         }
 
     def get_params(self):
-        return {"default_speed": self.default_speed}
+        return {"default_speed": self.default_speed, "turn_duty_on": self.turn_duty_on, "turn_duty_off": self.turn_duty_off}
 
     def update_params(self, **kwargs):
         if "default_speed" in kwargs:

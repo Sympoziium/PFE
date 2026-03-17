@@ -68,7 +68,8 @@ class ControlManager:
         self.last_right_speed = 0
         
         # Callbacks pour l'échantillonnage par le serveur
-        self.on_tick_callback = None
+        # Signature: fn(state: SensorState, command: MotorCommand) -> None
+        self._sampling_callback = None
 
         self._init_new_arch_drivers() # Initialise les drivers de la nouvelle architecture (SensorDriver et MotorDriver)
         self._init_robot_sensors() # Initialise les capteurs du robot (MPU, IR, batterie) au demarrage du manager
@@ -120,6 +121,23 @@ class ControlManager:
         """Modifier le délai de la boucle de contrôle (delay en secondes)"""
         with self._data_lock:
             self._loop_delay = delay_sec
+
+    # ------------------------------------------------------------------
+    #  Callback de sampling (appelé à chaque tick de la boucle)
+    # ------------------------------------------------------------------
+    def set_sampling_callback(self, callback):
+        """
+        Enregistre un callback appelé à chaque tick de la boucle de contrôle,
+        immédiatement après step() et avant execute().
+
+        Args:
+            callback: Fonction avec signature fn(state: SensorState, command: MotorCommand) -> None
+        """
+        self._sampling_callback = callback
+
+    def clear_sampling_callback(self):
+        """Désactive le callback de sampling."""
+        self._sampling_callback = None
 
 
     # ------------------------------------------------------------------
@@ -192,13 +210,16 @@ class ControlManager:
 
                 # Mise à jours des lectures capteurs
                 self.update_sensors()
-                
+
                 # Exécution d'un cycle du contrôleur actif
-                self._tick_controller()
-                
-                # Exécution du callback après le tic (pour l'échantillonnage de données)
-                if self.on_tick_callback is not None:
-                    self.on_tick_callback()
+                state, command = self._tick_controller()
+
+                # Exécution du callback de sampling (après step, avant execute)
+                if self._sampling_callback is not None and state is not None and command is not None:
+                    try:
+                        self._sampling_callback(state, command)
+                    except Exception as e:
+                        print("[ControlManager] Erreur dans le callback de sampling: {}".format(e))
 
                 # délais du cycle de contrôle pour accomoder les autes modules du robot
                 time.sleep(self._loop_delay)
@@ -217,16 +238,21 @@ class ControlManager:
     #  Tick – exécution d'un cycle pour chaque mode
     # ------------------------------------------------------------------
     def _tick_controller(self):
-        """Un cycle du contrôleur ControllerBase actif (mode ``controller``)."""
+        """
+        Un cycle du contrôleur ControllerBase actif (mode ``controller``).
+
+        Returns:
+            tuple: (state, command) pour permettre le sampling synchronisé
+        """
         if self._active_controller is None:
             print("ERREUR CTRL MANAGER : aucun contrôleur actif la boucle tic quand même")
-            return
+            return None, None
         elif self._sensor_driver is None:
             print("ERREUR CTRL MANAGER : le driver des sensors n'a pas été initialisé et la boucle tic quand même")
-            return
+            return None, None
         elif self._motor_driver is None:
             print("ERREUR CTRL MANAGER : le driver des moteurs n'a pas été initialisé et la boucle tic quand même")
-            return
+            return None, None
 
         state = self.get_last_sensor_data()
         command = self._active_controller.step(state)
@@ -235,6 +261,8 @@ class ControlManager:
             self.last_left_speed = command.left_speed
             self.last_right_speed = command.right_speed
             self.last_motor_command = command
+
+        return state, command
 
     # ------------------------------------------------------------------
     #  Helpers

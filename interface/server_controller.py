@@ -146,6 +146,7 @@ class controller:
         self.sampling_vectors = [] # Vecteurs d'entrées (NDJSON)
         self.sampling_labels = []  # Vecteurs labels (NDJSON)
         self._ml_classes = []
+        self._last_debug_print_time = 0.0  # Throttle du debug à ~3 Hz
         self.manual_drive_speed = DRIVE_SPEED
         self.manual_turn_speed = TURN_SPEED
 
@@ -168,14 +169,14 @@ class controller:
     def attach_control_manager(self, control_manager):
         """Attache le ControlManager (orchestrateur de contrôle)."""
         self.control_manager = control_manager
-        
+
         # --- Enregistrement du contrôleur manuel ---
         # Si le contrôleur manuel n'est pas encore enregistré dans le ControlManager, on le fait ici.
         if "manual_controller" not in self.control_manager._controllers:
             self.control_manager.register_controller("manual_controller", ManualController(default_speed=self.manual_drive_speed))
-            
-        # Hook pour l'échantillonnage de données
-        self.control_manager.on_tick_callback = self._on_control_loop_tick
+
+        # Hook pour l'échantillonnage de données synchronisé avec la boucle de contrôle
+        self.control_manager.set_sampling_callback(self._sampling_callback)
 
     # --- Navigation ---
     def home(self):
@@ -203,40 +204,89 @@ class controller:
     def motor_watchdog(self):
         """
         Thread qui s'exécute en arrière-plan.
-        Gère l'échantillonnage de capteurs et les logs ressources.
-        Le watchdog moteur est désormais géré par le ManualController.
+        Gère les logs ressources système.
+        Note: L'échantillonnage est maintenant synchronisé dans _sampling_callback via ControlManager.
+        Le watchdog moteur est géré par le ManualController.
         """
         print("[Watchdog] Démarré.")
         iteration_count = 0
 
         while True:
             iteration_count += 1
-            
+
             # --- Logs des ressources système toutes les 20 secondes (40 itérations * 0.5s) ---
             if iteration_count % 40 == 0:
                 self._log_resource_usage_internal()
 
             time.sleep(0.5)
 
-    def _on_control_loop_tick(self):
-        """Appelée à chaque tic de la boucle de contrôle pour un échantillonnage synchronisé."""
-        if getattr(self, 'sampling_active', False):
-            result = self._collect_sensor_sample()
-            if result and len(result) == 3:
-                vector, label, adapter = result
-                if vector is not None and label is not None and adapter is not None:
-                    # DEBUG: VALIDATION DES DONNÉES COLLECTÉES
-                    import numpy as np
-                    v_array = np.array(vector)
-                    l_array = np.array(label)
-                    
-                    if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
-                        self.sampling_vectors.append(vector)
-                        self.sampling_labels.append(label)
-                        if self.debug_control_sampling:
-                            adapter.debug_print_state(v_array, l_array)
-                    else:
-                        print("[Sampling] Échantillon rejeté lors de la validation !")
+    def _sampling_callback(self, state, command):
+        """
+        Callback de sampling synchronisé avec la boucle de contrôle.
+        Appelé à chaque tick, immédiatement après step() et avant execute().
+
+        Args:
+            state: SensorState lu au tick courant
+            command: MotorCommand retournée par le contrôleur actif
+        """
+        if not self.sampling_active:
+            return
+
+        try:
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+
+            # Encodage du label directement depuis la commande reçue (atomique)
+            label = self._encode_label_from_command(command, adapter)
+
+            if vector is None or label is None:
+                return
+
+            # Validation des données
+            import numpy as np
+            v_array = np.array(vector)
+            l_array = np.array(label)
+
+            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                self.sampling_vectors.append(vector)
+                self.sampling_labels.append(label)
+
+                # Debug throttled à ~3 Hz pour visualiser les échantillons
+                if self.debug_control_sampling:
+                    now = time.time()
+                    if now - self._last_debug_print_time >= 0.33:
+                        self._last_debug_print_time = now
+                        adapter.debug_print_state(v_array, l_array)
+            else:
+                print("[Sampling] Échantillon rejeté lors de la validation !")
+
+        except Exception as e:
+            print("[Sampling] Erreur dans callback: {}".format(e))
+
+    def _encode_label_from_command(self, command, adapter):
+        """
+        Encode le label directement depuis la commande moteur reçue.
+        Garantit l'atomicité entre le vecteur d'état et le label.
+
+        Args:
+            command: MotorCommand du tick courant
+            adapter: VisionAdapter pour l'encodage
+
+        Returns:
+            list: Label encodé [left_normalized, right_normalized]
+        """
+        if command.command_type == CommandType.SPEED:
+            left = command.left_speed
+            right = command.right_speed
+        elif command.command_type == CommandType.FORWARD_STEP:
+            left = command.speed
+            right = command.speed
+        else:
+            # STOP ou autre type
+            left = 0.0
+            right = 0.0
+
+        return adapter.encode_label(float(left), float(right)).tolist()
 
 # ----------------------------------------------------------------------------
 #            Fonctions de callback pour les actions de vision
