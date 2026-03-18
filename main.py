@@ -153,11 +153,20 @@ def bootstrap():
 
     # instance de controlleur ML (contrôle par apprentissage par imitation avec un modèle MLP)
     from core.vision.vision_adapter import VisionAdapter
-    classes = haar_classifier.get_classifier_name_list() # liste des classes du détecteur Haar, nécessaire pour construire le vecteur d'état d'entrée du MLP
-    adapter = VisionAdapter(640, 480, classes) # Initialisation nécessaire pour le MLController
+
+    # ⚠️ IMPORTANT: La liste des classes DOIT correspondre exactement à celle utilisée lors de l'entraînement!
+    # Le modèle TFLite attend 21 dimensions = 17 (capteurs) + 4 (classes)
+    # Mettre à jour cette liste si vous ré-entraînez avec des classes différentes.
+    classes = ['stop_sign', 'Pieton', 'Camion_Pompier', 'reserved']  # 4 classes pour 21 dims input
+    adapter = VisionAdapter(640, 480, classes) # Initialisation nécessaire pour le MLController (ATTENTION LA TAILLE DE L'IMAGE EST ARDCODÉ ICI ON DEVRAIT REENDRE SA DYNAMIQUE)
     MLP_MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'control', 'controlers', 'models')
-    MLP_model_path = os.path.join(MLP_MODELS_DIR, 'zumi_mlp_quant.tflite')
-    
+    MLP_model_path = os.path.join(MLP_MODELS_DIR, 'zumi_mlp.tflite')
+
+    # Validation: vérifier que les dimensions correspondent
+    print(f"[BOOT] ML Controller:")
+    print(f"  - Classes utilisées: {classes}")
+    print(f"  - Dimensions du vecteur d'état: {adapter.state_dim} (doit être 21 pour ce modèle)")
+
     ml_ctrl = MLController(vision_adapter=adapter, model_path=MLP_model_path)
     control_manager.register_controller(ml_ctrl.name, ml_ctrl)
 
