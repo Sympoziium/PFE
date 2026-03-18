@@ -14,7 +14,7 @@ from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 
 class ManualController(ControllerBase):
-    def __init__(self, default_speed=30, watchdog_timeout=0.6):
+    def __init__(self, default_speed=20, watchdog_timeout=0.6):
         self._name = "manual_controller"
         self.default_speed = default_speed
         self.watchdog_timeout = watchdog_timeout

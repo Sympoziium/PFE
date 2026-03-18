@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 """
 Conversion du modèle PyTorch vers TensorFlow Lite.
 
@@ -12,7 +16,7 @@ Usage:
 """
 
 import argparse
-import sys
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -46,53 +50,77 @@ def load_pytorch_model(model_path: Path) -> tuple:
     return model, checkpoint
 
 
-def export_to_savedmodel(model: torch.nn.Module, input_dim: int, output_path: Path):
+def export_to_savedmodel(model: torch.nn.Module, input_dim: int, output_path: Path, hidden_dims: list, output_dim: int):
     """Exporte le modèle PyTorch vers TensorFlow SavedModel.
 
-    Cette approche contourne le besoin de onnx-tf (qui n'existe pas pour Python 3.13).
-    On crée une fonction traçable PyTorch puis la convertit.
+    Approche: Crée un modèle TensorFlow équivalent avec les mêmes weights et architecture.
+    TFLite ne peut pas utiliser tf.py_function, donc on crée un vrai modèle TensorFlow.
+
+    Args:
+        model: Modèle PyTorch à convertir
+        input_dim: Dimension d'entrée
+        output_path: Chemin de sortie pour le SavedModel
+        hidden_dims: Liste des dimensions des couches cachées (ex: [128, 64, 32])
+        output_dim: Dimension de sortie (ex: 2)
     """
     try:
         import tensorflow as tf
-        from tensorflow.python.framework import conversion_util
-    except ImportError:
+    except ImportError as e:
         print("Erreur: tensorflow non installé. Installez avec:")
         print("  pip install tensorflow>=2.13.0")
+        print(f"  Détails: {e}")
         sys.exit(1)
 
-    # 1. Créer une entrée factice
-    dummy_input = torch.randn(1, input_dim).float()
+    # Nettoyer si le répertoire existe déjà
+    if output_path.exists():
+        shutil.rmtree(output_path)
 
-    # 2. Tracer le modèle
-    traced_model = torch.jit.trace(model, dummy_input)
+    # Créer un modèle TensorFlow équivalent dynamiquement
+    # Architecture: Input → [Dense(hidden, ReLU)] × N → Dense(output, Tanh)
+    tf_model = tf.keras.Sequential()
+    tf_model.add(tf.keras.layers.Input(shape=(input_dim,)))
 
-    # 3. Convertir via le format intermédiaire numpy
-    # On va créer un wrapper TensorFlow qui imite le modèle PyTorch
-    class MLPWrapper(tf.Module):
-        def __init__(self, torch_model, input_dim):
-            super().__init__()
-            self.torch_model = torch_model
-            self.input_dim = input_dim
+    for hidden_dim in hidden_dims:
+        tf_model.add(tf.keras.layers.Dense(hidden_dim, activation='relu'))
 
-        @tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, input_dim], dtype=tf.float32, name='state')
-        ])
-        def __call__(self, x):
-            # Convertir en PyTorch tensor
-            x_torch = torch.from_numpy(x.numpy()).float()
+    tf_model.add(tf.keras.layers.Dense(output_dim, activation='tanh'))
 
-            # Inférence PyTorch
-            with torch.no_grad():
-                y_torch = self.torch_model(x_torch)
+    print(f"[TF Model] Architecture: {input_dim} → {' → '.join(map(str, hidden_dims))} → {output_dim}")
 
-            # Convertir en numpy puis TF tensor
-            return tf.constant(y_torch.numpy(), dtype=tf.float32)
+    # Copier les poids du modèle PyTorch
+    # Itérer sur les couches PyTorch
+    torch_params = list(model.parameters())
+    param_idx = 0
 
-    # 4. Créer et exporter
-    wrapper = MLPWrapper(traced_model, input_dim)
-    tf.saved_model.save(wrapper, str(output_path), signatures=wrapper.__call__)
+    for layer in tf_model.layers:
+        if isinstance(layer, tf.keras.layers.Dense):
+            # Dense a weight et bias
+            # PyTorch: Linear(in, out) → weight shape (out, in), bias shape (out,)
+            # TensorFlow: Dense(out, in) → kernel shape (in, out), bias shape (out,)
 
-    print(f"[SavedModel] Créé: {output_path}")
+            if param_idx < len(torch_params):
+                weight_torch = torch_params[param_idx].cpu().detach().numpy()
+                param_idx += 1
+
+                # Transpose car PyTorch utilise (out, in) et TensorFlow (in, out)
+                weight_tf = weight_torch.T.astype(np.float32)
+                layer.kernel.assign(weight_tf)
+
+            if param_idx < len(torch_params):
+                bias_torch = torch_params[param_idx].cpu().detach().numpy().astype(np.float32)
+                param_idx += 1
+                layer.bias.assign(bias_torch)
+
+    # Sauvegarder le modèle
+    try:
+        # Utiliser export() pour créer un SavedModel compatible avec TFLite
+        tf_model.export(str(output_path))
+        print(f"[SavedModel] Créé: {output_path}")
+    except Exception as e:
+        print(f"Erreur lors de la sauvegarde SavedModel: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 def convert_savedmodel_to_tflite(
@@ -111,9 +139,10 @@ def convert_savedmodel_to_tflite(
     """
     try:
         import tensorflow as tf
-    except ImportError:
+    except ImportError as e:
         print("Erreur: tensorflow non installé. Installez avec:")
         print("  pip install tensorflow>=2.13.0")
+        print(f"  Détails: {e}")
         sys.exit(1)
 
     converter = tf.lite.TFLiteConverter.from_saved_model(str(savedmodel_path))
@@ -209,9 +238,11 @@ def main():
     # 1. Charger le modèle PyTorch
     model, checkpoint = load_pytorch_model(model_path)
     input_dim = checkpoint['input_dim']
+    output_dim = checkpoint['output_dim']
+    hidden_dims = checkpoint['hidden_dims']
 
     # 2. Exporter vers TensorFlow SavedModel
-    export_to_savedmodel(model, input_dim, savedmodel_path)
+    export_to_savedmodel(model, input_dim, savedmodel_path, hidden_dims, output_dim)
 
     # 3. Convertir TensorFlow → TFLite
     convert_savedmodel_to_tflite(savedmodel_path, tflite_path, quantize=args.quantize, input_dim=input_dim)
@@ -232,4 +263,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

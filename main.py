@@ -7,7 +7,10 @@ import os
 import signal
 import threading
 import time
-from core.robot.robot_zumi import RobotZumi # nécessaire pour le bootstrap
+from core.control.controlers.ml_controller import MLController
+from core.robot.robot_zumi import RobotZumi
+from core.vision import vision_pipeline
+from core.vision.vision_adapter import VisionAdapter # nécessaire pour le bootstrap
 
 # ═════════════════════════════════════════════════════════════════════
 #  Fonctions de bootstrap avec affichage de progression
@@ -94,33 +97,33 @@ def bootstrap():
     # vision_pipeline.add_passive_detectors(line_detector)
     draw_progress_bar(zumi.screen, 70)
     
-    # Étape 5 : Créer les contrôleurs
-    print("[BOOT] Initialisation des contrôleurs...")
-    from core.control.legacy.line_following_pid import PIDController
-    from core.control.legacy.line_following_state_machine import LineFollowingStateMachine, State
-    from core.control.control_manager import ControlManager
-    pid_controller = PIDController(
-        kp=0.2, 
-        ki=0.0, 
-        kd=0.1, 
-        base_speed=15, 
-        max_correction=25,
-        rotation_mode=True,
-        deadband=1,
-        rotation_scale=0.2,
-        auto_reset_threshold=80
-    )
-    draw_progress_bar(zumi.screen, 75)
+    # Étape 5 : Créer les contrôleurs (IMPLANTATION LEGACY METTRE A JOURS POUR LES NOUVEAU CONTROLLEURS)
+    # print("[BOOT] Initialisation des contrôleurs...")
+    # from core.control.legacy.line_following_pid import PIDController
+    # from core.control.legacy.line_following_state_machine import LineFollowingStateMachine, State
+    # from core.control.control_manager import ControlManager
+    # pid_controller = PIDController(
+    #     kp=0.2, 
+    #     ki=0.0, 
+    #     kd=0.1, 
+    #     base_speed=15, 
+    #     max_correction=25,
+    #     rotation_mode=True,
+    #     deadband=1,
+    #     rotation_scale=0.2,
+    #     auto_reset_threshold=80
+    # )
+    # draw_progress_bar(zumi.screen, 75)
     
-    state_machine = LineFollowingStateMachine(
-        robot=zumi,
-        vision_pipeline=vision_pipeline,
-        pid_controller=pid_controller,
-        stop_condition_detector=stop_detector_HSV
-    )
+    # state_machine = LineFollowingStateMachine(
+    #     robot=zumi,
+    #     vision_pipeline=vision_pipeline,
+    #     pid_controller=pid_controller,
+    #     stop_condition_detector=stop_detector_HSV
+    # )
     
-    state_machine.set_rotation_angle(90)
-    draw_progress_bar(zumi.screen, 80)
+    # state_machine.set_rotation_angle(90)
+    # draw_progress_bar(zumi.screen, 80)
     
     # Étape 6 : Initialiser Flask et routes
     print("[BOOT] Initialisation du serveur Flask...")
@@ -133,14 +136,31 @@ def bootstrap():
     
     # Étape 7 : Attacher le ControlManager
     print("[BOOT] Initialisation du ControlManager...")
+    from core.control.control_manager import ControlManager
     control_manager = ControlManager(robot=zumi, vision_pipeline=vision_pipeline)
 
     from core.control.controlers.line_follower_controller import LineFollowerController
+    from core.control.controlers.manual_controller import ManualController
+    from core.control.controlers.ml_controller import MLController
+
+    # instance de controlleur de suivi de ligne
     line_follower_ctrl = LineFollowerController()
     control_manager.register_controller(line_follower_ctrl.name, line_follower_ctrl)
+
+    # instance de controlleur manuel (contrôle direct depuis l'interface web)
+    manual_ctrl = ManualController()
+    control_manager.register_controller(manual_ctrl.name, manual_ctrl)
+
+    # instance de controlleur ML (contrôle par apprentissage par imitation avec un modèle MLP)
+    from core.vision.vision_adapter import VisionAdapter
+    adapter = VisionAdapter(640, 480, haar_classifier.classes()) # Initialisation nécessaire pour le MLController
+    MLP_MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'control', 'controlers', 'models')
+    MLP_model_path = os.path.join(MLP_MODELS_DIR, 'zumi_mlp_quant.tflite')
     
+    ml_ctrl = MLController(vision_adapter=adapter, model_path=MLP_model_path)
+    control_manager.register_controller(ml_ctrl.name, ml_ctrl)
+
     ctrl.attach_control_manager(control_manager)
-    ctrl.state_machine = state_machine
     draw_progress_bar(zumi.screen, 95)
     
     # Étape 8 : Affichage final
