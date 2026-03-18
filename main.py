@@ -153,7 +153,8 @@ def bootstrap():
 
     # instance de controlleur ML (contrôle par apprentissage par imitation avec un modèle MLP)
     from core.vision.vision_adapter import VisionAdapter
-    adapter = VisionAdapter(640, 480, haar_classifier.classes()) # Initialisation nécessaire pour le MLController
+    classes = haar_classifier.get_classifier_name_list() # liste des classes du détecteur Haar, nécessaire pour construire le vecteur d'état d'entrée du MLP
+    adapter = VisionAdapter(640, 480, classes) # Initialisation nécessaire pour le MLController
     MLP_MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'control', 'controlers', 'models')
     MLP_model_path = os.path.join(MLP_MODELS_DIR, 'zumi_mlp_quant.tflite')
     

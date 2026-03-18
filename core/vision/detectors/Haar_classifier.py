@@ -95,6 +95,10 @@ class HaarDetector(BaseDetector):
                 print("Classifieur '{}' non trouvé.".format(name))
             return None
 
+    def get_classifier_name_list(self):
+        """Retourne la liste des classifieurs chargés."""
+        return list(self.classifiers.keys())
+
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         try:
