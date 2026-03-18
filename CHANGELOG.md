@@ -5,6 +5,112 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publié] — Pipeline d'entraînement MLP complet (2026-03-18)
+
+### Objectif
+Implémenter un pipeline complet d'entraînement et de déploiement de modèles MLP (Multilayer Perceptron) pour le contrôle du robot par apprentissage par imitation. Le modèle est entraîné côté PC avec PyTorch, converti en TensorFlow Lite, puis déployé sur le Raspberry Pi Zero 2.
+
+### Architecture du pipeline
+```
+[Collecte données] → [JSONL] → [PyTorch Dataset] → [Entraînement MLP]
+                                                          ↓
+[Robot Pi Zero] ← [TFLite] ← [TensorFlow] ← [ONNX] ← [PyTorch Model]
+```
+
+### Ajouté
+
+#### Module d'entraînement (`MLP_model_trainer/`)
+- **`dataset.py`** — Chargement des données JSONL et création des DataLoaders PyTorch
+  - Classe `ZumiControlDataset` héritant de `torch.utils.data.Dataset`
+  - Fonction `create_data_loaders()` avec split train/validation (80/20)
+  - Statistiques du dataset (moyennes, écarts-types, distributions)
+
+- **`model.py`** — Architecture MLP avec plusieurs variantes
+  - `ZumiMLP` : Architecture modulaire avec couches configurables
+  - `ZumiMLPSmall` : Version compacte [32, 16] pour Pi Zero (1410 paramètres)
+  - `ZumiMLPLarge` : Version étendue [128, 64, 32] pour tâches complexes
+  - Initialisation Xavier, dropout configurable, sortie Tanh bornée [-1, 1]
+
+- **`train.py`** — Script d'entraînement complet
+  - Classe `Trainer` avec boucle d'entraînement PyTorch standard
+  - Optimiseur AdamW avec weight decay (régularisation L2)
+  - Learning rate scheduler `ReduceLROnPlateau`
+  - Early stopping configurable (patience=20 par défaut)
+  - Gradient clipping pour stabilité
+  - Sauvegarde automatique du meilleur modèle + rapport JSON
+
+- **`convert_to_tflite.py`** — Conversion vers TensorFlow Lite
+  - Export PyTorch → ONNX avec `torch.onnx.export()`
+  - Conversion ONNX → TensorFlow SavedModel via `onnx-tf`
+  - Conversion TensorFlow → TFLite avec quantization optionnelle
+  - Vérification automatique du modèle converti
+
+- **`requirements.txt`** — Dépendances Python pour l'entraînement PC
+
+- **`TUTORIAL_MLP_PYTORCH.md`** — Tutoriel complet de 12 sections
+  - Fondamentaux PyTorch et MLPs
+  - Architecture du pipeline de bout en bout
+  - Explication détaillée de chaque composant
+  - Techniques d'optimisation avancées
+  - Guide de déploiement sur système embarqué
+  - Dépannage et bonnes pratiques
+
+#### MLController finalisé (`core/control/controlers/ml_controller.py`)
+- Chargement du modèle TFLite (compatible `tflite_runtime` et `tensorflow`)
+- Méthode `_build_state_vector()` pour construire le vecteur d'état depuis SensorState
+- Méthode `_inference()` pour l'inférence TFLite optimisée
+- Dénormalisation automatique des sorties [-1, 1] → commandes moteur
+- Méthodes de debug : `get_debug_info()`, `get_params()`
+- Fallback gracieux si modèle non chargé (commandes = 0)
+
+### Données d'entraînement
+- 1405 échantillons collectés via le système de sampling existant
+- Format JSONL : `captures.jsonl` (états) + `labels.jsonl` (commandes)
+- Vecteur d'état : 21 dimensions (6 IR + 1 flag + 4 classes + 4 bbox + 6 IMU)
+- Vecteur de sortie : 2 dimensions (vitesses gauche/droite normalisées)
+
+### Choix techniques
+
+| Aspect | Choix | Justification |
+|--------|-------|---------------|
+| Framework entraînement | PyTorch | API intuitive, debugging facile, écosystème riche |
+| Framework déploiement | TFLite | Optimisé ARM, faible empreinte mémoire (~5MB runtime) |
+| Format intermédiaire | ONNX | Standard portable, conversion bidirectionnelle |
+| Fonction d'activation sortie | Tanh | Garantit sorties dans [-1, 1] |
+| Optimiseur | AdamW | Convergence rapide + weight decay correct |
+| Régularisation | Dropout + L2 | Prévention du sur-apprentissage |
+
+### Fichiers créés
+- `MLP_model_trainer/dataset.py`
+- `MLP_model_trainer/model.py`
+- `MLP_model_trainer/train.py`
+- `MLP_model_trainer/convert_to_tflite.py`
+- `MLP_model_trainer/requirements.txt`
+- `MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md`
+- `MLP_model_trainer/data/` (données extraites du sampling)
+
+### Fichiers modifiés
+- `core/control/controlers/ml_controller.py` — Implémentation complète
+- `MLP_model_trainer/DEV_PLAN.md` — Mise à jour avec documentation du pipeline
+
+### Usage
+```bash
+# 1. Installer les dépendances (PC)
+cd MLP_model_trainer
+pip install -r requirements.txt
+
+# 2. Entraîner le modèle
+python train.py --epochs 100 --model-size medium
+
+# 3. Convertir vers TFLite
+python convert_to_tflite.py --quantize
+
+# 4. Déployer sur le robot
+scp export/zumi_mlp_quant.tflite pi@<ip>:~/robot/models/
+```
+
+---
+
 ## [Non publié] — Refactor complet du control manager (2026-03-16)
 
 ### Objectif
@@ -28,6 +134,7 @@ Refonte architecturale intégrale du module de contrôle (`core/control/`) pour 
 - **Nouveaux Contrôleurs (`core/control/controlers/`)** :
   - Adaptation de la logique existante en un `LineFollowerController` unifié et compatible avec la nouvelle baseline.
   - Création à blanc d'un `MLController`, conçu comme prochain jalon utilisant un Multi-Layer Perceptron (MLP) en inférence via TFLite.
+  - Création d'un `ManualController` pour le contrôle manuel via l'interface, avec PWM logiciel pour les virages (configurable).
 - **Adaptateur Vision** :
   - Création de `VisionAdapter` (`core/vision/vision_adapter.py`) responsable de prendre un `SensorState` en entrée et de la vectoriser mathématiquement (Bounding Boxes, encodage one-hot des classes, normalisation MPU/IR). Ce qui retire cette lourde logique anciennement codée en dur dans les objets DTO.
 - **Assainissement du module de contrôle** :

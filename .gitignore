@@ -9,6 +9,8 @@ __pycache__/
 *.txt
 *.log
 *.vec
+*.jsonl
+*.json
 LBP_*.xml
 stage*.xml
 cascade.xml

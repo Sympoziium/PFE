@@ -18,7 +18,8 @@ Ce projet s'inscrit dans la continuité d'un PFE multi-session dont l'objectif e
 | 2 | **Vision artificielle** — Implémenter et comparer plusieurs détecteurs d'objets (HSV, Haar/LBP cascades) pour la signalisation routière. | En cours |
 | 3 | **Interface opérateur** — Fournir un serveur web Flask embarqué pour le contrôle du robot, le live feed caméra et le diagnostic de détection. | Complété |
 | 4 | **Entraînement de modèles** — Développer un pipeline automatisé d'entraînement de cascades Haar/LBP (PC-side) avec évaluation et hard negative mining. | Complété |
-| 5 | **Continuité** — Poursuivre l'amélioration du projet en s'appuyant sur les travaux des équipes précédentes. | En cours |
+| 5 | **Contrôle par apprentissage** — Implémenter un contrôleur MLP (Multilayer Perceptron) avec pipeline d'entraînement PyTorch et déploiement TFLite. | Complété |
+| 6 | **Continuité** — Poursuivre l'amélioration du projet en s'appuyant sur les travaux des équipes précédentes. | En cours |
 
 ---
 
@@ -98,8 +99,20 @@ PFE/
 │   ├── onglet_vision.py
 │   └── onglet_template.py
 │
-├── Haar_Classifier_model_trainer/   # Pipeline d'entraînement (PC-side)
+├── Haar_Classifier_model_trainer/   # Pipeline d'entraînement Haar/LBP (PC-side)
 │   └── ...                          # Voir Haar_Classifier_model_trainer/README.md
+│
+├── MLP_model_trainer/               # Pipeline d'entraînement MLP PyTorch (PC-side)
+│   ├── data/                        # Données d'entraînement (captures.jsonl + labels.jsonl)
+│   ├── checkpoints/                 # Modèles sauvegardés (.pt)
+│   ├── export/                      # Modèles convertis (.onnx, .tflite)
+│   ├── dataset.py                   # Chargement JSONL → PyTorch DataLoader
+│   ├── model.py                     # Architecture MLP (Small/Medium/Large)
+│   ├── train.py                     # Script d'entraînement avec validation
+│   ├── convert_to_tflite.py         # Conversion PyTorch → ONNX → TFLite
+│   ├── requirements.txt             # Dépendances Python
+│   ├── DEV_PLAN.md                  # Plan de développement
+│   └── TUTORIAL_MLP_PYTORCH.md      # Tutoriel complet PyTorch/MLP
 │
 └── Doc/                             # Documentation interne
     ├── AIDE_MEMOIRE_GIT.md
@@ -117,7 +130,7 @@ PFE/
 | **Abstraction matérielle** | Les interfaces `camera_base` et `robot_base` découplent le matériel du reste du système. Un changement de caméra ou de plateforme robot n'impacte pas la logique applicative. |
 | **Couche de contrôle dédiée** | Le dossier `core/control/` centralise la logique de suivi de ligne (PID, machine d'états, drivers moteurs/capteurs) pour isoler le comportement de conduite du reste du système. |
 | **Pipeline de vision modulaire** | `vision_pipeline.py` orchestre la capture et la détection sans connaître les détecteurs spécifiques. Chaque détecteur hérite de `detector_base` et peut être ajouté ou retiré sans modifier le pipeline. |
-| **Séparation entraînement / déploiement** | L'entraînement des cascades s'exécute sur PC (`Haar_Classifier_model_trainer/`). Seul l'artefact `.xml` est déployé sur le robot. |
+| **Séparation entraînement / déploiement** | L'entraînement des modèles s'exécute sur PC (`Haar_Classifier_model_trainer/` pour les cascades, `MLP_model_trainer/` pour les réseaux de neurones). Seuls les artefacts (`.xml`, `.tflite`) sont déployés sur le robot. |
 | **Interface opérateur découplée** | Le serveur Flask communique avec le pipeline de vision via une API Python interne, sans dépendance directe au matériel. |
 
 ---
@@ -243,6 +256,26 @@ python train_cascade.py
 
 Voir [Haar_Classifier_model_trainer/README.md](Haar_Classifier_model_trainer/README.md) pour la documentation complète.
 
+### 4.4 — Entraînement d'un modèle MLP (PC-side)
+
+```bash
+cd MLP_model_trainer
+
+# Installer les dépendances
+pip install -r requirements.txt
+
+# Lancer l'entraînement (100 epochs, modèle medium)
+python train.py --epochs 100 --model-size medium
+
+# Convertir vers TFLite pour déploiement sur Pi
+python convert_to_tflite.py --quantize
+
+# Déployer sur le robot
+scp export/zumi_mlp_quant.tflite pi@192.168.0.1:~/robot/models/
+```
+
+Voir [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md) pour le tutoriel complet.
+
 ---
 
 ## 5. Gestion des branches — compatibilité V1/V2
@@ -276,6 +309,7 @@ Consulter [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) et [Doc/Workflow_GIT.md](Doc/Work
 | [CHANGELOG.md](CHANGELOG.md) | Historique détaillé des modifications par branche |
 | [MIGRATION_NOTES.md](MIGRATION_NOTES.md) | Journal complet de la migration Pi Zero W → Pi Zero 2W |
 | [Haar_Classifier_model_trainer/README.md](Haar_Classifier_model_trainer/README.md) | Guide complet du pipeline d'entraînement Haar/LBP |
+| [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md) | Tutoriel complet : MLP avec PyTorch et déploiement TFLite |
 | [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) | Guide Git pour les membres de l'équipe |
 | [Doc/AIDE_MEMOIRE_GIT.md](Doc/AIDE_MEMOIRE_GIT.md) | Aide-mémoire Git (référence rapide) |
 | [Doc/Workflow_GIT.md](Doc/Workflow_GIT.md) | Workflow de branches Git pour le projet |
