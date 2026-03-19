@@ -57,7 +57,7 @@ class SensorDriver:
         if self.vision_pipeline is not None:
             frame = self.vision_pipeline.get_last_frame()
 
-            # Détection de ligne (il faudrais trouver une méthode pour empècher de le faire pour l'inférence ML si on veut libérer du overhead à la lecture des capteurs)
+            # Détection de ligne
             if Line_detection and frame is not None and self._line_detector_index is not None:
                 try:
                     result = self.vision_pipeline.process_frame(
@@ -87,12 +87,12 @@ class SensorDriver:
                 pass
 
         # ── Orientation ─────────────────────────────
-        orientation = -1
-        if hasattr(self.robot, 'get_orientation'):
-            try:
-                orientation = self.robot.get_orientation()
-            except Exception:
-                pass
+        # orientation = -1
+        # if hasattr(self.robot, 'get_orientation'):
+        #     try:
+        #         orientation = self.robot.get_orientation()
+        #     except Exception:
+        #         pass
 
         # ── Capteurs IR ─────────────────────────────
         ir_sensors = None
@@ -103,12 +103,12 @@ class SensorDriver:
                 pass
 
         # ── Batterie ────────────────────────────────
-        battery_voltage = 0.0
-        if hasattr(self.robot, 'get_battery_voltage'):
-            try:
-                battery_voltage = self.robot.get_battery_voltage()
-            except Exception:
-                pass
+        # battery_voltage = 0.0
+        # if hasattr(self.robot, 'get_battery_voltage'):
+        #     try:
+        #         battery_voltage = self.robot.get_battery_voltage()
+        #     except Exception:
+        #         pass
 
         return SensorState(
             timestamp=now,
@@ -117,7 +117,7 @@ class SensorDriver:
             line_detected=line_detected,
             detections=detections,
             gyro_angles=gyro_angles,
-            orientation=orientation,
+            # orientation=orientation,
             ir_sensors=ir_sensors,
-            battery_voltage=battery_voltage,
+            # battery_voltage=battery_voltage,
         )

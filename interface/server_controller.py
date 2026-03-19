@@ -1098,6 +1098,11 @@ class controller:
             zf.writestr('captures.jsonl', '\n'.join(captures_lines))
             zf.writestr('labels.jsonl', '\n'.join(labels_lines))
 
+        # Pour des fin de validation on s'attend a un vecteur capteur de 20 et un vecteur de label de 2
+        print("[ServerController] Dimension vecteur de capteurs {}".format(len(self.sampling_vectors[0]) if self.sampling_vectors else 0))
+        print("[ServerController] Dimension vecteur de labels {}".format(len(self.sampling_labels[0]) if self.sampling_labels else 0))
+        print("[ServerController] Nombre d'échantillons capturés: {}".format(len(self.sampling_vectors)))
+
         buf.seek(0)
         ts = time.strftime('%Y%m%d_%H%M%S')
         zip_name = 'sampling_{}.zip'.format(ts)

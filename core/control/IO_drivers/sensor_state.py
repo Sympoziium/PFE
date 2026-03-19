@@ -45,9 +45,9 @@ class SensorState:
         line_detected=False,
         detections=None,
         gyro_angles=None,
-        orientation=-1,
+        # orientation=-1,
         ir_sensors=None,
-        battery_voltage=0.0,
+        # battery_voltage=0.0,
     ):
         self.timestamp = timestamp if timestamp is not None else time.time()
         self.frame = frame
@@ -55,9 +55,9 @@ class SensorState:
         self.line_detected = line_detected
         self.detections = detections
         self.gyro_angles = gyro_angles
-        self.orientation = orientation
+        # self.orientation = orientation
         self.ir_sensors = ir_sensors
-        self.battery_voltage = battery_voltage
+        # self.battery_voltage = battery_voltage
 
     def __repr__(self):
         parts = ["SensorState("]
@@ -66,6 +66,7 @@ class SensorState:
             parts.append("  gyro=[{:.1f}, {:.1f}, {:.1f}]".format(*self.gyro_angles[:3]))
         if self.ir_sensors:
             parts.append("  ir={}".format(self.ir_sensors))
-        parts.append("  batt={:.2f}V".format(self.battery_voltage))
+        # if self.battery_voltage is not None:
+        #     parts.append("  batt={:.2f}V".format(self.battery_voltage))
         parts.append(")")
         return "\n".join(parts)
