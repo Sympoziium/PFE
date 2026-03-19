@@ -21,8 +21,8 @@ class ManualController(ControllerBase):
 
         # Contrôle PWM logiciel pour réduire la vitesse des virages
         self._turn_tick = 0
-        self.turn_duty_on  = 1   # ticks actifs  (configurable depuis l'interface)
-        self.turn_duty_off = 1   # ticks inactifs → vitesse effective ÷ 2
+        self.turn_duty_on  = 2   # ticks actifs  (configurable depuis l'interface)
+        self.turn_duty_off = 1   # ticks inactifs → vitesse effective 2/3 de la vitesse max en virage
         
         self._current_action = "stop"
         self._last_action_time = time.time()

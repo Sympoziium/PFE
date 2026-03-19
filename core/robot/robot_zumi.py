@@ -34,10 +34,10 @@ DRIVE_SPEED = DRIVE_SPEED_DEFAULT
 TURN_SPEED = TURN_SPEED_DEFAULT
 
 # Constantes de trim pour compenser les imperfections mécaniques du Zumi
-LEFT_TRIM  =  8   # Ajuster expérimentalement — positif = booste le gauche
-RIGHT_TRIM =  1
-LEFT_REVERSE_TRIM = 8 # Trim spécifique pour la marche arrière
-RIGHT_REVERSE_TRIM = 1
+LEFT_TRIM  =  0   # Ajuster expérimentalement — positif = booste le gauche
+RIGHT_TRIM =  -8
+LEFT_REVERSE_TRIM = 0 # Trim spécifique pour la marche arrière
+RIGHT_REVERSE_TRIM = -6
 
 # === Profils de caméra ===
 # Utilisés par le server_controller pour ajuster automatiquement la résolution
