@@ -269,31 +269,6 @@ class controller:
         except Exception as e:
             print("[Sampling] Erreur dans callback: {}".format(e))
 
-    # def _encode_label_from_command(self, command, adapter):
-    #     """
-    #     Encode le label directement depuis la commande moteur reçue.
-    #     Garantit l'atomicité entre le vecteur d'état et le label.
-
-    #     Args:
-    #         command: MotorCommand du tick courant
-    #         adapter: VisionAdapter pour l'encodage
-
-    #     Returns:
-    #         list: Label encodé [left_normalized, right_normalized]
-    #     """
-    #     if command.command_type == CommandType.SPEED:
-    #         left = command.left_speed
-    #         right = command.right_speed
-    #     elif command.command_type == CommandType.FORWARD_STEP:
-    #         left = command.speed
-    #         right = command.speed
-    #     else:
-    #         # STOP ou autre type
-    #         left = 0.0
-    #         right = 0.0
-
-    #     return adapter.encode_label(float(left), float(right)).tolist()
-
 # ----------------------------------------------------------------------------
 #            Fonctions de callback pour les actions de vision
 # ----------------------------------------------------------------------------
@@ -1202,28 +1177,6 @@ class controller:
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    # def _collect_sensor_sample(self):
-    #     """Collecte un échantillon de données des capteurs (vision + IMU + IR) et son label de commande moteur.
-    #         Vectorisé déja ready pour l'entraînement ML"""
-    #     if not self.sampling_active:
-    #         return None, None, None
-
-    #     try:
-    #         state = SensorDriver(vision_pipeline=self.vision_pipeline, robot=self.robot).read()
-    #         adapter = self._get_ml_adapter(state)
-    #         vector = self._vectorize_state_with_adapter(state, adapter)
-    #         raw_label = self._get_current_label()
-    #         if vector is None or raw_label is None:
-    #             return None, None, None
-            
-    #         # Normalisation du vecteur label de commande
-    #         label = adapter.encode_label(raw_label[0], raw_label[1]).tolist()
-            
-    #         return vector, label, adapter
-    #     except Exception as e:
-    #         print("[Sampling] Erreur: {}".format(e))
-    #         return None, None, None
-
     def _vectorize_state_with_adapter(self, state, adapter):
         if state is None:
             return None
@@ -1282,48 +1235,3 @@ class controller:
         if not self._ml_classes:
             self._ml_classes = self._infer_ml_classes()
         return VisionAdapter(image_width=w, image_height=h, classes=self._ml_classes)
-
-    # def _vectorize_state(self, state):
-    #     if state is None:
-    #         return None
-    #     adapter = self._get_ml_adapter(state)
-
-    #     detections = state.detections or []
-    #     vision_result = {'detections': detections}
-
-    #     imu_data = {}
-    #     if state.gyro_angles and len(state.gyro_angles) >= 5:
-    #         imu_data = {
-    #             'gx': float(state.gyro_angles[0]),
-    #             'gy': float(state.gyro_angles[1]),
-    #             'gz': float(state.gyro_angles[2]),
-    #             'ax': float(state.gyro_angles[3]),
-    #             'ay': float(state.gyro_angles[4]),
-    #             'az': float(state.gyro_angles[5]) if len(state.gyro_angles) > 5 else 0.0,
-    #         }
-
-    #     ir_data = state.ir_sensors if state.ir_sensors is not None else None
-    #     vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data)
-    #     return vector.tolist()
-
-    # def _get_current_label(self):
-    #     if self.control_manager and self.control_manager._motor_driver:
-    #         command = self.control_manager._motor_driver.last_command
-    #     else:
-    #         command = None
-
-    #     if command is None:
-    #         return None
-
-    #     if command.command_type == CommandType.SPEED:
-    #         left = command.left_speed
-    #         right = command.right_speed
-    #     elif command.command_type == CommandType.FORWARD_STEP:
-    #         left = command.speed
-    #         right = command.speed
-    #     else:
-    #         left = 0
-    #         right = 0
-
-    #     return [float(left), float(right)]
-        

@@ -7,6 +7,49 @@ import os
 import signal
 import threading
 import time
+import logging
+import builtins
+
+# -----------------------------------------------------------------------------
+# Gestion des profils de verbosité (désactive les logs de Flask/Werkzeug)
+# -----------------------------------------------------------------------------
+VERBOSITY_LEVEL = "silent"  # Options: "silent", "prints_only", "verbose"
+
+_original_print = builtins.print
+
+def _verbosity_print(*args, **kwargs):
+    if VERBOSITY_LEVEL == "verbose":
+        _original_print(*args, **kwargs)
+        return
+
+    # Convert args to text
+    out_text = " ".join(str(a) for a in args)
+
+    # Messages essentiels conservés dans tous les modes (Boot et Profilage Système)
+    is_essential = any(tag in out_text for tag in [
+        "[Zumi] CPU", "[RAM]", "[Timestamp]", "[BOOT]", 
+        "DÉMARRAGE DU ZUMI", "Flask server", "Arrêt propre"
+    ])
+
+    if VERBOSITY_LEVEL == "silent":
+        if is_essential:
+            _original_print(*args, **kwargs)
+    elif VERBOSITY_LEVEL == "prints_only":
+        # Masquer les messages typiquement étiquetés débug en mode intermédiaire
+        if "[Debug]" not in out_text and "[Sampling]" not in out_text:
+            _original_print(*args, **kwargs)
+
+# Remplacer print globalement
+builtins.print = _verbosity_print
+
+# Désactiver les logs de requêtes du serveur Flask (Werkzeug)
+werkzeug_log = logging.getLogger('werkzeug')
+if VERBOSITY_LEVEL == "verbose":
+    werkzeug_log.setLevel(logging.INFO)
+else:
+    werkzeug_log.setLevel(logging.ERROR)
+# -----------------------------------------------------------------------------
+
 from core.control.controlers.ml_controller import MLController
 from core.robot.robot_zumi import RobotZumi
 from core.vision import vision_pipeline
@@ -56,13 +99,10 @@ def bootstrap():
     # Étape 2 : Créer les détecteurs
     print("[BOOT] Chargement des détecteurs... (10-30%)")
     
-    # from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi # DEPRECATED DEPUIS LA MIGRATION
     from core.vision.detectors.Stop_detector_cv import StopDetectorCV
     from core.vision.detectors.Haar_classifier import HaarDetector
     from core.vision.detectors.Line_detector import LineDetector
-    # stop_detector = StopDetectorZumi()
-    # draw_progress_bar(zumi.screen, 15)
-    
+
     line_detector = LineDetector(white_threshold=180, min_area=50, offset_ratio=0.3)
     draw_progress_bar(zumi.screen, 20)
     
@@ -97,39 +137,15 @@ def bootstrap():
     # vision_pipeline.add_passive_detectors(line_detector)
     draw_progress_bar(zumi.screen, 70)
     
-    # Étape 5 : Créer les contrôleurs (IMPLANTATION LEGACY METTRE A JOURS POUR LES NOUVEAU CONTROLLEURS)
-    # print("[BOOT] Initialisation des contrôleurs...")
-    # from core.control.legacy.line_following_pid import PIDController
-    # from core.control.legacy.line_following_state_machine import LineFollowingStateMachine, State
-    # from core.control.control_manager import ControlManager
-    # pid_controller = PIDController(
-    #     kp=0.2, 
-    #     ki=0.0, 
-    #     kd=0.1, 
-    #     base_speed=15, 
-    #     max_correction=25,
-    #     rotation_mode=True,
-    #     deadband=1,
-    #     rotation_scale=0.2,
-    #     auto_reset_threshold=80
-    # )
-    # draw_progress_bar(zumi.screen, 75)
-    
-    # state_machine = LineFollowingStateMachine(
-    #     robot=zumi,
-    #     vision_pipeline=vision_pipeline,
-    #     pid_controller=pid_controller,
-    #     stop_condition_detector=stop_detector_HSV
-    # )
-    
-    # state_machine.set_rotation_angle(90)
-    # draw_progress_bar(zumi.screen, 80)
-    
     # Étape 6 : Initialiser Flask et routes
     print("[BOOT] Initialisation du serveur Flask...")
     from interface import server_controller as flask_controller
     from interface import flask_router as routes
-    ctrl = flask_controller.controller(zumi, debug=True)
+    
+    # Activer le debug dans le contrôleur seulement en mode 'verbose'
+    is_debug = (VERBOSITY_LEVEL == "verbose")
+    ctrl = flask_controller.controller(zumi, debug=is_debug)
+    
     routes.register_routes(ctrl)
     ctrl.attach_pipeline_vision(vision_pipeline)
     draw_progress_bar(zumi.screen, 90)
