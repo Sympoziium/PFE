@@ -13,7 +13,7 @@ import builtins
 # -----------------------------------------------------------------------------
 # Gestion des profils de verbosité (désactive les logs de Flask/Werkzeug)
 # -----------------------------------------------------------------------------
-VERBOSITY_LEVEL = "verbose"  # Options: "silent", "prints_only", "verbose"
+VERBOSITY_LEVEL = "silent"  # Options: "silent", "prints_only", "verbose"
 
 _original_print = builtins.print
 
@@ -169,10 +169,8 @@ def bootstrap():
     from core.vision.vision_adapter import VisionAdapter
 
     # ⚠️ IMPORTANT: La liste des classes DOIT correspondre exactement à celle utilisée lors de l'entraînement!
-    # Le modèle TFLite attend 21 dimensions = 17 (capteurs) + 4 (classes)
-    # Mettre à jour cette liste si vous ré-entraînez avec des classes différentes.
-    classes = ['stop_sign', 'Pieton', 'Camion_Pompier', 'reserved']  # 4 classes pour 21 dims input
-    adapter = VisionAdapter(640, 480, classes) # Initialisation nécessaire pour le MLController (ATTENTION LA TAILLE DE L'IMAGE EST ARDCODÉ ICI ON DEVRAIT REENDRE SA DYNAMIQUE)
+    classes = ['stop_sign', 'Pieton', 'Camion_Pompier']  # 3 classes pour 20 dims input
+    adapter = VisionAdapter(320, 240, classes) # Initialisation nécessaire pour le MLController (ATTENTION LA TAILLE DE L'IMAGE EST ARDCODÉ ICI ON DEVRAIT REENDRE SA DYNAMIQUE en fonction du profil de caméra de détection passive)
     MLP_MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'control', 'controlers', 'models')
     MLP_model_path = os.path.join(MLP_MODELS_DIR, 'zumi_mlp.tflite')
 
