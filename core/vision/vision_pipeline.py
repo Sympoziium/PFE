@@ -448,6 +448,10 @@ class VisionPipeline:
         """ obtenir la liste des détecteurs ajoutés au pipeline de vision """
         return self.detectors
     
+    def get_passive_detectors(self):
+        """ obtenir la liste des détecteurs passif ajoutés au pipeline de vision """
+        return self._passive_detectors
+    
     def get_camera(self):
         """ obtenir la caméra utilisée dans le pipeline de vision """
         return self.camera

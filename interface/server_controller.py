@@ -967,7 +967,7 @@ class controller:
             print("[ERREUR] Angle invalide: {}".format(angle))
             return jsonify({'error': 'Angle invalide: doit être un nombre'}), 400
         except Exception as e:
-            print("[ERREUR] zumi.turn({}):", angle, e)
+            print("[ERREUR] zumi.turn({}):".format(angle), e)
             return jsonify({'error': str(e)}), 500
 
 # ----------------------------------------------------------------------------
@@ -978,7 +978,7 @@ class controller:
             requests.get("{}/ouvrir".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
         except Exception as e:
-            print("Erreur Pont:", e)
+            print("[ERREUR] Pont ouvrir:", e)
             return ("Erreur", 500)
         
 
@@ -987,21 +987,25 @@ class controller:
             requests.get("{}/fermer".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
         except Exception as e:
-            print("Erreur Pont:", e)
+            print("[ERREUR] Pont fermer:", e)
             return ("Erreur", 500)
             
     def bridge_green(self):
         try:
             requests.get("{}/vert".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
-        except: return ("", 500)
+        except Exception as e:
+            print("[ERREUR] Pont vert:", e)
+            return ("Erreur", 500)
 
     def bridge_red(self):
         try:
             requests.get("{}/rouge".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
-        except: return ("", 500)
-   
+        except Exception as e:
+            print("[ERREUR] Pont rouge:", e)
+            return ("Erreur", 500)
+
     def bridge_mode_auto(self, etat):
         # etat doit être '1' (true) ou '0' (false)
         try:
@@ -1009,7 +1013,7 @@ class controller:
             requests.get("{}/majAutoMoteur?etat={}".format(self.BRIDGE_URL, etat), timeout=1)
             return ("", 204)
         except Exception as e:
-            print("Erreur Pont Mode Auto:", e)
+            print("[ERREUR] Pont Mode Auto:", e)
             return ("Erreur", 500)
 
 
@@ -1215,16 +1219,15 @@ class controller:
         if not vp:
             return classes
         try:
-            for det in vp.get_detectors():
-                if hasattr(det, 'classifiers') and isinstance(det.classifiers, dict):
-                    for name in det.classifiers.keys():
-                        if name not in classes:
-                            classes.append(name)
-                if getattr(det, 'name', '') == 'StopDetectorCV':
-                    if 'Stop Sign' not in classes:
-                        classes.append('Stop Sign')
+            for det in vp.get_passive_detectors():
+                if getattr(det, 'name', '') == 'HaarDetector' and hasattr(det, 'classes'):
+                    for class_name in det.classes:  # Utilise la propriété .classes qui est déjà fournie
+                        if class_name not in classes:
+                            classes.append(class_name)
         except Exception:
             pass
+
+        print(f"[DEBUG] ML Classes inférées: {classes}")
         return classes
 
     def _get_ml_adapter(self, state):

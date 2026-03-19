@@ -13,7 +13,7 @@ import builtins
 # -----------------------------------------------------------------------------
 # Gestion des profils de verbosité (désactive les logs de Flask/Werkzeug)
 # -----------------------------------------------------------------------------
-VERBOSITY_LEVEL = "silent"  # Options: "silent", "prints_only", "verbose"
+VERBOSITY_LEVEL = "verbose"  # Options: "silent", "prints_only", "verbose"
 
 _original_print = builtins.print
 
@@ -130,11 +130,9 @@ def bootstrap():
     from core.vision.vision_pipeline import VisionPipeline
     vision_pipeline = VisionPipeline(camera=zumi.camera)
     vision_pipeline.add_detectors(line_detector)
-    # vision_pipeline.add_detectors(stop_detector)
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
-    # vision_pipeline.add_passive_detectors(line_detector)
     draw_progress_bar(zumi.screen, 70)
     
     # Étape 6 : Initialiser Flask et routes
