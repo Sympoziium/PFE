@@ -117,6 +117,7 @@ class MLController(ControllerBase):
         # Retourner les valeurs par défaut
         return {"num_threads": 4, "allow_fp16": False}
 
+    # Pour une raison que j'ignore on génêre un vecteur de dimension 20 et on a un miss match sur la shape de tensor attendue (21)
     def _build_state_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'état à partir du SensorState.
 

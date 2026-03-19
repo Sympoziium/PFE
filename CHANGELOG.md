@@ -109,6 +109,20 @@ python convert_to_tflite.py --quantize
 scp export/zumi_mlp_quant.tflite pi@<ip>:~/robot/models/
 ```
 
+### Optimisation du ControlManager et de la gestion des contrôleurs
+le but est d'améliorer la fluidité des commandes manuelles afin d'avoir une meilleure réactivité du robot lors du contrôle manuel, et aussi de réduire la latence globale du système pour les futurs contrôleurs ML qui seront plus gourmands en ressources. 
+
+┌─────────────────────────────────────────────────────────────┐
+│  AVANT                        APRÈS                        │
+├─────────────────────────────────────────────────────────────┤
+│  Polling: 250ms (4 Hz)   →   80ms (12.5 Hz)                │
+│  Watchdog: 0.6s          →   0.3s                          │
+│  Loop delay: fixe 50ms   →   adaptatif (33/50ms)           │
+│  Line detection: toujours →   skip en manuel/ML            │
+│  Debug prints: activé    →   désactivé                     │
+│  Constantes: éparpillées →   centralisées                  │
+└─────────────────────────────────────────────────────────────┘
+
 ---
 
 ## [Non publié] — Refactor complet du control manager (2026-03-16)

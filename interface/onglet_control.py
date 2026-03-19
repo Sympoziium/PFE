@@ -343,13 +343,13 @@ def render_control_tab(title: str = "Contrôle") -> str:
                             </div>
                             <div class='param-row'>
                                 <label for='driveSpeed'>Vitesse avant (0-60)</label>
-                                <input id='driveSpeed' type='range' min='0' max='60' step='1' value='20'>
-                                <span class='param-value' id='driveSpeedVal'>20</span>
+                                <input id='driveSpeed' type='range' min='0' max='60' step='1' value='15'>
+                                <span class='param-value' id='driveSpeedVal'>15</span>
                             </div>
                             <div class='param-row'>
                                 <label for='turnSpeed'>Vitesse rotation (0-60)</label>
-                                <input id='turnSpeed' type='range' min='0' max='60' step='1' value='15'>
-                                <span class='param-value' id='turnSpeedVal'>15</span>
+                                <input id='turnSpeed' type='range' min='0' max='60' step='1' value='1'>
+                                <span class='param-value' id='turnSpeedVal'>1</span>
                             </div>
                             <button class='primary-btn' id='applyManualSettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
                         </div>
@@ -406,37 +406,41 @@ def render_control_tab(title: str = "Contrôle") -> str:
         });
     })();
 
-    function toggleCamera() { 
+    function toggleCamera() {
         console.log("toggleCamera() appelée"); // pour debug
 
-        const liveFeed = document.getElementById('liveFeed'); 
-        const btn = document.getElementById('cameraToggleBtn'); 
-        const img = liveFeed.querySelector('img'); 
+        const liveFeed = document.getElementById('liveFeed');
+        const btn = document.getElementById('cameraToggleBtn');
+        const img = liveFeed.querySelector('img');
 
         const isActive = liveFeed.style.display === 'block';
 
         if (!isActive) {
-            // 1. Affiche le conteneur et change le bouton (pour la réactivité)  
-            btn.textContent = '⏹️ Éteint la caméra'; 
+            // 1. Affiche le conteneur et change le bouton (pour la réactivité)
+            btn.textContent = '⏹️ Éteint la caméra';
 
-            // 2. Envoie la commande de démarrage au serveur 
-            fetch('/start_camera', { method: 'POST' }) 
+            // Note: La résolution est gérée automatiquement côté serveur:
+            // - 'passive' (320x240) quand un contrôleur est actif
+            // - 'stream' (640x480) quand aucun contrôleur n'est actif
+
+            // 2. Envoie la commande de démarrage au serveur
+            fetch('/start_camera', { method: 'POST' })
                 .then(() => {
-                // 3. ATTEND que le serveur ait confirmé le démarrage avant de demander le flux vidéo. 
+                // 3. ATTEND que le serveur ait confirmé le démarrage avant de demander le flux vidéo.
                 liveFeed.style.display = 'block';
-                img.src = '/video?' + new Date().getTime(); 
-            }); 
-        
+                img.src = '/video?' + new Date().getTime();
+            });
+
         } else {
-            // 1. Cache le conteneur et change le bouton 
-            liveFeed.style.display = 'none'; 
-            btn.textContent = '🎥 Allume la caméra !'; 
-            
-            // 2. Vide la source de l'image (arrête le flux gelé) 
-            img.src = "";  
-            
-            // 3. Envoie la commande d'arrêt au serveur 
-            fetch('/close_camera', { method: 'POST' }); 
+            // 1. Cache le conteneur et change le bouton
+            liveFeed.style.display = 'none';
+            btn.textContent = '🎥 Allume la caméra !';
+
+            // 2. Vide la source de l'image (arrête le flux gelé)
+            img.src = "";
+
+            // 3. Envoie la commande d'arrêt au serveur
+            fetch('/close_camera', { method: 'POST' });
         }
     }
 
@@ -639,8 +643,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
         // 1. Envoyer la commande 1x immédiatement pour la réactivité
         sendMoveCommand(); 
         
-        // 2. Démarrer un intervalle qui 'nourrit' le watchdog 4x par seconde (250ms)
-        moveInterval = setInterval(sendMoveCommand, 250);
+        // 2. Démarrer un intervalle qui 'nourrit' le watchdog ~12x par seconde (80ms)
+        //    Réduit de 250ms à 80ms pour une meilleure fluidité du contrôle manuel
+        moveInterval = setInterval(sendMoveCommand, 80);
     }
 
     function stopMove() {

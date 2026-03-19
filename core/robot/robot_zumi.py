@@ -22,15 +22,38 @@ from zumi.zumi import Zumi
 from core.hardware.screen import Screen
 from core.hardware.personality import Personality
 
-# Vitesses de référence pour les moteurs du Zumi
-DRIVE_SPEED = 15
-TURN_SPEED = 1
+# === Constantes de contrôle centralisées ===
+# Ces valeurs sont la source unique de vérité pour tout le projet.
+SPEED_LIMIT_MIN = 0
+SPEED_LIMIT_MAX = 60        # Max absolu pour l'interface et les commandes
+DRIVE_SPEED_DEFAULT = 15    # Vitesse par défaut avance/recul
+TURN_SPEED_DEFAULT = 1     # Vitesse par défaut virages
 
+# Constantes legacy (pour compatibilité, utilisent les nouvelles valeurs)
+DRIVE_SPEED = DRIVE_SPEED_DEFAULT
+TURN_SPEED = TURN_SPEED_DEFAULT
 
+# Constantes de trim pour compenser les imperfections mécaniques du Zumi
 LEFT_TRIM  =  8   # Ajuster expérimentalement — positif = booste le gauche
 RIGHT_TRIM =  1
 LEFT_REVERSE_TRIM = 8 # Trim spécifique pour la marche arrière
 RIGHT_REVERSE_TRIM = 1
+
+# === Profils de caméra ===
+# Utilisés par le server_controller pour ajuster automatiquement la résolution
+# selon le mode actif (contrôleur ou streaming seul).
+CAMERA_PROFILES = {
+    'passive': {  # Détection passive avec contrôleurs (manuel, ML) - économie CPU
+        'width': 320,
+        'height': 240,
+        'fps': 15,
+    },
+    'stream': {   # Streaming vidéo seul (pas de contrôleur actif)
+        'width': 640,
+        'height': 480,
+        'fps': 30,
+    },
+}
 
 class RobotZumi(RobotBase):
     def __init__(self):
@@ -44,8 +67,8 @@ class RobotZumi(RobotBase):
         self.right_trim = RIGHT_TRIM
         self.left_reverse_trim = LEFT_REVERSE_TRIM
         self.right_reverse_trim = RIGHT_REVERSE_TRIM
-        self.drive_speed_limit = DRIVE_SPEED
-        self.turn_speed_limit = TURN_SPEED
+        self.drive_speed_limit = DRIVE_SPEED_DEFAULT
+        self.turn_speed_limit = TURN_SPEED_DEFAULT
 
         self.calibrate_sensors()  # Calibrage initial des capteurs pour des lectures précises
 

@@ -14,7 +14,7 @@ from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 
 class ManualController(ControllerBase):
-    def __init__(self, default_speed=20, watchdog_timeout=0.6):
+    def __init__(self, default_speed=20, watchdog_timeout=0.3):
         self._name = "manual_controller"
         self.default_speed = default_speed
         self.watchdog_timeout = watchdog_timeout
@@ -48,7 +48,7 @@ class ManualController(ControllerBase):
 
     def step(self, state):
         """Calcule la commande en fonction de la dernière action web reçue."""
-        
+
         # 1. Vérification du Watchdog (déconnexion ou arrêt d'appui de touche)
         if time.time() - self._last_action_time > self.watchdog_timeout:
             self._current_action = "stop"
@@ -63,14 +63,14 @@ class ManualController(ControllerBase):
         # 2. Traduction de l'action en MotorCommand
         if self._current_action == "stop":
             return MotorCommand.stop()
-            
+
         elif self._current_action == "forward":
             # Contrôle manuel direct des moteurs, sans correction de cap.
             return MotorCommand.make_speed(self.default_speed, self.default_speed)
-            
+
         elif self._current_action == "reverse":
             return MotorCommand.make_speed(-self.default_speed, -self.default_speed)
-            
+
         elif self._current_action == "left":
             # Tourner sur place par friction (différentielle pure)
             return MotorCommand.make_speed(-self.default_speed, self.default_speed)
@@ -92,3 +92,7 @@ class ManualController(ControllerBase):
     def update_params(self, **kwargs):
         if "default_speed" in kwargs:
             self.default_speed = kwargs["default_speed"]
+        if "turn_duty_on" in kwargs:
+            self.turn_duty_on = kwargs["turn_duty_on"]
+        if "turn_duty_off" in kwargs:
+            self.turn_duty_off = kwargs["turn_duty_off"]

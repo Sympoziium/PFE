@@ -165,7 +165,6 @@ def bootstrap():
     # Validation: vérifier que les dimensions correspondent
     print(f"[BOOT] ML Controller:")
     print(f"  - Classes utilisées: {classes}")
-    print(f"  - Dimensions du vecteur d'état: {adapter.state_dim} (doit être 21 pour ce modèle)")
 
     ml_ctrl = MLController(vision_adapter=adapter, model_path=MLP_model_path)
     control_manager.register_controller(ml_ctrl.name, ml_ctrl)

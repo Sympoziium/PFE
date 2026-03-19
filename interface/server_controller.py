@@ -109,9 +109,15 @@ def format_detection_result(results, detector_name="Détecteur"):
     return '\n'.join(lines)
 
 
-# --- Variables pour le contrôle des moteurs ---
-DRIVE_SPEED = 20
-TURN_SPEED = 15
+# --- Constantes de contrôle importées depuis robot_zumi (source unique) ---
+from core.robot.robot_zumi import (
+    SPEED_LIMIT_MAX, SPEED_LIMIT_MIN,
+    DRIVE_SPEED_DEFAULT, TURN_SPEED_DEFAULT,
+    CAMERA_PROFILES
+)
+# Alias pour compatibilité avec le code existant
+DRIVE_SPEED = DRIVE_SPEED_DEFAULT
+TURN_SPEED = TURN_SPEED_DEFAULT
 WATCHDOG_TIMEOUT_SECONDS = 0.8
 
 class controller:
@@ -141,7 +147,7 @@ class controller:
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
         # Échantillonnage des données des capteurs
-        self.debug_control_sampling = True # Affiche les données collectées dans les logs pour le debug
+        self.debug_control_sampling = False  # Désactivé par défaut pour réduire l'overhead CPU
         self.sampling_active = False
         self.sampling_vectors = [] # Vecteurs d'entrées (NDJSON)
         self.sampling_labels = []  # Vecteurs labels (NDJSON)
@@ -723,6 +729,55 @@ class controller:
 
         return jsonify({'ok': True, 'resolution': '{}x{}'.format(w, h)})
 
+    def _apply_camera_profile(self, profile_name):
+        """Applique un profil de caméra (résolution) de façon transparente.
+
+        Utilisé automatiquement lors de l'activation/désactivation des contrôleurs
+        pour optimiser les ressources CPU selon le mode actif.
+
+        Args:
+            profile_name: 'passive' (320x240) ou 'stream' (640x480)
+        """
+        if profile_name not in CAMERA_PROFILES:
+            print("[ServerController] Profil caméra inconnu: {}".format(profile_name))
+            return
+
+        vp = self.vision_pipeline
+        if vp is None:
+            return
+
+        profile = CAMERA_PROFILES[profile_name]
+        w, h, fps = profile['width'], profile['height'], profile['fps']
+
+        # Vérifier si on est déjà à cette résolution (éviter changement inutile)
+        if hasattr(vp, 'camera') and vp.camera is not None:
+            current_w = getattr(vp.camera, '_width', None)
+            current_h = getattr(vp.camera, '_height', None)
+            if current_w == w and current_h == h:
+                return  # Déjà à la bonne résolution
+
+        was_running = vp.is_running()
+        was_passive = vp._passive_running
+
+        if was_passive:
+            vp.pause_passive_detection()
+        if was_running:
+            vp.stop()
+            time.sleep(0.2)
+
+        try:
+            vp.set_passive_detection_FPS(1) # on souhaite trigger la détection sur chaque frame du livefeed
+            self.set_livefeed_fps(fps) # mettre à jour le FPS du livefeed pour correspondre au profil
+            vp.change_camera_resolution(w, h)
+            print("[ServerController] Profil caméra '{}' Résolution appliqué: {}x{} @ {} FPS".format(profile_name, w, h, fps))
+        except Exception as e:
+            print("[ServerController] Erreur changement profil caméra: {}".format(e))
+
+        if was_running:
+            vp.start()
+        if was_passive:
+            vp.resume_passive_detection()
+
 # ----------------------------------------------------------------------------
 #          Fonctions de callback pour les actions moteur du robot
 # ----------------------------------------------------------------------------
@@ -1101,6 +1156,9 @@ class controller:
                     return jsonify({'status': 'already_running', 'controller': controller_name})
                 return jsonify({'error': 'Un autre contrôleur est déjà actif : {}'.format(active.name)}), 400
 
+            # Auto-switch: appliquer le profil caméra 'passive' (320x240) pour économiser le CPU
+            self._apply_camera_profile('passive')
+
             self.control_manager.activate_controller(controller_name)
             return jsonify({'status': 'started', 'controller': controller_name})
         except Exception as e:
@@ -1116,6 +1174,10 @@ class controller:
             if active is not None:
                 name = active.name
                 self.control_manager.deactivate_controller()
+
+                # Auto-switch: revenir au profil caméra 'stream' (640x480) pour le streaming
+                self._apply_camera_profile('stream')
+
                 return jsonify({'status': 'stopped', 'controller': name})
             return jsonify({'status': 'stopped', 'controller': None})
         except Exception as e:

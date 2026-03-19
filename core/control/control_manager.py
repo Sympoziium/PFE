@@ -24,6 +24,8 @@ from core.control.IO_drivers.sensor_state import SensorState
 from core.control.IO_drivers.motor_command import MotorCommand, CommandType
 from core.control.IO_drivers.sensor_driver import SensorDriver
 from core.control.IO_drivers.motor_driver import MotorDriver
+from core.control.controlers.manual_controller import ManualController
+from core.control.controlers.ml_controller import MLController
 
 class ControlManager:
     """
@@ -158,9 +160,15 @@ class ControlManager:
     #  Mise à jours des capteurs
     # ------------------------------------------------------------------
     def update_sensors(self):
-        """Met à jour les données des capteurs du robot (MPU, IR, batterie)."""
+        """Met à jour les données des capteurs du robot (MPU, IR, batterie).
+
+        Note: En mode manuel ou ML, la détection de ligne est désactivée pour
+        réduire l'overhead CPU. Ces contrôleurs n'utilisent pas cette information.
+        """
         if self._sensor_driver is not None:
-            state = self._sensor_driver.read()
+            # Auto-détection: skip line detection en mode manuel ou ML pour économiser le CPU
+            is_manual_or_ml = isinstance(self._active_controller, (ManualController, MLController))
+            state = self._sensor_driver.read(Line_detection=not is_manual_or_ml)
             with self._data_lock:
                 self.last_sensor_data = state
     
@@ -221,8 +229,13 @@ class ControlManager:
                     except Exception as e:
                         print("[ControlManager] Erreur dans le callback de sampling: {}".format(e))
 
-                # délais du cycle de contrôle pour accomoder les autes modules du robot
-                time.sleep(self._loop_delay)
+                # Délai adaptatif selon le contrôleur actif:
+                # - Manuel: 33ms (30 Hz) - tick léger, peut aller plus vite pour une meilleure réactivité aux commandes web
+                # - ML/autres: 50ms (20 Hz) - marge pour inférence TFLite
+                if isinstance(self._active_controller, ManualController):
+                    time.sleep(0.033)
+                else:
+                    time.sleep(self._loop_delay)
 
             except Exception as e:
                 print("[ControlManager] Erreur dans la boucle de contrôle: {}".format(e))
