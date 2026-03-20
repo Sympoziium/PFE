@@ -888,7 +888,7 @@ class controller:
 
         # Échantillonnage événementiel: capturer l'état + commande à chaque action de mouvement
         # On échantillonne UNIQUEMENT les actions de mouvement valides (forward/left/right/reverse)
-        if self.sampling_active and action in ("forward", "left", "right", "reverse"):
+        if self.sampling_active and action in ("forward", "left", "right", "reverse","stop"):
             self._sample_on_command(action, speed)
 
         ctrl = self.control_manager.get_controller("manual_controller")
