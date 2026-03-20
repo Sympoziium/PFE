@@ -7,7 +7,6 @@
     Centralise la logique des endpoints; `flask_router.py` ne fait que lier les routes
     à ces méthodes.
 """
-from turtle import speed
 
 import requests  # <--- IMPORTANT : Pour communiquer avec le pont
 import os, uuid, time, cv2, itertools, numpy as np
