@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 # onglet_pid.py
 # ------------------
-"""Page web pour le contrôle PID du suivi de ligne."""
+"""Page web pour le controle PID du suivi de ligne."""
 
 def render_pid_tab(title="Asservissement PID"):
-    """Retourne une page HTML complète pour le contrôle PID."""
+    """Retourne une page HTML complete pour le controle PID."""
 
     html = """<!DOCTYPE html><html lang='fr'>
     <head>
@@ -16,90 +16,133 @@ def render_pid_tab(title="Asservissement PID"):
     <style>
     body {{
         margin: 0; padding: 0;
-        width: 100vw; height: 100vh;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(135deg, #40E0D0, #00BFFF);
+        width: 100vw; min-height: 100vh;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
         color: #333; display: flex; flex-direction: column;
+        overflow-y: auto;
     }}
 
     .container {{
         display: flex; justify-content: center; align-items: flex-start;
-        padding: 20px; height: calc(100vh - 40px);
-        overflow-y: auto;
+        padding: 2vh; min-height: 96vh;
     }}
 
     .tab-shell {{
-        background: rgba(255,255,255,0.92);
-        border-radius: 16px;
-        padding: 18px;
-        box-shadow: 0 0 15px rgba(0,0,0,0.12);
-        width: min(1200px, 100%);
+        background: rgba(247, 253, 255, 0.95);
+        border-radius: 20px;
+        padding: 2%;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        width: min(1100px, 92%);
+        min-height: fit-content; margin-bottom: 4vh;
+        display: flex; flex-direction: column;
     }}
 
     .tab-header {{
         display: flex; align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 2vh;
+        padding-bottom: 1vh;
+        border-bottom: 2px solid #e0f4ff;
     }}
 
     .tab-nav {{
         display: flex; align-items: center;
-        gap: 4px;
+        gap: 8px;
         margin-left: auto;
     }}
 
     .tab-content {{
-        border: 2px solid #bcdffb;
-        border-radius: 12px;
-        padding: 16px;
-        min-height: 200px;
-        background: #f7fbff;
-        margin-bottom: 12px;
+        border: 3px dashed #B5FFFC;
+        border-radius: 15px;
+        padding: 3%;
+        background: #FFFDF0;
+        margin-bottom: 16px;
+    }}
+
+    /* Variante alerte (section step-by-step) */
+    .tab-content.accent {{
+        border: 3px dashed #FFD166;
+        background: #fffbf0;
     }}
 
     .tab-title {{
-        font-size: 22px; font-weight: bold; margin: 0;
+        font-size: 1.8rem; font-weight: bold; color: #5A99C7; margin: 0;
     }}
 
     .tab-subtitle {{
-        font-size: 18px; font-weight: bold; margin: 0 0 12px 0;
+        font-size: 1.3rem; font-weight: bold; color: #666; margin-bottom: 15px; margin-top: 0;
     }}
 
     .tab-text {{
-        font-size: 16px; font-weight: normal; margin: 0;
+        font-size: 1.1rem; color: #444;
     }}
+
+    /* --- Boutons Pastels (style accueil) --- */
 
     .primary-btn {{
-        background: #007acc; color: white; border: none;
-        padding: 10px 18px; border-radius: 10px;
-        cursor: pointer; font-size: 15px;
+        background: #87C7F1; color: white; border: none;
+        padding: 12px 20px; border-radius: 12px;
+        cursor: pointer; font-size: 1rem; font-weight: bold;
+        transition: transform 0.2s, background 0.2s;
+        box-shadow: 0 4px 0 #6BAED6;
     }}
 
-    .primary-btn:hover {{ background: #005fa3; }}
+    .primary-btn:hover {{
+        background: #76B9E4;
+        transform: translateY(-2px);
+    }}
+
+    .primary-btn:active {{
+        transform: translateY(2px);
+        box-shadow: 0 2px 0 #6BAED6;
+    }}
 
     .primary-btn.active {{
-        background: #00528a;
-        box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
+        background: #5A99C7;
+        box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
     }}
 
+    /* Bouton control vert pastel */
     .control-btn {{
-        background: #28a745; color: white; border: none;
-        padding: 12px 24px; border-radius: 10px;
-        cursor: pointer; font-size: 16px;
+        background: #A8E6CF; color: #2d6a4f; border: none;
+        padding: 12px 24px; border-radius: 12px;
+        cursor: pointer; font-size: 1rem; font-weight: bold;
+        box-shadow: 0 4px 0 #74C69D;
+        transition: transform 0.2s, background 0.2s;
         margin: 5px;
     }}
 
-    .control-btn:hover {{ background: #218838; }}
+    .control-btn:hover {{ background: #95D9C0; transform: translateY(-2px); }}
+    .control-btn:active {{ transform: translateY(2px); box-shadow: 0 2px 0 #74C69D; }}
 
     .control-btn.stop {{
-        background: #dc3545;
+        background: #F4A0A0; color: #7a1f1f;
+        box-shadow: 0 4px 0 #d97070;
     }}
 
-    .control-btn.stop:hover {{ background: #bd2130; }}
+    .control-btn.stop:hover {{ background: #ee8a8a; transform: translateY(-2px); }}
 
     .control-btn:disabled {{
-        background: #6c757d;
-        cursor: not-allowed;
+        background: #ccc; color: #999;
+        box-shadow: none; cursor: not-allowed;
+        transform: none;
     }}
+
+    /* Bouton d'approbation step (special) */
+    .approve-btn {{
+        background: #fff; color: #2d6a4f;
+        font-size: 1.2rem; font-weight: bold;
+        padding: 20px 40px; border: 4px solid #A8E6CF;
+        border-radius: 15px; cursor: pointer;
+        box-shadow: 0 6px 0 #74C69D;
+        transition: transform 0.2s;
+    }}
+
+    .approve-btn:hover:not(:disabled) {{ background: #f0fff4; transform: translateY(-2px); }}
+    .approve-btn:active:not(:disabled) {{ transform: translateY(4px); box-shadow: 0 2px 0 #74C69D; }}
+    .approve-btn:disabled {{ background: #eee; color: #999; border-color: #ccc; box-shadow: none; cursor: not-allowed; }}
+
+    /* --- Paramètres --- */
 
     .param-grid {{
         display: grid;
@@ -116,66 +159,96 @@ def render_pid_tab(title="Asservissement PID"):
 
     .param-label {{
         font-weight: bold;
-        font-size: 14px;
+        font-size: 0.95rem;
+        color: #555;
     }}
 
     .param-input {{
-        padding: 8px;
-        border: 2px solid #007acc;
-        border-radius: 8px;
-        font-size: 14px;
+        padding: 10px;
+        border: 2px solid #B5FFFC;
+        border-radius: 12px;
+        font-size: 1rem;
+        background: #fff;
+        color: #333;
+        transition: border-color 0.2s;
     }}
 
     .param-input:focus {{
         outline: none;
-        border-color: #005fa3;
-        box-shadow: 0 0 5px rgba(0,122,204,0.3);
+        border-color: #87C7F1;
+        box-shadow: 0 0 0 3px rgba(135, 199, 241, 0.2);
     }}
 
+    /* --- Panneau de mode --- */
+    .mode-panel {{
+        background: rgba(181, 255, 252, 0.2);
+        border: 2px solid #B5FFFC;
+        border-radius: 15px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }}
+
+    /* --- Panneau rotation --- */
+    .rotation-panel {{
+        background: rgba(255, 209, 102, 0.15);
+        border: 2px solid #FFD166;
+        border-radius: 15px;
+        padding: 15px;
+        margin-top: 20px;
+    }}
+
+    /* --- Statut --- */
     .status-panel {{
-        background: #e9ecef;
-        border-radius: 10px;
+        background: rgba(247, 253, 255, 0.8);
+        border: 2px solid #B5FFFC;
+        border-radius: 15px;
         padding: 15px;
         margin: 15px 0;
     }}
 
     .status-grid {{
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
         gap: 10px;
     }}
 
     .status-item {{
         background: white;
-        padding: 10px;
-        border-radius: 8px;
+        padding: 12px;
+        border-radius: 12px;
         text-align: center;
+        border: 2px solid #e0f4ff;
+        box-shadow: 0 3px 0 #d0eeff;
     }}
 
     .status-label {{
         font-size: 12px;
-        color: #666;
+        color: #888;
+        margin-bottom: 4px;
     }}
 
     .status-value {{
-        font-size: 18px;
+        font-size: 1.2rem;
         font-weight: bold;
-        color: #007acc;
+        color: #5A99C7;
     }}
 
+    /* --- Terminal --- */
     .log-terminal {{
-        background: #000;
-        color: #0f0;
-        font-family: 'Courier New', monospace;
+        background: #1a1a2e;
+        color: #a8d8ea;
+        font-family: 'Courier New', Consolas, monospace;
         font-size: 13px;
-        border-radius: 10px;
-        padding: 10px;
+        border-radius: 12px;
+        padding: 12px;
         height: 200px;
         overflow-y: auto;
         white-space: pre-wrap;
         word-wrap: break-word;
+        border: 2px solid #B5FFFC;
     }}
 
+    /* --- Live Feed --- */
     .live-feed {{
         width: 100%;
         margin-top: 15px;
@@ -186,10 +259,21 @@ def render_pid_tab(title="Asservissement PID"):
         width: 70%;
         max-width: 640px;
         height: auto;
-        border-radius: 8px;
-        border: 4px solid #00BFFF;
+        border-radius: 12px;
+        border: 4px solid #87C7F1;
     }}
 
+    /* --- Step-by-step approve zone --- */
+    .approve-zone {{
+        background: rgba(168, 230, 207, 0.3);
+        border: 2px solid #A8E6CF;
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        margin-top: 15px;
+    }}
+
+    /* --- Toast notifications --- */
     .toast-container {{
         position: fixed;
         top: 20px;
@@ -202,25 +286,27 @@ def render_pid_tab(title="Asservissement PID"):
 
     .toast {{
         padding: 12px 20px;
-        border-radius: 8px;
+        border-radius: 12px;
         color: #fff;
         font-size: 14px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        font-weight: bold;
+        box-shadow: 0 4px 0 rgba(0,0,0,0.15);
         opacity: 0;
         transform: translateX(80px);
         transition: opacity 0.3s, transform 0.3s;
+        max-width: 380px; word-wrap: break-word;
     }}
 
     .toast.show {{ opacity: 1; transform: translateX(0); }}
-    .toast.warning {{ background: #e67e22; }}
-    .toast.error {{ background: #e74c3c; }}
-    .toast.info {{ background: #3498db; }}
-    .toast.success {{ background: #27ae60; }}
+    .toast.warning {{ background: #FFD166; color: #7a4f00; }}
+    .toast.error   {{ background: #F4A0A0; color: #7a1f1f; }}
+    .toast.info    {{ background: #87C7F1; color: #1a3a5c; }}
+    .toast.success {{ background: #A8E6CF; color: #2d6a4f; }}
 
     @keyframes pulse {{
-        0% {{ transform: scale(1); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }}
-        50% {{ transform: scale(1.05); box-shadow: 0 6px 20px rgba(40, 167, 69, 0.5); }}
-        100% {{ transform: scale(1); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }}
+        0%   {{ transform: scale(1);    box-shadow: 0 6px 0 #74C69D; }}
+        50%  {{ transform: scale(1.04); box-shadow: 0 8px 20px rgba(168,230,207,0.6); }}
+        100% {{ transform: scale(1);    box-shadow: 0 6px 0 #74C69D; }}
     }}
 
     </style>
@@ -238,130 +324,130 @@ def render_pid_tab(title="Asservissement PID"):
                 </div>
             </div>
 
-            <!-- Paramètres PID -->
+            <!-- Parametres PID -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Paramètres PID</h3>
-                
-                <!-- Mode de contrôle -->
-                <div style='margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 10px;'>
-                    <label style='font-weight: bold; font-size: 16px; display: block; margin-bottom: 10px;'>
-                        Mode de contrôle
+                <h3 class='tab-subtitle'>Parametres PID</h3>
+
+                <div class='mode-panel'>
+                    <label style='font-weight: bold; font-size: 1rem; display: block; margin-bottom: 10px; color: #555;'>
+                        Mode de controle
                     </label>
                     <div style='display: flex; gap: 10px;'>
                         <button class='control-btn' id='rotationModeBtn' style='flex: 1;'>
                             🔄 Mode Rotation (Tuning)
                         </button>
-                        <button class='control-btn' id='driveModeBtn' style='flex: 1; background: #6c757d;'>
+                        <button class='control-btn' id='driveModeBtn' style='flex: 1; background: #ccc; color: #888; box-shadow: 0 4px 0 #bbb;'>
                             ➡️ Mode Avance (Suivi)
                         </button>
                     </div>
-                    <p style='margin-top: 10px; font-size: 13px; color: #666;'>
-                        <strong>Mode Rotation:</strong> Le Zumi tourne sur place pour centrer la ligne (idéal pour régler Kp, Ki, Kd).<br>
+                    <p style='margin-top: 10px; font-size: 13px; color: #888;'>
+                        <strong>Mode Rotation:</strong> Le Zumi tourne sur place pour centrer la ligne (ideal pour regler Kp, Ki, Kd).<br>
                         <strong>Mode Avance:</strong> Le Zumi avance en suivant la ligne.
                     </p>
                 </div>
-                
+
                 <div class='param-grid'>
                     <div class='param-item'>
                         <label class='param-label'>Kp (Proportionnel)</label>
                         <input type='number' step='0.01' class='param-input' id='kpInput' value='0.1'>
                     </div>
                     <div class='param-item'>
-                        <label class='param-label'>Ki (Intégral)</label>
+                        <label class='param-label'>Ki (Integral)</label>
                         <input type='number' step='0.001' class='param-input' id='kiInput' value='0.0'>
                     </div>
                     <div class='param-item'>
-                        <label class='param-label'>Kd (Dérivé)</label>
+                        <label class='param-label'>Kd (Derive)</label>
                         <input type='number' step='0.01' class='param-input' id='kdInput' value='0.05'>
                     </div>
                     <div class='param-item'>
                         <label class='param-label'>Vitesse de base</label>
                         <input type='number' step='1' class='param-input' id='baseSpeedInput' value='20'>
-                        <small style='color: #666;'>(utilisé uniquement en mode avance)</small>
+                        <small style='color: #888;'>(utilise uniquement en mode avance)</small>
                     </div>
                     <div class='param-item'>
                         <label class='param-label'>Correction max</label>
                         <input type='number' step='1' class='param-input' id='maxCorrectionInput' value='30'>
                     </div>
                 </div>
-                
-                <!-- Paramètres de calcul d'angle pour le mode rotation -->
-                <div style='margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 10px; border: 2px solid #ffc107;'>
-                    <h4 style='margin: 0 0 10px 0; color: #856404;'>⚙️ Paramètres de rotation (Mode Rotation uniquement)</h4>
+
+                <div class='rotation-panel'>
+                    <h4 style='margin: 0 0 10px 0; color: #856404;'>⚙️ Parametres de rotation (Mode Rotation uniquement)</h4>
                     <p style='font-size: 13px; color: #856404; margin-bottom: 15px;'>
-                        Ces paramètres contrôlent le calcul de l'angle lorsque le mode rotation est activé.
+                        Ces parametres controlent le calcul de l'angle lorsque le mode rotation est active.
                     </p>
                     <div class='param-grid'>
                         <div class='param-item'>
-                            <label class='param-label'>Échelle d'angle (angle_scale)</label>
+                            <label class='param-label'>Echelle d'angle (angle_scale)</label>
                             <input type='number' step='0.01' class='param-input' id='angleScaleInput' value='0.3'>
-                            <small style='color: #666;'>Conversion erreur → angle (0.3 = 100px → 30°)</small>
+                            <small style='color: #888;'>Conversion erreur -> angle (0.3 = 100px -> 30 deg)</small>
                         </div>
                         <div class='param-item'>
-                            <label class='param-label'>Angle maximal (degrés)</label>
+                            <label class='param-label'>Angle maximal (degres)</label>
                             <input type='number' step='1' class='param-input' id='maxAngleInput' value='45'>
-                            <small style='color: #666;'>Limite les rotations brusques</small>
+                            <small style='color: #888;'>Limite les rotations brusques</small>
                         </div>
                         <div class='param-item'>
-                            <label class='param-label'>Seuil minimal (degrés)</label>
+                            <label class='param-label'>Seuil minimal (degres)</label>
                             <input type='number' step='0.5' class='param-input' id='minAngleThresholdInput' value='2'>
-                            <small style='color: #666;'>Angle minimum pour déclencher une rotation</small>
+                            <small style='color: #888;'>Angle minimum pour declencher une rotation</small>
                         </div>
                     </div>
                 </div>
-                
-                <button class='primary-btn' id='updateParamsBtn'>🔍 Mettre à jour les paramètres</button>
+
+                <div style='margin-top: 15px;'>
+                    <button class='primary-btn' id='updateParamsBtn'>🔍 Mettre a jour les parametres</button>
+                </div>
             </div>
 
-            <!-- Paramètres du détecteur de ligne -->
+            <!-- Parametres du detecteur de ligne -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Paramètres du détecteur de ligne</h3>
+                <h3 class='tab-subtitle'>Parametres du detecteur de ligne</h3>
                 <div class='param-grid'>
                     <div class='param-item'>
                         <label class='param-label'>Seuil blanc (0-255)</label>
                         <input type='number' min='0' max='255' step='5' class='param-input' id='whiteThresholdInput' value='200'>
-                        <small style='color: #666;'>Plus élevé = détecte seulement le blanc pur</small>
+                        <small style='color: #888;'>Plus eleve = detecte seulement le blanc pur</small>
                     </div>
                     <div class='param-item'>
                         <label class='param-label'>Aire minimale (pixels)</label>
                         <input type='number' min='100' max='1000' step='50' class='param-input' id='minAreaInput' value='300'>
-                        <small style='color: #666;'>Ignore les petits objets blancs</small>
+                        <small style='color: #888;'>Ignore les petits objets blancs</small>
                     </div>
                     <div class='param-item'>
-                        <label class='param-label'>Zone de détection (0.0-1.0)</label>
+                        <label class='param-label'>Zone de detection (0.0-1.0)</label>
                         <input type='number' min='0' max='1' step='0.05' class='param-input' id='offsetRatioInput' value='0.6'>
-                        <small style='color: #666;'>0.6 = cherche dans les 40% inférieurs</small>
+                        <small style='color: #888;'>0.6 = cherche dans les 40% inferieurs</small>
                     </div>
                 </div>
-                <button class='primary-btn' id='updateLineDetectorBtn'>🔍 Mettre à jour le détecteur</button>
+                <div style='margin-top: 15px;'>
+                    <button class='primary-btn' id='updateLineDetectorBtn'>🔍 Mettre a jour le detecteur</button>
+                </div>
             </div>
 
-            <!-- Contrôle Manuel de Rotation -->
+            <!-- Controle Manuel de Rotation -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>🎮 Contrôle Manuel de Rotation</h3>
-                <p class='tab-text' style='margin-bottom: 15px; color: #666;'>
-                    Utilisez la fonction turn() du Zumi pour effectuer des rotations précises avec le gyroscope.
+                <h3 class='tab-subtitle'>🎮 Controle Manuel de Rotation</h3>
+                <p class='tab-text' style='margin-bottom: 15px; color: #888;'>
+                    Utilisez la fonction turn() du Zumi pour effectuer des rotations precises avec le gyroscope.
                 </p>
-                
-                <div style='background: #e8f4f8; padding: 15px; border-radius: 10px; margin-bottom: 15px;'>
+                <div class='mode-panel'>
                     <div style='display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;'>
                         <div style='flex: 1; min-width: 200px;'>
-                            <label class='param-label'>Angle de rotation (degrés)</label>
-                            <input type='number' step='1' class='param-input' id='manualAngleInput' value='90' 
-                                   style='font-size: 18px; font-weight: bold;'>
-                            <small style='color: #666;'>Positif = gauche, Négatif = droite</small>
+                            <label class='param-label'>Angle de rotation (degres)</label>
+                            <input type='number' step='1' class='param-input' id='manualAngleInput' value='90'
+                                   style='font-size: 1.1rem; font-weight: bold;'>
+                            <small style='color: #888;'>Positif = gauche, Negatif = droite</small>
                         </div>
                         <div style='display: flex; gap: 10px;'>
-                            <button class='control-btn' id='turnLeftBtn' style='background: #17a2b8;'>
-                                ↺ Tourner à gauche
+                            <button class='control-btn' id='turnLeftBtn'>
+                                ↺ Tourner a gauche
                             </button>
-                            <button class='control-btn' id='turnRightBtn' style='background: #17a2b8;'>
-                                ↻ Tourner à droite
+                            <button class='control-btn' id='turnRightBtn'>
+                                ↻ Tourner a droite
                             </button>
                         </div>
                     </div>
                 </div>
-                
                 <div style='margin-top: 15px;'>
                     <p class='param-label' style='margin-bottom: 8px;'>Rotations rapides :</p>
                     <div style='display: flex; gap: 8px; flex-wrap: wrap;'>
@@ -374,75 +460,70 @@ def render_pid_tab(title="Asservissement PID"):
                 </div>
             </div>
 
-            <!-- Contrôles -->
+            <!-- Controles -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Contrôle</h3>
+                <h3 class='tab-subtitle'>Controle</h3>
                 <div style='text-align: center;'>
-                    <button class='control-btn' id='startPidBtn'>▶️ Démarrer PID</button>
-                    <button class='control-btn stop' id='stopPidBtn'>⛔ Arrêter PID</button>
-                    <button class='primary-btn' id='resetPidBtn'>🔄 Réinitialiser PID</button>
+                    <button class='control-btn' id='startPidBtn'>▶️ Demarrer PID</button>
+                    <button class='control-btn stop' id='stopPidBtn'>⛔ Arreter PID</button>
+                    <button class='primary-btn' id='resetPidBtn'>🔄 Reinitialiser PID</button>
                 </div>
             </div>
 
-            <!-- Mode Step-by-Step (Avancé) -->
-            <div class='tab-content' style='border: 3px solid #ffc107; background: #fffbf0;'>
-                <h3 class='tab-subtitle' style='color: #856404;'>🚶 Mode Avancé: Step-by-Step</h3>
+            <!-- Mode Step-by-Step -->
+            <div class='tab-content accent'>
+                <h3 class='tab-subtitle' style='color: #856404;'>🚶 Mode Avance: Step-by-Step</h3>
                 <p class='tab-text' style='margin-bottom: 15px; color: #856404;'>
-                    <strong>Mode pas à pas :</strong> Le robot avance par étapes, s'arrête pour que l'image soit nette, 
+                    <strong>Mode pas a pas :</strong> Le robot avance par etapes, s'arrete pour que l'image soit nette,
                     puis attend votre autorisation pour continuer. Si la ligne est perdue, il la cherche automatiquement.
                 </p>
-                
-                <div style='background: #fff; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 2px solid #ffc107;'>
+
+                <div style='background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 2px solid #FFD166;'>
                     <div style='display: flex; gap: 15px; align-items: center; margin-bottom: 15px;'>
                         <div style='flex: 1;'>
-                            <div class='status-label'>État du mode Step</div>
-                            <div class='status-value' id='stepModeStatus' style='color: #6c757d;'>Arrêté</div>
+                            <div class='status-label'>Etat du mode Step</div>
+                            <div class='status-value' id='stepModeStatus' style='color: #ccc;'>Arrete</div>
                         </div>
                         <div style='flex: 1;'>
-                            <div class='status-label'>État de la machine</div>
+                            <div class='status-label'>Etat de la machine</div>
                             <div class='status-value' id='stepMachineState' style='font-size: 14px;'>IDLE</div>
                         </div>
                         <div style='flex: 1;'>
-                            <div class='status-label'>Étapes complétées</div>
+                            <div class='status-label'>Etapes completees</div>
                             <div class='status-value' id='stepCount'>0</div>
                         </div>
                     </div>
-                    
                     <div style='display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;'>
-                        <button class='control-btn' id='startStepModeBtn' style='background: #ffc107; color: #000;'>
-                            ▶️ Démarrer Mode Step
+                        <button class='control-btn' id='startStepModeBtn' style='background: #FFD166; color: #7a4f00; box-shadow: 0 4px 0 #c9a200;'>
+                            ▶️ Demarrer Mode Step
                         </button>
                         <button class='control-btn stop' id='stopStepModeBtn'>
-                            ⛔ Arrêter Mode Step
+                            ⛔ Arreter Mode Step
                         </button>
                     </div>
                 </div>
-                
-                <!-- Bouton d'autorisation d'étape (gros et visible) -->
-                <div style='background: #28a745; padding: 20px; border-radius: 15px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2);'>
-                    <button class='control-btn' id='approveStepBtn' 
-                            style='background: #fff; color: #28a745; font-size: 20px; font-weight: bold; 
-                                   padding: 20px 40px; border: 4px solid #28a745; cursor: pointer;'
-                            disabled>
-                        ✅ AUTORISER LA PROCHAINE ÉTAPE
+
+                <div class='approve-zone'>
+                    <button class='approve-btn' id='approveStepBtn' disabled>
+                        ✅ AUTORISER LA PROCHAINE ETAPE
                     </button>
-                    <p style='margin-top: 10px; color: #fff; font-size: 14px;'>
-                        Cliquez pour permettre au robot d'avancer à la prochaine position
+                    <p style='margin-top: 10px; color: #555; font-size: 14px;'>
+                        Cliquez pour permettre au robot d'avancer a la prochaine position
                     </p>
-                    <div id='stepWaitingIndicator' style='margin-top: 10px; color: #fff; font-weight: bold; display: none;'>
+                    <div id='stepWaitingIndicator' style='margin-top: 10px; color: #2d6a4f; font-weight: bold; display: none;'>
                         ⏸️ En attente de votre autorisation...
                     </div>
                 </div>
             </div>
 
-            <!-- Statut temps réel -->
+            <!-- Statut temps reel -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Statut temps réel</h3>
+                <h3 class='tab-subtitle'>Statut temps reel</h3>
                 <div class='status-panel'>
                     <div class='status-grid'>
                         <div class='status-item'>
-                            <div class='status-label'>État</div>
-                            <div class='status-value' id='pidStatus'>Arrêté</div>
+                            <div class='status-label'>Etat</div>
+                            <div class='status-value' id='pidStatus'>Arrete</div>
                         </div>
                         <div class='status-item'>
                             <div class='status-label'>Erreur actuelle</div>
@@ -470,12 +551,12 @@ def render_pid_tab(title="Asservissement PID"):
                 <div class='log-terminal' id='logTerminal'>Terminal PID...</div>
             </div>
 
-            <!-- Flux vidéo -->
+            <!-- Flux video -->
             <div class='tab-content'>
-                <h3 class='tab-subtitle'>Flux vidéo</h3>
+                <h3 class='tab-subtitle'>Flux video</h3>
                 <div class='live-feed'>
-                    <p id='videoPlaceholder' style='color:#888; font-style:italic;'>Caméra inactive — démarrez le PID ou le mode Step pour activer le flux.</p>
-                    <img id='videoFeed' src='' alt='Flux vidéo' style='display:none;'
+                    <p id='videoPlaceholder' style='color:#888; font-style:italic;'>Camera inactive — demarrez le PID ou le mode Step pour activer le flux.</p>
+                    <img id='videoFeed' src='' alt='Flux video' style='display:none;'
                          onerror="this.style.display='none'; document.getElementById('videoPlaceholder').style.display='block';">
                 </div>
             </div>
@@ -533,8 +614,8 @@ def render_pid_tab(title="Asservissement PID"):
     // Basculer en mode rotation
     function setRotationMode() {{
         rotationMode = true;
-        document.getElementById('rotationModeBtn').style.background = '#28a745';
-        document.getElementById('driveModeBtn').style.background = '#6c757d';
+        document.getElementById('rotationModeBtn').style.background = '#A8E6CF';
+        document.getElementById('driveModeBtn').style.background = '#ccc';
         updateParams();
         appendLog('Mode ROTATION activé - Le Zumi tourne sur place');
         showToast('Mode Rotation activé', 'info');
@@ -543,8 +624,8 @@ def render_pid_tab(title="Asservissement PID"):
     // Basculer en mode avance
     function setDriveMode() {{
         rotationMode = false;
-        document.getElementById('rotationModeBtn').style.background = '#6c757d';
-        document.getElementById('driveModeBtn').style.background = '#28a745';
+        document.getElementById('rotationModeBtn').style.background = '#ccc';
+        document.getElementById('driveModeBtn').style.background = '#A8E6CF';
         updateParams();
         appendLog('Mode AVANCE activé - Le Zumi suit la ligne');
         showToast('Mode Avance activé', 'info');
@@ -615,7 +696,7 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(data) {{
             pidRunning = true;
             document.getElementById('pidStatus').textContent = 'Actif';
-            document.getElementById('pidStatus').style.color = '#28a745';
+            document.getElementById('pidStatus').style.color = '#2d6a4f';
             appendLog('PID démarré');
             showToast('PID démarré!', 'success');
             refreshVideoFeed();
@@ -634,7 +715,7 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(data) {{
             pidRunning = false;
             document.getElementById('pidStatus').textContent = 'Arrêté';
-            document.getElementById('pidStatus').style.color = '#dc3545';
+            document.getElementById('pidStatus').style.color = '#7a1f1f';
             appendLog('PID arrêté');
             showToast('PID arrêté', 'info');
             stopStatusPolling();
@@ -700,7 +781,7 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(data) {{
             stepModeRunning = true;
             document.getElementById('stepModeStatus').textContent = 'Actif';
-            document.getElementById('stepModeStatus').style.color = '#28a745';
+            document.getElementById('stepModeStatus').style.color = '#2d6a4f';
             document.getElementById('approveStepBtn').disabled = false;
             appendLog('Mode Step-by-Step démarré');
             showToast('Mode Step activé!', 'success');
@@ -719,7 +800,7 @@ def render_pid_tab(title="Asservissement PID"):
         .then(function(data) {{
             stepModeRunning = false;
             document.getElementById('stepModeStatus').textContent = 'Arrêté';
-            document.getElementById('stepModeStatus').style.color = '#6c757d';
+            document.getElementById('stepModeStatus').style.color = '#888';
             document.getElementById('approveStepBtn').disabled = true;
             document.getElementById('stepWaitingIndicator').style.display = 'none';
             appendLog('Mode Step-by-Step arrêté');
@@ -901,11 +982,11 @@ def render_pid_tab(title="Asservissement PID"):
             
             rotationMode = data.rotation_mode !== undefined ? data.rotation_mode : true;
             if (rotationMode) {{
-                document.getElementById('rotationModeBtn').style.background = '#28a745';
-                document.getElementById('driveModeBtn').style.background = '#6c757d';
+                document.getElementById('rotationModeBtn').style.background = '#A8E6CF';
+                document.getElementById('driveModeBtn').style.background = '#ccc';
             }} else {{
-                document.getElementById('rotationModeBtn').style.background = '#6c757d';
-                document.getElementById('driveModeBtn').style.background = '#28a745';
+                document.getElementById('rotationModeBtn').style.background = '#ccc';
+                document.getElementById('driveModeBtn').style.background = '#A8E6CF';
             }}
             
             appendLog('Paramètres chargés depuis le serveur');
