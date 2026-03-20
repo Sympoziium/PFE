@@ -109,7 +109,7 @@ class ZumiMLPLarge(ZumiMLP):
         super().__init__(
             input_dim=input_dim,
             output_dim=output_dim,
-            hidden_dims=[128, 64, 32],
+            hidden_dims=[128, 64, 32, 16],
             dropout=dropout
         )
 
