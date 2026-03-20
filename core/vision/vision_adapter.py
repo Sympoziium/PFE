@@ -56,7 +56,7 @@ class VisionAdapter:
     @property
     def state_dim(self) -> int:
         """Dimension du vecteur d'état (entrée) : 22 + N classes."""
-        return 11 + 1 + len(self.classes) + 4 + IMU_DIM  # IR(6)+detect(1)+classes(N)+bbox(4)+IMU(11) = 22+N
+        return 6 + 1 + len(self.classes) + 4 + IMU_DIM  # IR(6)+detect(1)+classes(N)+bbox(4)+IMU(11) = 22+N
 
     @property
     def label_dim(self) -> int:

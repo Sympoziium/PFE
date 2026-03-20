@@ -356,26 +356,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
                                 <button type='button' class='settings-close-btn' id='settingsCloseBtn'>✕</button>
                             </div>
                             <div class='param-row'>
-                                <label for='trimLeft'>Vit gauche ⬅️</label>
-                                <input id='trimLeft' type='range' min='-20' max='20' step='1' value='0'>
-                                <span class='param-value' id='trimLeftVal'>0</span>
-                            </div>
-                            <div class='param-row'>
-                                <label for='trimRight'>Vit droit ➡️</label>
-                                <input id='trimRight' type='range' min='-20' max='20' step='1' value='0'>
-                                <span class='param-value' id='trimRightVal'>0</span>
-                            </div>
-                            <div class='param-row'>
-                                <label for='trimReverseLeft'>Vit arr. gauche ⬅️</label>
-                                <input id='trimReverseLeft' type='range' min='-20' max='20' step='1' value='0'>
-                                <span class='param-value' id='trimReverseLeftVal'>0</span>
-                            </div>
-                            <div class='param-row'>
-                                <label for='trimReverseRight'>Vit arr. droit ➡️</label>
-                                <input id='trimReverseRight' type='range' min='-20' max='20' step='1' value='0'>
-                                <span class='param-value' id='trimReverseRightVal'>0</span>
-                            </div>
-                            <div class='param-row'>
                                 <label for='driveSpeed'>Vitesse avant (0-60)</label>
                                 <input id='driveSpeed' type='range' min='0' max='60' step='1' value='15'>
                                 <span class='param-value' id='driveSpeedVal'>15</span>
@@ -595,10 +575,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
     function applyManualSettings() {
         var payload = {
-            left_trim: parseFloat(document.getElementById('trimLeft').value),
-            right_trim: parseFloat(document.getElementById('trimRight').value),
-            left_reverse_trim: parseFloat(document.getElementById('trimReverseLeft').value),
-            right_reverse_trim: parseFloat(document.getElementById('trimReverseRight').value),
             drive_speed: parseFloat(document.getElementById('driveSpeed').value),
             turn_speed: parseFloat(document.getElementById('turnSpeed').value),
             steering_ratio: parseFloat(document.getElementById('steeringRatio').value) / 100.0
@@ -641,18 +617,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
         fetch('/manual/settings')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (data.left_trim !== null && data.left_trim !== undefined) {
-                    document.getElementById('trimLeft').value = data.left_trim;
-                }
-                if (data.right_trim !== null && data.right_trim !== undefined) {
-                    document.getElementById('trimRight').value = data.right_trim;
-                }
-                if (data.left_reverse_trim !== null && data.left_reverse_trim !== undefined) {
-                    document.getElementById('trimReverseLeft').value = data.left_reverse_trim;
-                }
-                if (data.right_reverse_trim !== null && data.right_reverse_trim !== undefined) {
-                    document.getElementById('trimReverseRight').value = data.right_reverse_trim;
-                }
                 if (data.drive_speed !== null && data.drive_speed !== undefined) {
                     document.getElementById('driveSpeed').value = data.drive_speed;
                 }
@@ -662,10 +626,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 if (data.steering_ratio !== null && data.steering_ratio !== undefined) {
                     document.getElementById('steeringRatio').value = Math.round(data.steering_ratio * 100);
                 }
-                bindRange('trimLeft');
-                bindRange('trimRight');
-                bindRange('trimReverseLeft');
-                bindRange('trimReverseRight');
                 bindRange('driveSpeed');
                 bindRange('turnSpeed');
                 bindRangeFloat('steeringRatio', 100);

@@ -64,8 +64,8 @@ class ManualController(ControllerBase):
         # --- PID de cap léger (correction de dérive en ligne droite) ---
         self._heading_hold_active = False
         self._desired_heading = 0.0
-        self.heading_kp = 0.5         # Gain proportionnel (tunable via UI)
-        self.heading_max_correction = 10  # Correction max en unités de vitesse
+        self.heading_kp = 1.5         # Gain proportionnel (tunable via UI)
+        self.heading_max_correction = 15  # Correction max en unités de vitesse
 
     @property
     def name(self):
@@ -97,8 +97,9 @@ class ManualController(ControllerBase):
             return (0, 0)
 
         # Rotation sur place (A/D seuls, pas de throttle)
+        # steering=-1 (gauche): left=-ts, right=+ts → roue gauche recule, droite avance → tourne à gauche
         if throttle == 0:
-            return (-steering * turn_speed, steering * turn_speed)
+            return (steering * turn_speed, -steering * turn_speed)
 
         # Ligne droite (pas de steering)
         base = throttle * drive_speed
@@ -247,8 +248,8 @@ class ManualController(ControllerBase):
             if not active:
                 return MotorCommand.stop()
             return MotorCommand.make_speed(
-                -self._steering * self.turn_speed,
-                self._steering * self.turn_speed
+                self._steering * self.turn_speed,
+                -self._steering * self.turn_speed
             )
 
         # 5. Tous les autres cas (arcs W+A/W+D, stop)
