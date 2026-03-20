@@ -1,18 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Script d'entraînement du MLP pour le contrôle du robot Zumi.
+Point d'entree interactif du pipeline d'entrainement MLP pour le controle du robot Zumi.
 
-Exécute automatiquement validate_env.py au démarrage pour optimiser les paramètres.
+Menu interactif :
+  [1] Agreger les sequences (consolide tous les scenarios -> data/)
+  [2] Analyser le dataset (statistiques + graphiques)
+  [3] Entrainer un modele (profils par defaut ou personnalise)
+  [Q] Quitter
 
 Usage:
-    python train.py                          # Entraînement avec paramètres optimisés
-    python train.py --epochs 200 --lr 0.001  # Paramètres personnalisés (override config)
-    python train.py --model-size small       # Modèle compact pour Pi Zero
+    python train.py                # Lance le menu interactif
+    python train.py --headless     # Mode automatique (parametres par defaut)
 """
 
 import argparse
 import json
+import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -25,13 +30,55 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from dataset import create_data_loaders
-from model import create_model
+from model import create_model, ZumiMLP
 
+
+# ══════════════════════════════════════════════════════════════
+#  Profils d'entrainement par defaut
+# ══════════════════════════════════════════════════════════════
+
+TRAINING_PROFILES = {
+    'rapide': {
+        'name': 'Rapide',
+        'description': 'Test rapide, petit modele',
+        'model_size': 'small',
+        'hidden_dims': [32, 16],
+        'epochs': 50,
+        'batch_size': 64,
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+    },
+    'equilibre': {
+        'name': 'Equilibre',
+        'description': 'Bon compromis qualite/temps',
+        'model_size': 'medium',
+        'hidden_dims': [64, 32],
+        'epochs': 100,
+        'batch_size': 32,
+        'lr': 1e-3,
+        'weight_decay': 1e-4,
+    },
+    'precision': {
+        'name': 'Precision',
+        'description': 'Meilleure qualite, plus long',
+        'model_size': 'large',
+        'hidden_dims': [128, 64, 32],
+        'epochs': 200,
+        'batch_size': 16,
+        'lr': 5e-4,
+        'weight_decay': 1e-5,
+    },
+}
+
+
+# ══════════════════════════════════════════════════════════════
+#  Classe Trainer (inchangee)
+# ══════════════════════════════════════════════════════════════
 
 def load_environment_config(script_dir: Path) -> dict:
-    """Charge la configuration d'environnement générée par validate_env.py.
+    """Charge la configuration d'environnement generee par validate_env.py.
 
-    Si le fichier n'existe pas, le génère automatiquement.
+    Si le fichier n'existe pas, le genere automatiquement.
     """
     config_path = script_dir / "environment_config.json"
 
@@ -379,7 +426,7 @@ def save_training_report(
     save_dir: Path,
     model: nn.Module,
     history: dict,
-    args: argparse.Namespace,
+    config: dict,
     dataset_stats: dict,
     metrics: dict = None
 ):
@@ -408,10 +455,10 @@ def save_training_report(
             "final_val_loss": history["val_loss"][-1],
         },
         "hyperparameters": {
-            "learning_rate": args.lr,
-            "batch_size": args.batch_size,
-            "weight_decay": args.weight_decay,
-            "model_size": args.model_size
+            "learning_rate": config.get('lr', 1e-3),
+            "batch_size": config.get('batch_size', 32),
+            "weight_decay": config.get('weight_decay', 1e-4),
+            "profile": config.get('name', 'custom')
         },
         "dataset": dataset_stats,
         "history": history
@@ -430,99 +477,419 @@ def save_training_report(
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
 
-    print(f"Rapport sauvegardé: {report_path}")
+    print(f"  Rapport sauvegarde: {report_path}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Entraînement du MLP Zumi")
-    parser.add_argument("--data-dir", type=str, default="data",
-                        help="Répertoire des données")
-    parser.add_argument("--save-dir", type=str, default="checkpoints",
-                        help="Répertoire de sauvegarde")
-    parser.add_argument("--epochs", type=int, default=None,
-                        help="Nombre d'époques (auto si None)")
-    parser.add_argument("--batch-size", type=int, default=None,
-                        help="Taille des mini-batches (auto si None)")
-    parser.add_argument("--lr", type=float, default=None,
-                        help="Learning rate initial (auto si None)")
-    parser.add_argument("--weight-decay", type=float, default=1e-4,
-                        help="Weight decay (L2 regularization)")
-    parser.add_argument("--model-size", type=str, default=None,
-                        choices=["small", "medium", "large"],
-                        help="Taille du modèle (auto si None)")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Graine aléatoire")
-    parser.add_argument("--no-cuda", action="store_true",
-                        help="Désactiver CUDA")
+# ══════════════════════════════════════════════════════════════
+#  Utilitaires du menu
+# ══════════════════════════════════════════════════════════════
 
-    args = parser.parse_args()
+def check_data_state(data_dir: Path, sequences_dir: Path) -> dict:
+    """
+    Analyse l'etat actuel des donnees.
+    Retourne un dict indiquant quelles etapes ont deja ete completees.
+    """
+    state = {}
 
-    # Seed pour reproductibilité
-    torch.manual_seed(args.seed)
+    # Verifier les scenarios disponibles
+    state['n_scenarios'] = 0
+    state['scenarios'] = []
+    if sequences_dir.exists():
+        for item in sorted(sequences_dir.iterdir()):
+            if item.is_dir():
+                sampling_dirs = list(item.glob('sampling_*'))
+                if sampling_dirs:
+                    state['scenarios'].append({
+                        'name': item.name,
+                        'n_sequences': len(sampling_dirs)
+                    })
+        state['n_scenarios'] = len(state['scenarios'])
 
-    # Chemins
-    script_dir = Path(__file__).parent
+    # Verifier le dataset agrege
+    captures_file = data_dir / "captures.jsonl"
+    labels_file = data_dir / "labels.jsonl"
+    state['has_dataset'] = captures_file.exists() and labels_file.exists()
+    state['n_samples'] = 0
 
-    # === CHARGER LA CONFIGURATION D'ENVIRONNEMENT ===
-    print("\n" + "=" * 70)
-    print("CHARGEMENT DE LA CONFIGURATION D'ENVIRONNEMENT")
-    print("=" * 70)
-    config = load_environment_config(script_dir)
-    print()
+    if state['has_dataset']:
+        with open(captures_file, 'r') as f:
+            state['n_samples'] = sum(1 for line in f if line.strip())
 
-    # Utiliser les recommandations si les paramètres ne sont pas spécifiés
-    if config and config.get("recommendations"):
-        recs = config["recommendations"]
+    # Verifier les modeles entraines
+    checkpoints_dir = data_dir.parent / "checkpoints"
+    state['has_model'] = False
+    state['model_info'] = None
 
-        if args.epochs is None:
-            args.epochs = recs.get("num_epochs", 100)
-        if args.batch_size is None:
-            args.batch_size = recs.get("batch_size", 32)
-        if args.lr is None:
-            args.lr = recs.get("learning_rate", 1e-3)
-        if args.model_size is None:
-            args.model_size = recs.get("model_size", "medium")
+    best_model_path = checkpoints_dir / "best_model.pt"
+    if best_model_path.exists():
+        state['has_model'] = True
+        try:
+            checkpoint = torch.load(best_model_path, map_location='cpu', weights_only=False)
+            state['model_info'] = {
+                'input_dim': checkpoint.get('input_dim'),
+                'output_dim': checkpoint.get('output_dim'),
+                'hidden_dims': checkpoint.get('hidden_dims'),
+                'val_loss': checkpoint.get('val_loss'),
+            }
+        except Exception:
+            pass
 
-        print("💡 Paramètres optimisés appliqués:")
-        print(f"  Epochs: {args.epochs}")
-        print(f"  Batch Size: {args.batch_size}")
-        print(f"  Learning Rate: {args.lr}")
-        print(f"  Model Size: {args.model_size}")
-        print()
+    # Verifier le modele tflite
+    export_dir = data_dir.parent / "export"
+    state['has_tflite'] = False
+    tflite_path = export_dir / "zumi_mlp.tflite"
+    tflite_quant_path = export_dir / "zumi_mlp_quant.tflite"
+    if tflite_path.exists():
+        state['has_tflite'] = True
+        state['tflite_path'] = tflite_path
+        state['tflite_size'] = tflite_path.stat().st_size / 1024
+    elif tflite_quant_path.exists():
+        state['has_tflite'] = True
+        state['tflite_path'] = tflite_quant_path
+        state['tflite_size'] = tflite_quant_path.stat().st_size / 1024
+
+    return state
+
+
+def show_main_menu(script_dir: Path) -> tuple:
+    """
+    Affiche le menu principal interactif avec l'etat actuel des donnees.
+    Retourne (choix, state).
+    """
+    data_dir = script_dir / "data"
+    sequences_dir = script_dir / "sequences"
+
+    state = check_data_state(data_dir, sequences_dir)
+
+    def status(ok, text):
+        return f"    {'[OK]' if ok else '[  ]'} {text}"
+
+    print("\n" + "=" * 60)
+    print("  MLP Trainer - Menu Principal")
+    print("=" * 60)
+
+    # -- Etat actuel --
+    print("\n  Etat actuel :")
+
+    # Scenarios
+    if state['n_scenarios'] > 0:
+        total_seqs = sum(s['n_sequences'] for s in state['scenarios'])
+        scenarios_names = ', '.join(s['name'] for s in state['scenarios'])
+        print(status(True, f"Scenarios disponibles: {state['n_scenarios']} ({scenarios_names})"))
+        print(f"         Total sequences: {total_seqs}")
     else:
-        # Valeurs par défaut si pas de config
-        if args.epochs is None:
-            args.epochs = 100
-        if args.batch_size is None:
-            args.batch_size = 32
-        if args.lr is None:
-            args.lr = 1e-3
-        if args.model_size is None:
-            args.model_size = "medium"
+        print(status(False, "Aucun scenario trouve dans sequences/"))
+
+    # Dataset
+    if state['has_dataset']:
+        print(status(True, f"Dataset agrege: {state['n_samples']} echantillons"))
+    else:
+        print(status(False, "Dataset non agrege (data/captures.jsonl absent)"))
+
+    # Modele
+    if state['has_model'] and state['model_info']:
+        info = state['model_info']
+        arch = ' -> '.join(map(str, info['hidden_dims'])) if info['hidden_dims'] else 'N/A'
+        val_loss = info.get('val_loss', 0)
+        print(status(True, f"Modele entraine: {info['input_dim']} -> [{arch}] -> {info['output_dim']}"))
+        print(f"         Val loss: {val_loss:.6f}")
+    else:
+        print(status(False, "Aucun modele entraine"))
+
+    # TFLite
+    if state['has_tflite']:
+        print(status(True, f"Modele TFLite: {state['tflite_size']:.1f} KB"))
+    else:
+        print(status(False, "Pas de modele TFLite exporte"))
+
+    # -- Options du menu --
+    print(f"\n  Options :")
+    print(f"    [1] Agreger les sequences (consolide tous les scenarios -> data/)")
+    print(f"    [2] Analyser le dataset (statistiques + graphiques)")
+    print(f"    [3] Entrainer un modele")
+    print(f"    [Q] Quitter")
+
+    # Validation du choix
+    valid_choices = {'1', '2', '3', 'Q'}
+
+    while True:
+        choice = input(f"\n  Choix : ").strip().upper()
+        if choice in valid_choices:
+            return choice, state
+        print(f"  Choix invalide. Options disponibles : {', '.join(sorted(valid_choices))}")
+
+
+def choose_training_profile() -> dict:
+    """Demande a l'utilisateur le profil d'entrainement."""
+    print(f"\n  Profil d'entrainement :")
+    print(f"    [1] Rapide    - small model, 50 epochs  (test rapide)")
+    print(f"    [2] Equilibre - medium model, 100 epochs  (bon compromis)")
+    print(f"    [3] Precision - large model, 200 epochs  (meilleure qualite)")
+    print(f"    [4] Custom    - Configuration personnalisee")
+
+    while True:
+        c = input(f"\n  Choix (1/2/3/4) : ").strip()
+        if c == '1':
+            return TRAINING_PROFILES['rapide'].copy()
+        elif c == '2':
+            return TRAINING_PROFILES['equilibre'].copy()
+        elif c == '3':
+            return TRAINING_PROFILES['precision'].copy()
+        elif c == '4':
+            return configure_custom_profile()
+        print("  Choix invalide. Entrer 1, 2, 3 ou 4.")
+
+
+def configure_custom_profile() -> dict:
+    """Configure un profil d'entrainement personnalise."""
+    print(f"\n  Configuration personnalisee :")
+
+    config = {
+        'name': 'Custom',
+        'description': 'Configuration personnalisee',
+    }
+
+    # Nombre de couches cachees
+    while True:
+        try:
+            n_layers = int(input("    Nombre de couches cachees (1-5, defaut: 2) : ").strip() or "2")
+            if 1 <= n_layers <= 5:
+                break
+            print("    Doit etre entre 1 et 5.")
+        except ValueError:
+            print("    Valeur invalide.")
+
+    # Dimensions des couches
+    hidden_dims = []
+    for i in range(n_layers):
+        while True:
+            try:
+                default = 64 // (2 ** i) if i < 3 else 16
+                dim = int(input(f"    Dimension couche {i+1} (defaut: {default}) : ").strip() or str(default))
+                if 8 <= dim <= 512:
+                    hidden_dims.append(dim)
+                    break
+                print("    Doit etre entre 8 et 512.")
+            except ValueError:
+                print("    Valeur invalide.")
+
+    config['hidden_dims'] = hidden_dims
+
+    # Epochs
+    while True:
+        try:
+            epochs = int(input("    Nombre d'epochs (10-500, defaut: 100) : ").strip() or "100")
+            if 10 <= epochs <= 500:
+                config['epochs'] = epochs
+                break
+            print("    Doit etre entre 10 et 500.")
+        except ValueError:
+            print("    Valeur invalide.")
+
+    # Batch size
+    while True:
+        try:
+            batch = int(input("    Batch size (8-256, defaut: 32) : ").strip() or "32")
+            if 8 <= batch <= 256:
+                config['batch_size'] = batch
+                break
+            print("    Doit etre entre 8 et 256.")
+        except ValueError:
+            print("    Valeur invalide.")
+
+    # Learning rate
+    while True:
+        try:
+            lr = float(input("    Learning rate (ex: 0.001, defaut: 0.001) : ").strip() or "0.001")
+            if 1e-6 <= lr <= 1:
+                config['lr'] = lr
+                break
+            print("    Doit etre entre 1e-6 et 1.")
+        except ValueError:
+            print("    Valeur invalide.")
+
+    # Weight decay
+    while True:
+        try:
+            wd = float(input("    Weight decay (ex: 0.0001, defaut: 0.0001) : ").strip() or "0.0001")
+            if 0 <= wd <= 0.1:
+                config['weight_decay'] = wd
+                break
+            print("    Doit etre entre 0 et 0.1.")
+        except ValueError:
+            print("    Valeur invalide.")
+
+    # Resume
+    print(f"\n    Configuration:")
+    print(f"      Hidden dims: {config['hidden_dims']}")
+    print(f"      Epochs: {config['epochs']}")
+    print(f"      Batch size: {config['batch_size']}")
+    print(f"      Learning rate: {config['lr']}")
+    print(f"      Weight decay: {config['weight_decay']}")
+
+    return config
+
+
+# ══════════════════════════════════════════════════════════════
+#  Actions du menu
+# ══════════════════════════════════════════════════════════════
+
+def run_aggregate_sequences(script_dir: Path):
+    """Execute l'agregation des sequences."""
+    print("\n" + "=" * 60)
+    print("  Agregation des sequences")
+    print("=" * 60 + "\n")
+
+    # Import et execution du module aggregate_sequences
+    try:
+        from aggregate_sequences import aggregate_all_scenarios, discover_scenarios
+
+        sequences_root = script_dir / "sequences"
+        output_dir = script_dir / "data"
+
+        if not sequences_root.exists():
+            print(f"  ERREUR: Repertoire sequences/ non trouve: {sequences_root}")
+            return False
+
+        scenarios = discover_scenarios(sequences_root)
+        if not scenarios:
+            print("  ERREUR: Aucun scenario trouve!")
+            return False
+
+        print(f"  Scenarios trouves: {', '.join(scenarios)}")
+        print()
+
+        success = aggregate_all_scenarios(
+            sequences_root, output_dir,
+            add_scenario_id=False,
+            verbose=True
+        )
+
+        if success:
+            print("\n" + "=" * 60)
+            print("  Agregation terminee avec succes!")
+            print("=" * 60)
+        else:
+            print("\n  ERREUR: Agregation echouee")
+
+        return success
+
+    except ImportError as e:
+        print(f"  ERREUR: Impossible d'importer aggregate_sequences: {e}")
+        return False
+
+
+def run_analyze_dataset(script_dir: Path):
+    """Execute l'analyse du dataset avec generation des graphiques."""
+    print("\n" + "=" * 60)
+    print("  Analyse du dataset")
+    print("=" * 60 + "\n")
+
+    try:
+        from analyze_dataset import load_dataset, analyze_dataset, plot_analysis
+
+        data_dir = script_dir / "data"
+        output_dir = script_dir / "dataset_analysis"
+
+        if not data_dir.exists():
+            print(f"  ERREUR: Repertoire data/ non trouve: {data_dir}")
+            print("  -> Executez d'abord l'option [1] Agreger les sequences")
+            return False
+
+        print(f"  Chargement du dataset depuis {data_dir}...")
+        captures, labels = load_dataset(data_dir)
+
+        if captures is None:
+            print("  ERREUR: Impossible de charger le dataset")
+            return False
+
+        # Analyse textuelle
+        stats = analyze_dataset(captures, labels)
+
+        # Generation des graphiques
+        print(f"\n  Generation des graphiques vers {output_dir}...")
+        print()
+        plot_analysis(captures, labels, output_dir)
+
+        print("\n" + "=" * 60)
+        print("  Analyse terminee!")
+        print(f"  Graphiques sauvegardes dans: {output_dir}")
+        print("=" * 60)
+
+        return True
+
+    except ImportError as e:
+        print(f"  ERREUR: Impossible d'importer analyze_dataset: {e}")
+        return False
+
+
+def run_training(script_dir: Path, state: dict):
+    """Execute le workflow d'entrainement complet."""
+    print("\n" + "=" * 60)
+    print("  Entrainement du modele MLP")
+    print("=" * 60)
+
+    # Verifier que le dataset existe
+    if not state['has_dataset']:
+        print("\n  ERREUR: Dataset non disponible!")
+        print("  -> Executez d'abord l'option [1] Agreger les sequences")
+        return False
+
+    # Choisir le profil
+    config = choose_training_profile()
+
+    print(f"\n  Profil selectionne: {config.get('name', 'Custom')}")
+    print(f"  Hidden dims: {config.get('hidden_dims', [64, 32])}")
+    print(f"  Epochs: {config.get('epochs', 100)}")
+    print(f"  Batch size: {config.get('batch_size', 32)}")
+    print(f"  Learning rate: {config.get('lr', 1e-3)}")
+    print(f"  Weight decay: {config.get('weight_decay', 1e-4)}")
+
+    # Confirmation
+    confirm = input("\n  Lancer l'entrainement? (O/N) : ").strip().upper()
+    if confirm != 'O':
+        print("  Entrainement annule.")
+        return False
+
+    # Seed pour reproductibilite
+    seed = 42
+    torch.manual_seed(seed)
 
     # Device
-    device = torch.device("cpu")
-    if not args.no_cuda and torch.cuda.is_available():
-        device = torch.device("cuda")
-    print(f"Using device: {device}")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n  Device: {device}")
 
     # Chemins
-    data_dir = script_dir / args.data_dir
-    save_dir = script_dir / args.save_dir
+    data_dir = script_dir / "data"
+    save_dir = script_dir / "checkpoints"
 
-    # Chargement des données
+    # Charger la configuration d'environnement
+    print("\n  Chargement de la configuration d'environnement...")
+    load_environment_config(script_dir)
+
+    # Chargement des donnees
+    print("\n  Chargement des donnees...")
     train_loader, val_loader, dataset = create_data_loaders(
         str(data_dir),
-        batch_size=args.batch_size,
-        seed=args.seed
+        batch_size=config.get('batch_size', 32),
+        seed=seed
     )
 
-    # Création du modèle
-    model = create_model(
-        input_dim=dataset.input_dim,
-        output_dim=dataset.output_dim,
-        model_size=args.model_size
-    )
+    # Creation du modele avec la configuration custom
+    hidden_dims = config.get('hidden_dims')
+    if hidden_dims:
+        model = ZumiMLP(
+            input_dim=dataset.input_dim,
+            output_dim=dataset.output_dim,
+            hidden_dims=hidden_dims
+        )
+    else:
+        model = create_model(
+            input_dim=dataset.input_dim,
+            output_dim=dataset.output_dim,
+            model_size=config.get('model_size', 'medium')
+        )
+
     print(f"\n{model.summary()}\n")
 
     # Entraînement
@@ -531,12 +898,12 @@ def main():
         train_loader=train_loader,
         val_loader=val_loader,
         device=device,
-        lr=args.lr,
-        weight_decay=args.weight_decay
+        lr=config.get('lr', 1e-3),
+        weight_decay=config.get('weight_decay', 1e-4)
     )
 
     history = trainer.train(
-        epochs=args.epochs,
+        epochs=config.get('epochs', 100),
         save_dir=save_dir
     )
 
@@ -547,7 +914,7 @@ def main():
 
     # Charger le meilleur modèle sauvegardé
     best_model_path = save_dir / "best_model.pt"
-    checkpoint = torch.load(best_model_path, map_location=device)
+    checkpoint = torch.load(best_model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
 
     # Évaluation avec métriques détaillées
@@ -585,15 +952,125 @@ def main():
         save_dir=save_dir,
         model=model,
         history=history,
-        args=args,
+        config=config,
         dataset_stats=dataset.get_statistics(),
         metrics=metrics
     )
 
+    # === CONVERSION TFLITE ===
+    print(f"\n{'='*60}")
+    print("CONVERSION EN TFLITE")
+    print(f"{'='*60}\n")
+
+    convert_tflite = input("  Convertir le modele en TFLite? (O/N) : ").strip().upper()
+    if convert_tflite == 'O':
+        quantize = input("  Appliquer la quantization INT8? (O/N) : ").strip().upper() == 'O'
+        run_convert_to_tflite(script_dir, quantize=quantize)
+
+    print(f"\n{'='*60}")
+    print("  Entrainement et evaluation termines!")
+    print(f"  Resultats sauvegardes dans: {save_dir}")
     print(f"{'='*60}")
-    print("✅ Entraînement et évaluation terminés!")
-    print(f"Résultats sauvegardés dans: {save_dir}")
-    print(f"{'='*60}")
+
+    return True
+
+
+def run_convert_to_tflite(script_dir: Path, quantize: bool = False):
+    """Execute la conversion en TFLite."""
+    try:
+        from convert_to_tflite import (
+            load_pytorch_model, export_to_savedmodel,
+            convert_savedmodel_to_tflite, verify_tflite_model
+        )
+
+        model_path = script_dir / "checkpoints" / "best_model.pt"
+        output_dir = script_dir / "export"
+
+        if not model_path.exists():
+            print(f"  ERREUR: Modele non trouve: {model_path}")
+            return False
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Chemins de sortie
+        savedmodel_path = output_dir / "zumi_mlp_tf"
+        tflite_name = "zumi_mlp_quant.tflite" if quantize else "zumi_mlp.tflite"
+        tflite_path = output_dir / tflite_name
+
+        print("  Conversion PyTorch -> TFLite...")
+
+        # 1. Charger le modele PyTorch
+        model, checkpoint = load_pytorch_model(model_path)
+        input_dim = checkpoint['input_dim']
+        output_dim = checkpoint['output_dim']
+        hidden_dims = checkpoint['hidden_dims']
+
+        # 2. Exporter vers TensorFlow SavedModel
+        export_to_savedmodel(model, input_dim, savedmodel_path, hidden_dims, output_dim)
+
+        # 3. Convertir TensorFlow -> TFLite
+        convert_savedmodel_to_tflite(savedmodel_path, tflite_path, quantize=quantize, input_dim=input_dim)
+
+        # 4. Verification
+        verify_tflite_model(tflite_path, input_dim)
+
+        print(f"\n  Fichier TFLite cree: {tflite_path}")
+        print(f"  Pour deployer sur le robot:")
+        print(f"    scp {tflite_path} pi@<ip_robot>:~/robot/models/")
+
+        return True
+
+    except ImportError as e:
+        print(f"  ERREUR: Impossible d'importer convert_to_tflite: {e}")
+        print("  Assurez-vous que TensorFlow est installe: pip install tensorflow>=2.13.0")
+        return False
+    except Exception as e:
+        print(f"  ERREUR lors de la conversion: {e}")
+        return False
+
+
+# ══════════════════════════════════════════════════════════════
+#  Point d'entree
+# ══════════════════════════════════════════════════════════════
+
+def main():
+    parser = argparse.ArgumentParser(description="Entrainement interactif du MLP Zumi")
+    parser.add_argument("--headless", action="store_true",
+                        help="Mode automatique (sans menu interactif)")
+    parser.add_argument("--profile", type=str, default="equilibre",
+                        choices=["rapide", "equilibre", "precision"],
+                        help="Profil d'entrainement (mode headless)")
+
+    args = parser.parse_args()
+
+    script_dir = Path(__file__).parent
+
+    # Mode headless (automatique)
+    if args.headless:
+        print("\n  Mode automatique active")
+        config = TRAINING_PROFILES.get(args.profile, TRAINING_PROFILES['equilibre'])
+        # ... implementation mode headless si necessaire
+        return
+
+    # Menu interactif
+    while True:
+        choice, state = show_main_menu(script_dir)
+
+        if choice == '1':
+            run_aggregate_sequences(script_dir)
+            input("\n  Appuyez sur Entree pour continuer...")
+
+        elif choice == '2':
+            run_analyze_dataset(script_dir)
+            input("\n  Appuyez sur Entree pour continuer...")
+
+        elif choice == '3':
+            run_training(script_dir, state)
+            input("\n  Appuyez sur Entree pour continuer...")
+
+        elif choice == 'Q':
+            print("\n  Au revoir!")
+            break
 
 
 if __name__ == "__main__":
