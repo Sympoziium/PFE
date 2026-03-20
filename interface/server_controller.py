@@ -890,13 +890,19 @@ class controller:
 # ----------------------------------------------------------------------------
     
     def _dispatch_manual_action(self, action, speed=DRIVE_SPEED):
-        """Délègue la commande de mouvement au ManualController via l'orchestrateur."""
+        """Délègue la commande de mouvement au ManualController via l'orchestrateur.
+
+        Effectue également l'échantillonnage événementiel: chaque commande reçue
+        du serveur web génère un échantillon (état capteur → commande).
+        Cela évite le biais de l'échantillonnage périodique qui capture les arrêts
+        du watchdog (non représentatifs de l'intention du pilote).
+        """
         if not self.control_manager:
             return "ControlManager missing"
 
         if self.control_manager.get_controller("manual_controller") is None:
             return "Manual controller missing"
-            
+
         # Si le contrôleur manuel n'est pas le contrôleur actif
         active = self.control_manager._active_controller
         if not active or active.name != "manual_controller":
@@ -905,11 +911,77 @@ class controller:
             # On réinitialise l'état avant pour garantir que forward_step reste droit
             self.control_manager._reset_robot_drive_state()
             self.control_manager.activate_controller("manual_controller")
-            
+
+        # Échantillonnage événementiel: capturer l'état + commande à chaque action reçue
+        if self.sampling_active:
+            self._sample_on_command(action, speed)
+
         ctrl = self.control_manager.get_controller("manual_controller")
         if ctrl:
             ctrl.set_action(action, speed=speed)
         return "ok"
+
+    def _sample_on_command(self, action, speed):
+        """Échantillonne l'état capteur et la commande au moment de la réception.
+
+        Convertit l'action (forward/left/right/reverse/stop) en vitesses gauche/droite
+        et enregistre l'échantillon (vecteur état → label vitesses).
+        """
+        try:
+            # Récupérer l'état capteur le plus récent
+            state = self.control_manager.get_last_sensor_data()
+            if state is None:
+                return
+
+            # Convertir action → (left_speed, right_speed)
+            left_speed, right_speed = self._action_to_speeds(action, speed)
+
+            # Encoder via l'adapter ML
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+            label = adapter.encode_label(left_speed, right_speed).tolist()
+
+            if vector is None or label is None:
+                return
+
+            # Validation des données
+            import numpy as np
+            v_array = np.array(vector)
+            l_array = np.array(label)
+
+            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                self.sampling_vectors.append(vector)
+                self.sampling_labels.append(label)
+
+                if self.debug_control_sampling:
+                    now = time.time()
+                    if now - self._last_debug_print_time >= 0.33:
+                        self._last_debug_print_time = now
+                        adapter.debug_print_state(v_array, l_array)
+            else:
+                print("[Sampling] Échantillon rejeté lors de la validation !")
+
+        except Exception as e:
+            print("[Sampling] Erreur dans échantillonnage événementiel: {}".format(e))
+
+    def _action_to_speeds(self, action, speed):
+        """Convertit une action de pilotage en vitesses gauche/droite.
+
+        Réplique la logique du ManualController pour être cohérent.
+
+        Returns:
+            tuple: (left_speed, right_speed)
+        """
+        if action == "forward":
+            return (speed, speed)
+        elif action == "reverse":
+            return (-speed, -speed)
+        elif action == "left":
+            return (-speed, speed)
+        elif action == "right":
+            return (speed, -speed)
+        else:  # stop ou inconnu
+            return (0, 0)
 
     def forward(self): 
         return self._dispatch_manual_action("forward", self.manual_drive_speed)
