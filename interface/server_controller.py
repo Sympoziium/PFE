@@ -155,6 +155,7 @@ class controller:
         self._last_debug_print_time = 0.0  # Throttle du debug à ~3 Hz
         self.manual_drive_speed = DRIVE_SPEED
         self.manual_turn_speed = TURN_SPEED
+        self.last_action = None  # Pour mémoriser la dernière action de contrôle (pour le sampling)
 
         
         # --- CONFIGURATION DU PONT ---
@@ -914,7 +915,9 @@ class controller:
 
         # Échantillonnage événementiel: capturer l'état + commande à chaque action reçue
         if self.sampling_active:
-            self._sample_on_command(action, speed)
+            if self.last_action is "stop" and action is not "stop": # Pour empècher de oversample les stop acause du watchdog
+                self._sample_on_command(action, speed)
+                self.last_action = action
 
         ctrl = self.control_manager.get_controller("manual_controller")
         if ctrl:
