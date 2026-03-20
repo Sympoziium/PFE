@@ -914,10 +914,9 @@ class controller:
             self.control_manager.activate_controller("manual_controller")
 
         # Échantillonnage événementiel: capturer l'état + commande à chaque action reçue
-        if self.sampling_active:
-            if self.last_action is "stop" and action is not "stop": # Pour empècher de oversample les stop acause du watchdog
-                self._sample_on_command(action, speed)
-                self.last_action = action
+        # On ignore les "stop" car ils ne sont pas pertinents pour l'apprentissage du suivi de ligne
+        if self.sampling_active and action != "stop":
+            self._sample_on_command(action, speed)
 
         ctrl = self.control_manager.get_controller("manual_controller")
         if ctrl:
