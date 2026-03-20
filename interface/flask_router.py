@@ -52,6 +52,7 @@ def register_routes(ctrl):
     app.add_url_rule('/zumi/right', 'right', lambda: ctrl.right())
     app.add_url_rule('/zumi/stop', 'stop', lambda: ctrl.stop())
     app.add_url_rule('/zumi/turn', 'manual_turn', lambda: ctrl.manual_turn(), methods=['POST'])
+    app.add_url_rule('/zumi/move', 'move', lambda: ctrl.move(), methods=['POST'])
 
     # Routes pour l'onglet control
     app.add_url_rule('/start_sampling', 'start_sampling', lambda: ctrl.start_sampling(), methods=['POST'])
@@ -86,6 +87,12 @@ def register_routes(ctrl):
     # app.add_url_rule('/state_machine/start', 'state_machine_start', lambda: ctrl.state_machine_start(), methods=['POST'])
     # app.add_url_rule('/state_machine/stop', 'state_machine_stop', lambda: ctrl.state_machine_stop(), methods=['POST'])
     # app.add_url_rule('/state_machine/status', 'state_machine_status', lambda: ctrl.state_machine_status())
+
+    # Reset capteurs / PID
+    app.add_url_rule('/robot/calibrate', 'robot_calibrate', lambda: ctrl.robot_calibrate(), methods=['POST'])
+    app.add_url_rule('/robot/reset_drive', 'robot_reset_drive', lambda: ctrl.robot_reset_drive(), methods=['POST'])
+    app.add_url_rule('/robot/reset_gyro', 'robot_reset_gyro', lambda: ctrl.robot_reset_gyro(), methods=['POST'])
+    app.add_url_rule('/robot/reset_pid', 'robot_reset_pid', lambda: ctrl.robot_reset_pid(), methods=['POST'])
 
     # --- PONT (Nouveaux liens) ---
     app.add_url_rule('/bridge/open', 'bridge_open', lambda: ctrl.bridge_open(), methods=['POST'])

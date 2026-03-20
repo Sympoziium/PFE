@@ -275,8 +275,42 @@ def render_control_tab(title: str = "Contrôle") -> str:
     .live-feed img {
         width: 100%; border-radius: 10px;
     }
-    </style>
 
+    /* --- Indicateur WASD --- */
+    .wasd-indicator {
+        display: flex;
+        gap: 4px;
+        margin-top: 12px;
+        justify-content: center;
+    }
+    .wasd-key {
+        width: 36px; height: 36px;
+        border: 2px solid #D0D0D0;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 0.9rem;
+        color: #999;
+        background: #F9F9F9;
+        transition: all 0.1s;
+    }
+    .wasd-key.active {
+        background: #87C7F1;
+        color: white;
+        border-color: #6BAED6;
+        box-shadow: 0 2px 0 #6BAED6;
+    }
+    .wasd-grid {
+        display: grid;
+        grid-template-areas: ". w ." "a s d";
+        grid-gap: 4px;
+    }
+    .wasd-w { grid-area: w; }
+    .wasd-a { grid-area: a; }
+    .wasd-s { grid-area: s; }
+    .wasd-d { grid-area: d; }
     </style>
     </head>
     <body>
@@ -351,14 +385,34 @@ def render_control_tab(title: str = "Contrôle") -> str:
                                 <input id='turnSpeed' type='range' min='0' max='60' step='1' value='1'>
                                 <span class='param-value' id='turnSpeedVal'>1</span>
                             </div>
+                            <div class='param-row'>
+                                <label for='steeringRatio'>Ratio virage arc (0-1)</label>
+                                <input id='steeringRatio' type='range' min='0' max='100' step='5' value='50'>
+                                <span class='param-value' id='steeringRatioVal'>0.50</span>
+                            </div>
                             <button class='primary-btn' id='applyManualSettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
+                        </div>
+                    </div>
+
+                    <!-- Menu collapsible Reset capteurs -->
+                    <div class='settings-menu-container' style='margin-top:12px;'>
+                        <button class='primary-btn settings-toggle-btn' id='resetToggleBtn'>Reset capteurs</button>
+                        <div class='params-card hidden' id='resetCard'>
+                            <div style='position:relative;'>
+                                <div class='tab-subtitle'>Reset capteurs</div>
+                                <button type='button' class='settings-close-btn' id='resetCloseBtn'>x</button>
+                            </div>
+                            <button class='toggle-btn' id='btnCalibrateAll' style='width:100%; margin-top:8px;'>Calibration complete (gyro+MPU)</button>
+                            <button class='primary-btn' id='btnResetDrive' style='width:100%; margin-top:8px;'>Reset Drive State (PID+gyro)</button>
+                            <button class='primary-btn' id='btnResetGyro' style='width:100%; margin-top:8px;'>Reset Gyro</button>
+                            <button class='primary-btn' id='btnResetPID' style='width:100%; margin-top:8px;'>Reset PID</button>
                         </div>
                     </div>
                 </div>
 
                 <div class='right-panel'>
                     <div class='driving-mode'>
-                        <h3>Contrôle du Zumi</h3>
+                        <h3>Contrôle du Zumi (D-pad + WASD)</h3>
                         <!-- La boîte apparaît grâces à cette ligne -->
                         <div class='live-feed' id='liveFeed' style = 'display:none;'>
                             <img id='videoStream' alt='Flux vidéo en direct'>
@@ -384,9 +438,19 @@ def render_control_tab(title: str = "Contrôle") -> str:
                                 <svg viewBox="0 0 100 100"><path d="M50 80 L50 20 M20 50 L50 80 L80 50"></path></svg>
                             </button>
                         </div>
+
+                        <!-- Indicateur visuel WASD -->
+                        <div class='wasd-indicator'>
+                            <div class='wasd-grid'>
+                                <div class='wasd-key wasd-w' id='wasdW'>W</div>
+                                <div class='wasd-key wasd-a' id='wasdA'>A</div>
+                                <div class='wasd-key wasd-s' id='wasdS'>S</div>
+                                <div class='wasd-key wasd-d' id='wasdD'>D</div>
+                            </div>
+                        </div>
                     </div>
                     <hr style="width:100%; margin: 20px 0; border: 1px solid #ccc;">
-                </div>    
+                </div>
             </div>
         </div>
     </div>
@@ -536,7 +600,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
             left_reverse_trim: parseFloat(document.getElementById('trimReverseLeft').value),
             right_reverse_trim: parseFloat(document.getElementById('trimReverseRight').value),
             drive_speed: parseFloat(document.getElementById('driveSpeed').value),
-            turn_speed: parseFloat(document.getElementById('turnSpeed').value)
+            turn_speed: parseFloat(document.getElementById('turnSpeed').value),
+            steering_ratio: parseFloat(document.getElementById('steeringRatio').value) / 100.0
         };
 
         fetch('/manual/settings', {
@@ -594,16 +659,125 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 if (data.turn_speed !== null && data.turn_speed !== undefined) {
                     document.getElementById('turnSpeed').value = data.turn_speed;
                 }
+                if (data.steering_ratio !== null && data.steering_ratio !== undefined) {
+                    document.getElementById('steeringRatio').value = Math.round(data.steering_ratio * 100);
+                }
                 bindRange('trimLeft');
                 bindRange('trimRight');
                 bindRange('trimReverseLeft');
                 bindRange('trimReverseRight');
                 bindRange('driveSpeed');
                 bindRange('turnSpeed');
+                bindRangeFloat('steeringRatio', 100);
             })
             .catch(function(e) { console.error('load manual settings error:', e); });
     }
     
+    function bindRangeFloat(id, divisor) {
+        var input = document.getElementById(id);
+        var valueEl = document.getElementById(id + 'Val');
+        if (!input || !valueEl) return;
+        var update = function() {
+            valueEl.textContent = (parseInt(input.value) / divisor).toFixed(2);
+        };
+        input.addEventListener('input', function() {
+            update();
+            scheduleManualSettingsUpdate();
+        });
+        update();
+    }
+
+    // --- CONTRÔLE WASD (clavier) ---
+    var pressedKeys = {};
+    var wasdInterval = null;
+
+    function updateWASDIndicator() {
+        var keys = ['w', 'a', 's', 'd'];
+        var ids = ['wasdW', 'wasdA', 'wasdS', 'wasdD'];
+        for (var i = 0; i < keys.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (el) {
+                if (pressedKeys[keys[i]]) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            }
+        }
+    }
+
+    function sendWASDState() {
+        fetch('/zumi/move', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({keys: Object.keys(pressedKeys)})
+        }).catch(function(e) { console.error('WASD fetch error:', e); });
+    }
+
+    function onKeyDown(e) {
+        // Ignorer si un input/textarea/select est focus
+        var tag = document.activeElement ? document.activeElement.tagName : '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        var key = e.key.toLowerCase();
+        if ('wasd'.indexOf(key) < 0) return;
+        e.preventDefault();
+        if (pressedKeys[key]) return;
+
+        // Couper le D-pad si actif
+        if (isMoving) stopMove();
+
+        pressedKeys[key] = true;
+        updateWASDIndicator();
+        sendWASDState();
+        if (!wasdInterval) {
+            wasdInterval = setInterval(sendWASDState, 80);
+        }
+    }
+
+    function onKeyUp(e) {
+        var key = e.key.toLowerCase();
+        if (!pressedKeys[key]) return;
+        delete pressedKeys[key];
+        updateWASDIndicator();
+        if (Object.keys(pressedKeys).length === 0) {
+            if (wasdInterval) {
+                clearInterval(wasdInterval);
+                wasdInterval = null;
+            }
+            fetch('/zumi/stop').catch(function(e) { console.error('WASD stop error:', e); });
+        } else {
+            sendWASDState();
+        }
+    }
+
+    function stopWASD() {
+        pressedKeys = {};
+        updateWASDIndicator();
+        if (wasdInterval) {
+            clearInterval(wasdInterval);
+            wasdInterval = null;
+        }
+    }
+
+    // --- RESET CAPTEURS ---
+    function postReset(url, btn) {
+        var originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = originalText + ' ...';
+        fetch(url, {method: 'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                if (data.error) alert('Erreur: ' + data.error);
+            })
+            .catch(function(e) {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                alert('Erreur: ' + e.message);
+            });
+    }
+
     // Helper de navigation pour fermer la caméra avant de changer d'onglet
     function navigateTo(path) {
         try {
@@ -629,6 +803,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
     function startMove(direction) {
         if (isMoving) return;
+        // Couper le WASD si actif
+        if (wasdInterval) stopWASD();
         isMoving = true;
                 
         // Fonction interne pour envoyer la commande
@@ -735,6 +911,41 @@ def render_control_tab(title: str = "Contrôle") -> str:
         // D-pad center button (stop)
         var centerBtn = document.getElementById('dpadCenterBtn');
         if (centerBtn) centerBtn.addEventListener('click', stopMove);
+
+        // --- WASD keyboard controls ---
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        // Nettoyer WASD si la fenêtre perd le focus (évite les touches bloquées)
+        window.addEventListener('blur', function() {
+            if (Object.keys(pressedKeys).length > 0) {
+                stopWASD();
+                fetch('/zumi/stop').catch(function() {});
+            }
+        });
+
+        // --- Reset capteurs ---
+        var resetToggleBtn = document.getElementById('resetToggleBtn');
+        if (resetToggleBtn) {
+            resetToggleBtn.addEventListener('click', function() {
+                var card = document.getElementById('resetCard');
+                if (card) card.classList.toggle('hidden');
+            });
+        }
+        var resetCloseBtn = document.getElementById('resetCloseBtn');
+        if (resetCloseBtn) {
+            resetCloseBtn.addEventListener('click', function() {
+                var card = document.getElementById('resetCard');
+                if (card) card.classList.add('hidden');
+            });
+        }
+        var btnCalibrateAll = document.getElementById('btnCalibrateAll');
+        if (btnCalibrateAll) btnCalibrateAll.addEventListener('click', function() { postReset('/robot/calibrate', this); });
+        var btnResetDrive = document.getElementById('btnResetDrive');
+        if (btnResetDrive) btnResetDrive.addEventListener('click', function() { postReset('/robot/reset_drive', this); });
+        var btnResetGyro = document.getElementById('btnResetGyro');
+        if (btnResetGyro) btnResetGyro.addEventListener('click', function() { postReset('/robot/reset_gyro', this); });
+        var btnResetPID = document.getElementById('btnResetPID');
+        if (btnResetPID) btnResetPID.addEventListener('click', function() { postReset('/robot/reset_pid', this); });
     });
 
     // Exposer les fonctions au scope global (pour les onclick inline restants)
@@ -746,7 +957,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
     window.toggleSettingsMenu = toggleSettingsMenu;
     window.startMove = startMove;
     window.stopMove = stopMove;
+    window.stopWASD = stopWASD;
     window.applyManualSettings = applyManualSettings;
+    window.postReset = postReset;
 
     </script>
     </body></html>

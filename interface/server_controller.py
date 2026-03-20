@@ -941,23 +941,21 @@ class controller:
             print("[Sampling] Erreur dans échantillonnage événementiel: {}".format(e))
 
     def _action_to_speeds(self, action, speed):
-        """Convertit une action de pilotage en vitesses gauche/droite.
+        """Convertit une action simple (D-pad) en vitesses gauche/droite.
 
-        Réplique la logique du ManualController pour être cohérent.
+        Délègue à ManualController.compute_speeds() pour garantir la cohérence
+        entre le sampling et l'exécution moteur.
 
         Returns:
             tuple: (left_speed, right_speed)
         """
-        if action == "forward":
-            return (speed, speed)
-        elif action == "reverse":
-            return (-speed, -speed)
-        elif action == "left":
-            return (-speed, speed)
-        elif action == "right":
-            return (speed, -speed)
-        else:  # stop ou inconnu
-            return (0, 0)
+        from core.control.controlers.manual_controller import _ACTION_MAP
+        throttle, steering = _ACTION_MAP.get(action, (0, 0))
+        # Pour les actions simples du D-pad, on utilise speed comme drive_speed
+        # et self.manual_turn_speed pour les rotations
+        if action in ("left", "right"):
+            return ManualController.compute_speeds(throttle, steering, speed, speed)
+        return ManualController.compute_speeds(throttle, steering, speed, speed)
 
     def forward(self): 
         return self._dispatch_manual_action("forward", self.manual_drive_speed)
@@ -1017,6 +1015,144 @@ class controller:
             print("[ERREUR] zumi.turn({}):".format(angle), e)
             return jsonify({'error': str(e)}), 500
 
+    # ------------------------------------------------------------------
+    #  Contrôle composé WASD (touches simultanées)
+    # ------------------------------------------------------------------
+
+    def move(self):
+        """Endpoint POST /zumi/move pour le contrôle WASD composé.
+
+        Reçoit un JSON {"keys": ["w", "a"]} et convertit en throttle/steering.
+        """
+        data = request.get_json(silent=True) or {}
+        keys = set(data.get('keys', []))
+        throttle, steering = self._keys_to_throttle_steering(keys)
+        return self._dispatch_compound_action(throttle, steering)
+
+    def _keys_to_throttle_steering(self, keys):
+        """Convertit un set de touches WASD en (throttle, steering).
+
+        Returns:
+            tuple: (throttle, steering) chacun dans {-1, 0, +1}
+        """
+        throttle = (1 if 'w' in keys else 0) + (-1 if 's' in keys else 0)
+        steering = (-1 if 'a' in keys else 0) + (1 if 'd' in keys else 0)
+        return throttle, steering
+
+    def _dispatch_compound_action(self, throttle, steering):
+        """Dispatch une action composée (throttle+steering) au ManualController.
+
+        Gère l'activation du contrôleur manuel si nécessaire, l'échantillonnage
+        événementiel, et le reset gyro aux transitions virage→droit.
+        """
+        if not self.control_manager:
+            return "ControlManager missing"
+
+        if self.control_manager.get_controller("manual_controller") is None:
+            return "Manual controller missing"
+
+        # Activer le contrôleur manuel s'il n'est pas actif
+        active = self.control_manager._active_controller
+        if not active or active.name != "manual_controller":
+            if active:
+                self.control_manager.deactivate_controller()
+            self.control_manager._reset_robot_drive_state()
+            self.control_manager.activate_controller("manual_controller")
+
+        ctrl = self.control_manager.get_controller("manual_controller")
+
+        # Vérifier si un reset gyro est nécessaire (transition virage→droit)
+        if ctrl.consume_gyro_reset_flag():
+            self.robot._reset_gyro()
+
+        # Mettre à jour l'action composée
+        ctrl.set_compound_action(throttle, steering,
+                                 drive_speed=self.manual_drive_speed,
+                                 turn_speed=self.manual_turn_speed)
+
+        # Échantillonnage événementiel (seulement pour les mouvements, pas les stops)
+        if self.sampling_active and (throttle != 0 or steering != 0):
+            left_speed, right_speed = ManualController.compute_speeds(
+                throttle, steering,
+                self.manual_drive_speed, self.manual_turn_speed,
+                ctrl.steering_ratio)
+            self._sample_compound(left_speed, right_speed)
+
+        return "ok"
+
+    def _sample_compound(self, left_speed, right_speed):
+        """Échantillonne l'état capteur avec des vitesses pré-calculées.
+
+        Utilise les vitesses intentionnelles (de compute_speeds), pas les vitesses
+        PWM-modulées, pour des labels d'entraînement propres.
+        """
+        try:
+            state = self.control_manager.get_last_sensor_data()
+            if state is None:
+                return
+
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+            label = adapter.encode_label(left_speed, right_speed).tolist()
+
+            if vector is None or label is None:
+                return
+
+            import numpy as np
+            v_array = np.array(vector)
+            l_array = np.array(label)
+
+            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                self.sampling_vectors.append(vector)
+                self.sampling_labels.append(label)
+
+                if self.debug_control_sampling:
+                    now = time.time()
+                    if now - self._last_debug_print_time >= 0.33:
+                        self._last_debug_print_time = now
+                        adapter.debug_print_state(v_array, l_array)
+            else:
+                print("[Sampling] Échantillon rejeté lors de la validation !")
+
+        except Exception as e:
+            print("[Sampling] Erreur dans échantillonnage composé: {}".format(e))
+
+    # ------------------------------------------------------------------
+    #  Reset capteurs / PID
+    # ------------------------------------------------------------------
+
+    def robot_calibrate(self):
+        """Calibration complète: gyro + MPU (~1-2s bloquant)."""
+        try:
+            self.robot.calibrate_sensors()
+            return jsonify({'status': 'ok', 'message': 'Calibration complete'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    def robot_reset_drive(self):
+        """Reset PIDs + gyro (reset_drive_state)."""
+        try:
+            self.robot.reset_drive_state()
+            return jsonify({'status': 'ok', 'message': 'Drive state reset'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    def robot_reset_gyro(self):
+        """Reset gyro uniquement."""
+        try:
+            self.robot._reset_gyro()
+            return jsonify({'status': 'ok', 'message': 'Gyro reset'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    def robot_reset_pid(self):
+        """Reset PID uniquement."""
+        try:
+            self.robot._reset_PID()
+            return jsonify({'status': 'ok', 'message': 'PID reset'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
 # ----------------------------------------------------------------------------
 #          Fonctions pour le contrôle du pont
 # ----------------------------------------------------------------------------
@@ -1069,9 +1205,17 @@ class controller:
 # ----------------------------------------------------------------------------
     def manual_settings(self):
         if request.method == 'GET':
+            # Récupérer steering_ratio depuis le ManualController si disponible
+            steering_ratio = 0.5
+            if self.control_manager:
+                ctrl = self.control_manager.get_controller('manual_controller')
+                if ctrl:
+                    steering_ratio = ctrl.steering_ratio
+
             payload = {
                 'drive_speed': self.manual_drive_speed,
                 'turn_speed': self.manual_turn_speed,
+                'steering_ratio': steering_ratio,
                 'left_trim': getattr(self.robot, 'left_trim', None),
                 'right_trim': getattr(self.robot, 'right_trim', None),
                 'left_reverse_trim': getattr(self.robot, 'left_reverse_trim', None),
@@ -1089,7 +1233,7 @@ class controller:
         right_trim = data.get('right_trim')
         left_reverse_trim = data.get('left_reverse_trim')
         right_reverse_trim = data.get('right_reverse_trim')
-        
+
         if any(x is not None for x in [left_trim, right_trim, left_reverse_trim, right_reverse_trim]):
             if hasattr(self.robot, 'set_trim'):
                 self.robot.set_trim(left_trim=left_trim, right_trim=right_trim, left_reverse_trim=left_reverse_trim, right_reverse_trim=right_reverse_trim)
@@ -1102,13 +1246,26 @@ class controller:
         if self.control_manager:
             ctrl = self.control_manager.get_controller('manual_controller')
             if ctrl:
-                ctrl.update_params(default_speed=self.manual_drive_speed)
+                update_kwargs = {'default_speed': self.manual_drive_speed}
+                if 'steering_ratio' in data:
+                    update_kwargs['steering_ratio'] = float(data['steering_ratio'])
+                ctrl.update_params(**update_kwargs)
+
+        # Récupérer steering_ratio actuel pour la réponse
+        steering_ratio = 0.5
+        if self.control_manager:
+            ctrl = self.control_manager.get_controller('manual_controller')
+            if ctrl:
+                steering_ratio = ctrl.steering_ratio
 
         return jsonify({
             'drive_speed': self.manual_drive_speed,
             'turn_speed': self.manual_turn_speed,
+            'steering_ratio': steering_ratio,
             'left_trim': getattr(self.robot, 'left_trim', None),
-            'right_trim': getattr(self.robot, 'right_trim', None)
+            'right_trim': getattr(self.robot, 'right_trim', None),
+            'left_reverse_trim': getattr(self.robot, 'left_reverse_trim', None),
+            'right_reverse_trim': getattr(self.robot, 'right_reverse_trim', None),
         })
  
     def start_sampling(self):
