@@ -1061,10 +1061,6 @@ class controller:
 
         ctrl = self.control_manager.get_controller("manual_controller")
 
-        # Vérifier si un reset gyro est nécessaire (transition virage→droit)
-        if ctrl.consume_gyro_reset_flag():
-            self.robot._reset_gyro()
-
         # Mettre à jour l'action composée
         ctrl.set_compound_action(throttle, steering,
                                  drive_speed=self.manual_drive_speed,
@@ -1398,14 +1394,22 @@ class controller:
         vision_result = {'detections': detections}
 
         imu_data = {}
-        if state.gyro_angles and len(state.gyro_angles) >= 5:
+        if state.gyro_angles and len(state.gyro_angles) >= 11:
+            # zumi.update_angles() retourne 11 valeurs:
+            # [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y, Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt_state]
+            a = state.gyro_angles
             imu_data = {
-                'gx': float(state.gyro_angles[0]),
-                'gy': float(state.gyro_angles[1]),
-                'gz': float(state.gyro_angles[2]),
-                'ax': float(state.gyro_angles[3]),
-                'ay': float(state.gyro_angles[4]),
-                'az': float(state.gyro_angles[5]) if len(state.gyro_angles) > 5 else 0.0,
+                'gyro_x': float(a[0]),
+                'gyro_y': float(a[1]),
+                'gyro_z': float(a[2]),
+                'acc_x':  float(a[3]),
+                'acc_y':  float(a[4]),
+                'comp_x': float(a[5]),
+                'comp_y': float(a[6]),
+                'rot_x':  float(a[7]),
+                'rot_y':  float(a[8]),
+                'rot_z':  float(a[9]),
+                'tilt_state': float(a[10]),
             }
 
         ir_data = state.ir_sensors if state.ir_sensors is not None else None

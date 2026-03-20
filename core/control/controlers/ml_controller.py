@@ -117,7 +117,6 @@ class MLController(ControllerBase):
         # Retourner les valeurs par défaut
         return {"num_threads": 4, "allow_fp16": False}
 
-    # Pour une raison que j'ignore on génêre un vecteur de dimension 20 et on a un miss match sur la shape de tensor attendue (21)
     def _build_state_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'état à partir du SensorState.
 
@@ -127,28 +126,30 @@ class MLController(ControllerBase):
         Returns:
             np.ndarray: Vecteur d'état normalisé prêt pour l'inférence.
         """
-        # Construire le dict vision_result à partir des détections
         vision_result = {"detections": state.detections or []}
 
-        # Construire le dict IMU à partir de gyro_angles
-        # gyro_angles = [x, y, z, acc_x, acc_y, comp_x, comp_y, rot_x, rot_y, rot_z, ...]
+        # Construire le dict IMU complet à partir de gyro_angles (11 valeurs)
+        # zumi.update_angles() → [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y,
+        #                          Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt_state]
         imu_data = {}
-        if state.gyro_angles and len(state.gyro_angles) >= 6:
-            # Les données d'accélération sont aux indices 3, 4 (acc_x, acc_y)
-            # Les rotations aux indices 7, 8, 9 (rot_x, rot_y, rot_z)
+        if state.gyro_angles and len(state.gyro_angles) >= 11:
+            a = state.gyro_angles
             imu_data = {
-                "ax": state.gyro_angles[3] if len(state.gyro_angles) > 3 else 0.0,
-                "ay": state.gyro_angles[4] if len(state.gyro_angles) > 4 else 0.0,
-                "az": 9.81,  # Approximation pour az (gravité)
-                "gx": state.gyro_angles[7] if len(state.gyro_angles) > 7 else 0.0,
-                "gy": state.gyro_angles[8] if len(state.gyro_angles) > 8 else 0.0,
-                "gz": state.gyro_angles[9] if len(state.gyro_angles) > 9 else 0.0,
+                "gyro_x": float(a[0]),
+                "gyro_y": float(a[1]),
+                "gyro_z": float(a[2]),
+                "acc_x":  float(a[3]),
+                "acc_y":  float(a[4]),
+                "comp_x": float(a[5]),
+                "comp_y": float(a[6]),
+                "rot_x":  float(a[7]),
+                "rot_y":  float(a[8]),
+                "rot_z":  float(a[9]),
+                "tilt_state": float(a[10]),
             }
 
-        # IR sensors
         ir_data = state.ir_sensors if state.ir_sensors else [0] * 6
 
-        # Utiliser le VisionAdapter pour construire le vecteur normalisé
         return self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
 
     def _inference(self, input_vector: np.ndarray) -> np.ndarray:

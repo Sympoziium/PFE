@@ -13,6 +13,10 @@
     Intègre un Watchdog: si aucune commande n'est reçue pendant X ms,
     les moteurs sont arrêtés.
 
+    Correction de cap: un PID léger non-bloquant utilise le gyroscope (Rot_z)
+    pour maintenir le cap en ligne droite. S'active automatiquement quand
+    throttle > 0 et steering == 0.
+
     La méthode statique compute_speeds() est la SOURCE UNIQUE DE VÉRITÉ
     pour le calcul des vitesses, utilisée par step() ET par le sampling.
 """
@@ -29,6 +33,10 @@ _ACTION_MAP = {
     "right":    ( 0,  1),
     "stop":     ( 0,  0),
 }
+
+# Index du cap (heading) intégré dans state.gyro_angles
+# gyro_angles = [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y, Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt]
+_HEADING_INDEX = 9  # Rot_z = heading intégré en degrés
 
 
 class ManualController(ControllerBase):
@@ -53,9 +61,11 @@ class ManualController(ControllerBase):
         self.turn_duty_on  = 2   # ticks actifs
         self.turn_duty_off = 1   # ticks inactifs → vitesse effective 2/3
 
-        # --- Flag de transition virage→droit pour reset gyro ---
-        self._was_steering = False    # True si le tick précédent avait steering != 0
-        self._needs_gyro_reset = False  # Flag lu par le ControlManager/serveur
+        # --- PID de cap léger (correction de dérive en ligne droite) ---
+        self._heading_hold_active = False
+        self._desired_heading = 0.0
+        self.heading_kp = 0.5         # Gain proportionnel (tunable via UI)
+        self.heading_max_correction = 10  # Correction max en unités de vitesse
 
     @property
     def name(self):
@@ -145,13 +155,59 @@ class ManualController(ControllerBase):
         self._throttle = 0
         self._steering = 0
         self._last_action_time = time.time()
-        self._was_steering = False
-        self._needs_gyro_reset = False
+        self._heading_hold_active = False
         self._turn_tick = 0
 
     def stop(self):
         self._throttle = 0
         self._steering = 0
+        self._heading_hold_active = False
+
+    # ------------------------------------------------------------------
+    #  Correction de cap (PID léger non-bloquant)
+    # ------------------------------------------------------------------
+
+    def _get_heading(self, state):
+        """Extrait le cap intégré (Rot_z) depuis l'état capteur.
+
+        Returns:
+            float: cap en degrés, ou None si indisponible.
+        """
+        if state and state.gyro_angles and len(state.gyro_angles) > _HEADING_INDEX:
+            return float(state.gyro_angles[_HEADING_INDEX])
+        return None
+
+    def _apply_heading_correction(self, state, base_left, base_right):
+        """Applique une correction de cap proportionnelle aux vitesses de base.
+
+        Quand on commence à avancer droit, on capture le cap courant comme
+        référence. À chaque tick, on calcule l'erreur et on ajuste les
+        vitesses des roues pour maintenir le cap.
+
+        Args:
+            state: SensorState avec gyro_angles
+            base_left: vitesse gauche avant correction
+            base_right: vitesse droite avant correction
+
+        Returns:
+            tuple: (left_speed, right_speed) après correction
+        """
+        heading = self._get_heading(state)
+        if heading is None:
+            return (base_left, base_right)
+
+        # Capture du cap de référence au début du mouvement droit
+        if not self._heading_hold_active:
+            self._desired_heading = heading
+            self._heading_hold_active = True
+            return (base_left, base_right)  # Pas de correction au premier tick
+
+        # Calcul de l'erreur et correction proportionnelle
+        error = self._desired_heading - heading
+        correction = error * self.heading_kp
+        correction = max(-self.heading_max_correction, min(self.heading_max_correction, correction))
+
+        return (base_left + correction, base_right - correction)
 
     # ------------------------------------------------------------------
     #  Boucle de contrôle (appelé à chaque tick ~30Hz)
@@ -162,33 +218,29 @@ class ManualController(ControllerBase):
 
         Applique:
         - Watchdog timeout
-        - forward_step avec gyro PID pour la ligne droite
+        - Correction de cap PID pour la ligne droite (avant et arrière)
         - PWM logiciel pour les rotations sur place
-        - Vitesses différentielles pour les arcs et la marche arrière
+        - Vitesses différentielles pour les arcs
         """
         # 1. Watchdog: arrêt si pas de commande récente
         if time.time() - self._last_action_time > self.watchdog_timeout:
             self._throttle = 0
             self._steering = 0
 
-        # 2. Détection de transition virage → ligne droite pour reset gyro
-        currently_steering = (self._steering != 0)
-        going_straight_forward = (self._throttle > 0 and self._steering == 0)
+        # 2. Désactiver le heading hold si on ne va plus tout droit
+        if self._steering != 0 or self._throttle == 0:
+            self._heading_hold_active = False
 
-        if self._was_steering and going_straight_forward:
-            self._needs_gyro_reset = True
-        self._was_steering = currently_steering
-
-        # 3. Ligne droite avant → forward_step avec correction gyro PID interne Zumi
-        #    forward_step() est conçu pour être appelé en boucle (30Hz = notre cas).
-        #    desired_angle=0 = maintenir le cap depuis le dernier reset gyro.
-        if going_straight_forward:
-            return MotorCommand.make_forward_step(self.default_speed, desired_angle=0)
+        # 3. Ligne droite (avant ou arrière) → correction de cap PID
+        if self._throttle != 0 and self._steering == 0:
+            base_left, base_right = self.compute_speeds(
+                self._throttle, 0,
+                self.default_speed, self.turn_speed, self.steering_ratio
+            )
+            left, right = self._apply_heading_correction(state, base_left, base_right)
+            return MotorCommand.make_speed(left, right)
 
         # 4. Rotation sur place avec PWM logiciel (A/D seuls)
-        #    Le PWM réduit la vitesse effective car speed=1 est déjà le minimum hardware.
-        #    Note: compute_speeds() retourne les vitesses intentionnelles (pour le sampling),
-        #    le PWM est appliqué ICI uniquement (pour l'exécution moteur).
         if self._throttle == 0 and self._steering != 0:
             self._turn_tick += 1
             active = (self._turn_tick % (self.turn_duty_on + self.turn_duty_off)) < self.turn_duty_on
@@ -199,7 +251,7 @@ class ManualController(ControllerBase):
                 self._steering * self.turn_speed
             )
 
-        # 5. Tous les autres cas (arcs W+A/W+D, recul S, recul+arc S+A/S+D)
+        # 5. Tous les autres cas (arcs W+A/W+D, stop)
         left, right = self.compute_speeds(
             self._throttle, self._steering,
             self.default_speed, self.turn_speed, self.steering_ratio
@@ -210,20 +262,6 @@ class ManualController(ControllerBase):
         return MotorCommand.make_speed(left, right)
 
     # ------------------------------------------------------------------
-    #  Flag gyro (lu par le serveur/ControlManager)
-    # ------------------------------------------------------------------
-
-    def consume_gyro_reset_flag(self):
-        """Retourne True si un reset gyro est nécessaire, puis remet le flag à False.
-
-        Appelé par le ControlManager ou le serveur avant d'exécuter la commande.
-        """
-        if self._needs_gyro_reset:
-            self._needs_gyro_reset = False
-            return True
-        return False
-
-    # ------------------------------------------------------------------
     #  Debug et paramètres
     # ------------------------------------------------------------------
 
@@ -231,6 +269,8 @@ class ManualController(ControllerBase):
         return {
             "throttle": self._throttle,
             "steering": self._steering,
+            "heading_hold": self._heading_hold_active,
+            "desired_heading": self._desired_heading if self._heading_hold_active else None,
             "timeout_warning": (time.time() - self._last_action_time > self.watchdog_timeout),
         }
 
@@ -239,6 +279,8 @@ class ManualController(ControllerBase):
             "default_speed": self.default_speed,
             "turn_speed": self.turn_speed,
             "steering_ratio": self.steering_ratio,
+            "heading_kp": self.heading_kp,
+            "heading_max_correction": self.heading_max_correction,
             "turn_duty_on": self.turn_duty_on,
             "turn_duty_off": self.turn_duty_off,
         }
@@ -250,6 +292,10 @@ class ManualController(ControllerBase):
             self.turn_speed = kwargs["turn_speed"]
         if "steering_ratio" in kwargs:
             self.steering_ratio = float(kwargs["steering_ratio"])
+        if "heading_kp" in kwargs:
+            self.heading_kp = float(kwargs["heading_kp"])
+        if "heading_max_correction" in kwargs:
+            self.heading_max_correction = float(kwargs["heading_max_correction"])
         if "turn_duty_on" in kwargs:
             self.turn_duty_on = kwargs["turn_duty_on"]
         if "turn_duty_off" in kwargs:
