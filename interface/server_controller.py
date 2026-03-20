@@ -7,6 +7,8 @@
     Centralise la logique des endpoints; `flask_router.py` ne fait que lier les routes
     à ces méthodes.
 """
+from turtle import speed
+
 import requests  # <--- IMPORTANT : Pour communiquer avec le pont
 import os, uuid, time, cv2, itertools, numpy as np
 import json
@@ -229,46 +231,18 @@ class controller:
 
     def _sampling_callback(self, state, command):
         """
-        Callback de sampling synchronisé avec la boucle de contrôle.
-        Appelé à chaque tick, immédiatement après step() et avant execute().
+        Callback synchronisé avec la boucle de contrôle (appelé à chaque tick).
 
-        Args:
-            state: SensorState lu au tick courant
-            command: MotorCommand retournée par le contrôleur actif
+        NOTE: L'échantillonnage pour l'apprentissage du MLP est maintenant fait
+        de manière ÉVÉNEMENTIELLE dans _sample_on_command(), appelé uniquement
+        quand une commande est reçue du serveur web. Cela évite le biais des
+        arrêts watchdog/PWM qui ne représentent pas l'intention du pilote.
+
+        Ce callback reste disponible pour d'autres usages (debug, monitoring)
+        mais n'effectue plus d'échantillonnage.
         """
-        if not self.sampling_active:
-            return
-
-        try:
-            adapter = self._get_ml_adapter(state)
-            vector = self._vectorize_state_with_adapter(state, adapter)
-
-            # Encodage du label directement depuis la commande reçue (atomique)
-            label = adapter.encode_label(command.left_speed, command.right_speed).tolist()
-
-            if vector is None or label is None:
-                return
-
-            # Validation des données
-            import numpy as np
-            v_array = np.array(vector)
-            l_array = np.array(label)
-
-            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
-                self.sampling_vectors.append(vector)
-                self.sampling_labels.append(label)
-
-                # Debug throttled à ~3 Hz pour visualiser les échantillons
-                if self.debug_control_sampling:
-                    now = time.time()
-                    if now - self._last_debug_print_time >= 0.33:
-                        self._last_debug_print_time = now
-                        adapter.debug_print_state(v_array, l_array)
-            else:
-                print("[Sampling] Échantillon rejeté lors de la validation !")
-
-        except Exception as e:
-            print("[Sampling] Erreur dans callback: {}".format(e))
+        # L'échantillonnage est désormais événementiel - voir _sample_on_command()
+        pass
 
 # ----------------------------------------------------------------------------
 #            Fonctions de callback pour les actions de vision
@@ -913,9 +887,9 @@ class controller:
             self.control_manager._reset_robot_drive_state()
             self.control_manager.activate_controller("manual_controller")
 
-        # Échantillonnage événementiel: capturer l'état + commande à chaque action reçue
-        # On ignore les "stop" car ils ne sont pas pertinents pour l'apprentissage du suivi de ligne
-        if self.sampling_active and action != "stop":
+        # Échantillonnage événementiel: capturer l'état + commande à chaque action de mouvement
+        # On échantillonne UNIQUEMENT les actions de mouvement valides (forward/left/right/reverse)
+        if self.sampling_active and action in ("forward", "left", "right", "reverse"):
             self._sample_on_command(action, speed)
 
         ctrl = self.control_manager.get_controller("manual_controller")
@@ -937,7 +911,8 @@ class controller:
 
             # Convertir action → (left_speed, right_speed)
             left_speed, right_speed = self._action_to_speeds(action, speed)
-
+            if left_speed == 0 and right_speed == 0:
+                print(f"[DEBUG] Zero speeds! action={action}, speed={speed}")
             # Encoder via l'adapter ML
             adapter = self._get_ml_adapter(state)
             vector = self._vectorize_state_with_adapter(state, adapter)
@@ -998,7 +973,6 @@ class controller:
         return self._dispatch_manual_action("right", self.manual_turn_speed)
         
     def stop(self): 
-        print("[HTTP] /zumi/stop reçu")
         try:
             return self._dispatch_manual_action("stop", 0)
         except Exception as e:

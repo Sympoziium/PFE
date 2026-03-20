@@ -374,7 +374,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
                                 <svg viewBox="0 0 100 100"><path d="M80 50 L20 50 M50 20 L20 50 L50 80"></path></svg>
                             </button>
                             <!-- CENTRE (Stop) -->
-                            <button class="dpad-button dpad-center" id="dpadCenterBtn"></button>
+                            <button class="dpad-button dpad-center" data-direction="stop" id="dpadCenterBtn"></button>
                             <!-- DROITE -->
                             <button class="dpad-button dpad-right" data-direction="right">
                                 <svg viewBox="0 0 100 100"><path d="M20 50 L80 50 M50 20 L80 50 L50 80"></path></svg>
