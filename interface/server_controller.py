@@ -1200,22 +1200,16 @@ class controller:
 #          Fonctions de callback pour l'onglet de contrôle
 # ----------------------------------------------------------------------------
     def manual_settings(self):
-        if request.method == 'GET':
-            # Récupérer steering_ratio depuis le ManualController si disponible
-            steering_ratio = 0.5
-            if self.control_manager:
-                ctrl = self.control_manager.get_controller('manual_controller')
-                if ctrl:
-                    steering_ratio = ctrl.steering_ratio
+        """GET/POST des réglages manuels (vitesses, steering_ratio, PID de cap)."""
+        ctrl = self.control_manager.get_controller('manual_controller') if self.control_manager else None
 
+        if request.method == 'GET':
             payload = {
                 'drive_speed': self.manual_drive_speed,
                 'turn_speed': self.manual_turn_speed,
-                'steering_ratio': steering_ratio,
-                'left_trim': getattr(self.robot, 'left_trim', None),
-                'right_trim': getattr(self.robot, 'right_trim', None),
-                'left_reverse_trim': getattr(self.robot, 'left_reverse_trim', None),
-                'right_reverse_trim': getattr(self.robot, 'right_reverse_trim', None)
+                'steering_ratio': ctrl.steering_ratio if ctrl else 0.5,
+                'heading_kp': ctrl.heading_kp if ctrl else 1.5,
+                'heading_max_correction': ctrl.heading_max_correction if ctrl else 15,
             }
             return jsonify(payload)
 
@@ -1225,43 +1219,22 @@ class controller:
         if 'turn_speed' in data:
             self.manual_turn_speed = float(data['turn_speed'])
 
-        left_trim = data.get('left_trim')
-        right_trim = data.get('right_trim')
-        left_reverse_trim = data.get('left_reverse_trim')
-        right_reverse_trim = data.get('right_reverse_trim')
-
-        if any(x is not None for x in [left_trim, right_trim, left_reverse_trim, right_reverse_trim]):
-            if hasattr(self.robot, 'set_trim'):
-                self.robot.set_trim(left_trim=left_trim, right_trim=right_trim, left_reverse_trim=left_reverse_trim, right_reverse_trim=right_reverse_trim)
-            else:
-                if left_trim is not None: self.robot.left_trim = float(left_trim)
-                if right_trim is not None: self.robot.right_trim = float(right_trim)
-                if left_reverse_trim is not None: self.robot.left_reverse_trim = float(left_reverse_trim)
-                if right_reverse_trim is not None: self.robot.right_reverse_trim = float(right_reverse_trim)
-
-        if self.control_manager:
-            ctrl = self.control_manager.get_controller('manual_controller')
-            if ctrl:
-                update_kwargs = {'default_speed': self.manual_drive_speed}
-                if 'steering_ratio' in data:
-                    update_kwargs['steering_ratio'] = float(data['steering_ratio'])
-                ctrl.update_params(**update_kwargs)
-
-        # Récupérer steering_ratio actuel pour la réponse
-        steering_ratio = 0.5
-        if self.control_manager:
-            ctrl = self.control_manager.get_controller('manual_controller')
-            if ctrl:
-                steering_ratio = ctrl.steering_ratio
+        if ctrl:
+            update_kwargs = {'default_speed': self.manual_drive_speed}
+            if 'steering_ratio' in data:
+                update_kwargs['steering_ratio'] = float(data['steering_ratio'])
+            if 'heading_kp' in data:
+                update_kwargs['heading_kp'] = float(data['heading_kp'])
+            if 'heading_max_correction' in data:
+                update_kwargs['heading_max_correction'] = float(data['heading_max_correction'])
+            ctrl.update_params(**update_kwargs)
 
         return jsonify({
             'drive_speed': self.manual_drive_speed,
             'turn_speed': self.manual_turn_speed,
-            'steering_ratio': steering_ratio,
-            'left_trim': getattr(self.robot, 'left_trim', None),
-            'right_trim': getattr(self.robot, 'right_trim', None),
-            'left_reverse_trim': getattr(self.robot, 'left_reverse_trim', None),
-            'right_reverse_trim': getattr(self.robot, 'right_reverse_trim', None),
+            'steering_ratio': ctrl.steering_ratio if ctrl else 0.5,
+            'heading_kp': ctrl.heading_kp if ctrl else 1.5,
+            'heading_max_correction': ctrl.heading_max_correction if ctrl else 15,
         })
  
     def start_sampling(self):

@@ -370,6 +370,18 @@ def render_control_tab(title: str = "Contrôle") -> str:
                                 <input id='steeringRatio' type='range' min='0' max='100' step='5' value='50'>
                                 <span class='param-value' id='steeringRatioVal'>0.50</span>
                             </div>
+                            <hr style='margin:10px 0; border:1px solid #e0f4ff;'>
+                            <div class='tab-subtitle' style='font-size:1rem; margin-bottom:8px;'>PID correction de cap</div>
+                            <div class='param-row'>
+                                <label for='headingKp'>Kp (0-5)</label>
+                                <input id='headingKp' type='range' min='0' max='500' step='10' value='150'>
+                                <span class='param-value' id='headingKpVal'>1.50</span>
+                            </div>
+                            <div class='param-row'>
+                                <label for='headingMaxCorr'>Correction max (0-30)</label>
+                                <input id='headingMaxCorr' type='range' min='0' max='30' step='1' value='15'>
+                                <span class='param-value' id='headingMaxCorrVal'>15</span>
+                            </div>
                             <button class='primary-btn' id='applyManualSettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
                         </div>
                     </div>
@@ -577,7 +589,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var payload = {
             drive_speed: parseFloat(document.getElementById('driveSpeed').value),
             turn_speed: parseFloat(document.getElementById('turnSpeed').value),
-            steering_ratio: parseFloat(document.getElementById('steeringRatio').value) / 100.0
+            steering_ratio: parseFloat(document.getElementById('steeringRatio').value) / 100.0,
+            heading_kp: parseFloat(document.getElementById('headingKp').value) / 100.0,
+            heading_max_correction: parseFloat(document.getElementById('headingMaxCorr').value)
         };
 
         fetch('/manual/settings', {
@@ -626,9 +640,17 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 if (data.steering_ratio !== null && data.steering_ratio !== undefined) {
                     document.getElementById('steeringRatio').value = Math.round(data.steering_ratio * 100);
                 }
+                if (data.heading_kp !== null && data.heading_kp !== undefined) {
+                    document.getElementById('headingKp').value = Math.round(data.heading_kp * 100);
+                }
+                if (data.heading_max_correction !== null && data.heading_max_correction !== undefined) {
+                    document.getElementById('headingMaxCorr').value = data.heading_max_correction;
+                }
                 bindRange('driveSpeed');
                 bindRange('turnSpeed');
                 bindRangeFloat('steeringRatio', 100);
+                bindRangeFloat('headingKp', 100);
+                bindRange('headingMaxCorr');
             })
             .catch(function(e) { console.error('load manual settings error:', e); });
     }

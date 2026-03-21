@@ -33,12 +33,6 @@ TURN_SPEED_DEFAULT = 1     # Vitesse par défaut virages
 DRIVE_SPEED = DRIVE_SPEED_DEFAULT
 TURN_SPEED = TURN_SPEED_DEFAULT
 
-# Constantes de trim pour compenser les imperfections mécaniques du Zumi
-LEFT_TRIM  =  0   # Ajuster expérimentalement — positif = booste le gauche
-RIGHT_TRIM =  -8
-LEFT_REVERSE_TRIM = 1 # Trim spécifique pour la marche arrière
-RIGHT_REVERSE_TRIM = -6
-
 # === Profils de caméra ===
 # Utilisés par le server_controller pour ajuster automatiquement la résolution
 # selon le mode actif (contrôleur ou streaming seul).
@@ -63,12 +57,6 @@ class RobotZumi(RobotBase):
         self.personality = Personality(self.zumi, self.screen)
         self._stop_since = None  # Timestamp du début de l'arrêt courant
         self._PID_RESET_DELAY = 1.5  # Secondes d'arrêt continu avant reset PID
-        self.left_trim = LEFT_TRIM
-        self.right_trim = RIGHT_TRIM
-        self.left_reverse_trim = LEFT_REVERSE_TRIM
-        self.right_reverse_trim = RIGHT_REVERSE_TRIM
-        self.drive_speed_limit = DRIVE_SPEED_DEFAULT
-        self.turn_speed_limit = TURN_SPEED_DEFAULT
 
         self.calibrate_sensors()  # Calibrage initial des capteurs pour des lectures précises
 
@@ -78,42 +66,15 @@ class RobotZumi(RobotBase):
     def control_motors(self, roue_g_speed: float, roue_d_speed: float):
         """
         Définit la vitesse des moteurs du Zumi.
-    
-        """    
-        # Application du trim : on l'applique prioritairement pour les mouvements droits
-        if roue_g_speed > 0 and roue_d_speed > 0: # si on va vers l'avant
-            left_speed_trim  = roue_g_speed + self.left_trim
-            right_speed_trim = roue_d_speed + self.right_trim
-        elif roue_g_speed < 0 and roue_d_speed < 0: # si on recule (inversion)
-            left_speed_trim  = roue_g_speed - self.left_reverse_trim
-            right_speed_trim = roue_d_speed - self.right_reverse_trim
-        else: # Rotation ou autres
-            left_speed_trim = roue_g_speed
-            right_speed_trim = roue_d_speed
-
-        # Clamp matériel final absolu (Zumi accepte typiquement -126 à 127, on limite à 100 par sécurité absolue)
-        # On ne se restreint plus à "drive_speed_limit" qui écrasait le trim !
-        left_speed  = int(max(-100, min(100, left_speed_trim)))
-        right_speed = int(max(-100, min(100, right_speed_trim)))
+        La correction de trajectoire est gérée par le PID de cap du ManualController,
+        pas par un trim statique ici.
+        """
+        # Clamp matériel final absolu (Zumi accepte typiquement -126 à 127, on limite à 100 par sécurité)
+        left_speed  = int(max(-100, min(100, roue_g_speed)))
+        right_speed = int(max(-100, min(100, roue_d_speed)))
 
         self._stop_since = None  # ← Le robot bouge, on annule le timer d'arrêt
         self.zumi.control_motors(right_speed, left_speed)
-
-    def set_trim(self, left_trim=None, right_trim=None, left_reverse_trim=None, right_reverse_trim=None):
-        if left_trim is not None:
-            self.left_trim = float(left_trim)
-        if right_trim is not None:
-            self.right_trim = float(right_trim)
-        if left_reverse_trim is not None:
-            self.left_reverse_trim = float(left_reverse_trim)
-        if right_reverse_trim is not None:
-            self.right_reverse_trim = float(right_reverse_trim)
-
-    def set_speed_limits(self, drive_speed=None, turn_speed=None):
-        if drive_speed is not None:
-            self.drive_speed_limit = float(drive_speed)
-        if turn_speed is not None:
-            self.turn_speed_limit = float(turn_speed)
 
     def stop(self):
         """
