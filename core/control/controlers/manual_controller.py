@@ -54,7 +54,7 @@ class ManualController(ControllerBase):
 
         # --- Paramètres de virage ---
         self.turn_speed = 1           # Vitesse rotation sur place (minimum hardware)
-        self.steering_ratio = 0.5     # Sévérité du virage en arc (0=droit, 1=roue intérieure arrêtée)
+        self.steering_ratio = 0.90     # Sévérité du virage en arc (0=droit, 1=roue intérieure arrêtée)
 
         # --- PWM logiciel pour rotations sur place ---
         # Conservé car speed=1 est le minimum hardware et reste trop rapide.
@@ -66,7 +66,7 @@ class ManualController(ControllerBase):
         # --- PID de cap léger (correction de dérive en ligne droite) ---
         self._heading_hold_active = False
         self._desired_heading = 0.0
-        self.heading_kp = 1.5         # Gain proportionnel (tunable via UI)
+        self.heading_kp = 1.8         # Gain proportionnel (tunable via UI)
         self.heading_max_correction = 15  # Correction max en unités de vitesse
 
     @property
