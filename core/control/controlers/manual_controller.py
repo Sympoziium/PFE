@@ -206,10 +206,17 @@ class ManualController(ControllerBase):
             return (base_left, base_right)  # Pas de correction au premier tick
 
         # Calcul de l'erreur et correction proportionnelle
-        error = self._desired_heading - heading
+        # Convention Zumi: tourner à gauche = Gyro_z AUGMENTE (positif)
+        # Si le robot dérive à gauche: heading > desired → error négatif
+        # On veut: ralentir la roue droite (trop forte) → correction négative sur right
+        # Donc: error = heading - desired (pas l'inverse!)
+        error = heading - self._desired_heading
         correction = error * self.heading_kp
         correction = max(-self.heading_max_correction, min(self.heading_max_correction, correction))
 
+        # correction > 0 quand le robot a dérivé à gauche:
+        #   left += correction  → booste la roue faible (gauche)
+        #   right -= correction → freine la roue forte (droite)
         return (base_left + correction, base_right - correction)
 
     # ------------------------------------------------------------------
