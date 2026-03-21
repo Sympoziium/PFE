@@ -108,9 +108,12 @@ class ManualController(ControllerBase):
         if steering == 0:
             return (base, base)
 
-        # Virage en arc: la roue intérieure ralentit selon steering_ratio
-        inner = base * (1.0 - steering_ratio)
-        outer = base
+        # Virage en arc: différentiel symétrique autour de la vitesse de base
+        # La roue intérieure ralentit ET la roue extérieure accélère.
+        # Cela garantit un différentiel suffisant même avec des moteurs asymétriques.
+        half_diff = base * steering_ratio
+        inner = base - half_diff
+        outer = base + half_diff
         if steering < 0:  # arc gauche → roue gauche = intérieure
             return (inner, outer)
         else:              # arc droit → roue droite = intérieure
