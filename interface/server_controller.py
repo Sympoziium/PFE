@@ -888,7 +888,7 @@ class controller:
 
         # Échantillonnage événementiel: capturer l'état + commande à chaque action de mouvement
         # On échantillonne UNIQUEMENT les actions de mouvement valides (forward/left/right/reverse)
-        if self.sampling_active and action in ("forward", "left", "right", "reverse"):
+        if self.sampling_active and action in ("forward", "left", "right", "reverse", "stop"):
             self._sample_on_command(action, speed)
 
         ctrl = self.control_manager.get_controller("manual_controller")
@@ -1388,10 +1388,6 @@ class controller:
         ir_data = state.ir_sensors if state.ir_sensors is not None else None
         vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data)
         return vector.tolist()
-
-    def _vectorize_state(self, state):
-        adapter = self._get_ml_adapter(state)
-        return self._vectorize_state_with_adapter(state, adapter)
 
     def _infer_ml_classes(self):
         """Infère dynamiquement les classes de détection disponibles à partir des détecteurs du pipeline vision."""

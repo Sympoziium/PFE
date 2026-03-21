@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import json
 import shutil
 from pathlib import Path
 
@@ -147,6 +148,9 @@ def convert_savedmodel_to_tflite(
 
     converter = tf.lite.TFLiteConverter.from_saved_model(str(savedmodel_path))
 
+    # La quantization int8 permet de réduire drastiquement la taille du modèle en convertissant les paramètres
+    # du modèle qui lors de l'entrainement sont en float32 en int8. Cela est particulièrement bénéfique pour 
+    # les microcontrôleurs ou les processeurs à ressources limitées comme le Raspberry Pi Zero.
     if quantize:
         # Quantization dynamique (pas besoin de données de calibration)
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
@@ -202,6 +206,41 @@ def verify_tflite_model(tflite_path: Path, input_dim: int):
     print(f"  Output range: [{output.min():.3f}, {output.max():.3f}]")
 
 
+def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
+    """Exporte les statistiques de normalisation z-score depuis le checkpoint.
+
+    Crée normalization_stats.json à côté du .tflite pour que ml_controller
+    puisse appliquer la même normalisation à l'inférence.
+
+    Args:
+        checkpoint: Données du checkpoint PyTorch
+        output_dir: Répertoire de sortie (même que le .tflite)
+
+    Returns:
+        bool: True si les stats ont été exportées
+    """
+    if 'feature_mean' not in checkpoint or 'feature_std' not in checkpoint:
+        print("[NormStats] Pas de stats de normalisation dans le checkpoint (ancien modèle?).")
+        return False
+
+    stats = {
+        "feature_mean": checkpoint['feature_mean'],
+        "feature_std": checkpoint['feature_std'],
+        "input_dim": checkpoint['input_dim'],
+        "feature_mask": checkpoint.get('feature_mask'),
+    }
+
+    stats_path = output_dir / "normalization_stats.json"
+    with open(stats_path, 'w') as f:
+        json.dump(stats, f, indent=2)
+
+    print(f"[NormStats] Exporté: {stats_path}")
+    print(f"[NormStats] input_dim={stats['input_dim']}, "
+          f"{len(stats['feature_mean'])} features")
+
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="Conversion PyTorch → TFLite")
     parser.add_argument("--model", type=str, default="checkpoints/best_model.pt",
@@ -247,7 +286,10 @@ def main():
     # 3. Convertir TensorFlow → TFLite
     convert_savedmodel_to_tflite(savedmodel_path, tflite_path, quantize=args.quantize, input_dim=input_dim)
 
-    # 4. Vérification
+    # 4. Exporter les stats de normalisation z-score
+    export_normalization_stats(checkpoint, output_dir)
+
+    # 5. Vérification
     if not args.skip_verification:
         verify_tflite_model(tflite_path, input_dim)
 
@@ -258,7 +300,7 @@ def main():
 
     # Instructions de déploiement
     print("\nPour déployer sur le robot:")
-    print(f"  scp {tflite_path} pi@<ip_robot>:~/robot/models/")
+    print(f"  scp {tflite_path} normalization_stats.json pi@<ip_robot>:~/robot/models/")
 
 
 if __name__ == "__main__":

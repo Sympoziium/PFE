@@ -90,6 +90,28 @@ class ZumiControlDataset(Dataset):
         command = torch.from_numpy(self.labels[idx])
         return state, command
 
+    def apply_feature_mask(self, mask: list):
+        """Retire les features mortes en ne gardant que les indices du masque.
+
+        Args:
+            mask: Liste d'indices de features a conserver (ex: [0,1,2,3,4,5,6,7,16,17,...])
+        """
+        original_dim = self.captures.shape[1]
+        self.captures = self.captures[:, mask]
+        print(f"[Dataset] Masque applique: {original_dim}-dim -> {self.captures.shape[1]}-dim "
+              f"({original_dim - len(mask)} features mortes retirees)")
+
+    def normalize(self, mean: np.ndarray, std: np.ndarray):
+        """Applique la normalisation z-score aux captures.
+
+        Args:
+            mean: Moyenne par feature (shape: [input_dim])
+            std: Ecart-type par feature (shape: [input_dim])
+        """
+        safe_std = std.copy()
+        safe_std[safe_std < 1e-6] = 1.0  # eviter division par zero pour features mortes
+        self.captures = (self.captures - mean) / safe_std
+
     def get_statistics(self) -> dict:
         """Calcule les statistiques du dataset pour analyse."""
         stats = {
@@ -110,10 +132,13 @@ def create_data_loaders(
     data_dir: str,
     batch_size: int = 32,
     train_ratio: float = 0.8,
-    shuffle: bool = False,
-    seed: int = 42
+    shuffle: bool = True,
+    seed: int = 42,
+    feature_mask: list = None
 ) -> tuple:
     """Crée les DataLoaders pour l'entraînement et la validation.
+
+    Applique automatiquement le masque de features puis la normalisation z-score.
 
     Args:
         data_dir: Répertoire des données
@@ -121,11 +146,17 @@ def create_data_loaders(
         train_ratio: Proportion des données pour l'entraînement (0.8 = 80%)
         shuffle: Mélanger les données d'entraînement
         seed: Graine aléatoire pour reproductibilité
+        feature_mask: Liste d'indices de features a conserver (None = toutes)
 
     Returns:
         tuple: (train_loader, val_loader, dataset)
     """
     dataset = ZumiControlDataset(data_dir)
+
+    # Appliquer le masque de features (retire les features mortes)
+    if feature_mask is not None:
+        dataset.apply_feature_mask(feature_mask)
+    dataset.feature_mask = feature_mask
 
     # Split train/validation
     n_train = int(len(dataset) * train_ratio)
@@ -135,6 +166,23 @@ def create_data_loaders(
     train_dataset, val_dataset = random_split(
         dataset, [n_train, n_val], generator=generator
     )
+
+    # Calculer mean/std sur le train set uniquement (apres masque)
+    train_indices = train_dataset.indices
+    train_captures = dataset.captures[train_indices]
+    feature_mean = train_captures.mean(axis=0)
+    feature_std = train_captures.std(axis=0)
+
+    n_dead = np.sum(feature_std < 1e-6)
+    n_active = len(feature_std) - n_dead
+    print(f"[Dataset] Z-score: {n_active} features actives, {n_dead} features mortes (std < 1e-6)")
+
+    # Normaliser tout le dataset avec les stats du train set
+    dataset.normalize(feature_mean, feature_std)
+
+    # Stocker les stats pour export ultérieur
+    dataset.feature_mean = feature_mean
+    dataset.feature_std = feature_std
 
     train_loader = DataLoader(
         train_dataset,

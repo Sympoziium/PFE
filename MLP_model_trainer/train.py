@@ -29,7 +29,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from dataset import create_data_loaders
+from dataset import ZumiControlDataset, create_data_loaders
 from model import create_model, ZumiMLP
 
 
@@ -124,12 +124,14 @@ class Trainer:
         val_loader,
         device: torch.device,
         lr: float = 1e-3,
-        weight_decay: float = 1e-4
+        weight_decay: float = 1e-4,
+        norm_stats: dict = None
     ):
         self.model = model.to(device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.device = device
+        self.norm_stats = norm_stats or {}
 
         self.criterion = nn.MSELoss()
         self.optimizer = optim.AdamW(
@@ -384,7 +386,7 @@ class Trainer:
             if is_best:
                 self.best_val_loss = val_loss
                 no_improve_count = 0
-                torch.save({
+                checkpoint_data = {
                     'epoch': epoch,
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
@@ -392,7 +394,12 @@ class Trainer:
                     'input_dim': self.model.input_dim,
                     'output_dim': self.model.output_dim,
                     'hidden_dims': self.model.hidden_dims,
-                }, best_model_path)
+                }
+                if self.norm_stats:
+                    checkpoint_data['feature_mean'] = self.norm_stats['feature_mean']
+                    checkpoint_data['feature_std'] = self.norm_stats['feature_std']
+                    checkpoint_data['feature_mask'] = self.norm_stats.get('feature_mask')
+                torch.save(checkpoint_data, best_model_path)
             else:
                 no_improve_count += 1
 
@@ -619,25 +626,151 @@ def show_main_menu(script_dir: Path) -> tuple:
         print(f"  Choix invalide. Options disponibles : {', '.join(sorted(valid_choices))}")
 
 
-def choose_training_profile() -> dict:
+def _count_params(input_dim, hidden_dims, output_dim=2):
+    """Calcule le nombre de parametres d'un MLP avec les dimensions donnees."""
+    total = 0
+    prev = input_dim
+    for h in hidden_dims:
+        total += prev * h + h  # poids + biais
+        prev = h
+    total += prev * output_dim + output_dim
+    return total
+
+
+def suggest_training_profile(dataset) -> dict:
+    """Analyse le dataset et propose un profil d'entrainement adapte.
+
+    Calcule les hidden_dims pour maintenir un ratio params/samples entre 1:5 et 1:10.
+    Adapte les epochs, batch_size, lr et weight_decay en consequence.
+
+    Detecte aussi le cas ou le dataset est trop petit pour apprendre une relation
+    non-lineaire (architecture minimum requise > budget disponible).
+    """
+    n_samples = len(dataset)
+    raw_dim = dataset.input_dim
+
+    # Detecter les features mortes (std < 1e-6) et construire le masque
+    stds = dataset.captures.std(axis=0)
+    active_indices = [i for i in range(raw_dim) if stds[i] > 1e-6]
+    n_active = len(active_indices)
+    n_dead = raw_dim - n_active
+
+    # Appliquer le masque si >0 features mortes
+    feature_mask = active_indices if n_dead > 0 else None
+    effective_dim = n_active if feature_mask else raw_dim
+
+    # Budget de parametres: viser ratio 1:5 a 1:10
+    target_ratio = 7  # milieu de la fourchette
+    param_budget = n_samples // target_ratio
+
+    # Chercher les hidden_dims qui respectent le budget (avec effective_dim)
+    candidates = [
+        [16],
+        [32, 16],
+        [64, 32],
+        [64, 32, 16],
+        [128, 64],
+        [128, 64, 32],
+        [256, 128, 64],
+    ]
+
+    best_dims = [32, 16]  # defaut conservateur
+    for dims in candidates:
+        n_params = _count_params(effective_dim, dims)
+        if n_params <= param_budget:
+            best_dims = dims
+
+    n_params = _count_params(effective_dim, best_dims)
+    actual_ratio = n_samples / n_params if n_params > 0 else 0
+
+    # --- Detection dataset insuffisant ---
+    min_viable_dims = [32, 16]
+    min_viable_params = _count_params(effective_dim, min_viable_dims)
+    min_samples_needed = min_viable_params * target_ratio
+
+    warnings = []
+    if len(best_dims) < 2:
+        warnings.append(
+            f"[WARN] Dataset insuffisant pour l'apprentissage non-lineaire!\n"
+            f"           Le budget ({param_budget} params) ne permet qu'une seule couche cachee,\n"
+            f"           ce qui est insuffisant pour capter des relations non-lineaires\n"
+            f"           (ex: suivi de ligne, reactions aux virages).\n"
+            f"           Architecture minimum viable: {effective_dim} -> {' -> '.join(map(str, min_viable_dims))} -> 2\n"
+            f"             = {min_viable_params:,} parametres (ratio {target_ratio}:1 -> {min_samples_needed:,} echantillons)\n"
+            f"           Echantillons actuels: {n_samples:,}\n"
+            f"           Objectif minimum: ~{min_samples_needed:,} echantillons"
+        )
+
+    # Adapter les hyperparametres selon la taille du dataset
+    if n_samples < 5000:
+        epochs, batch_size, lr, wd = 150, 32, 1e-3, 1e-4
+    elif n_samples < 20000:
+        epochs, batch_size, lr, wd = 100, 64, 1e-3, 1e-4
+    else:
+        epochs, batch_size, lr, wd = 80, 128, 5e-4, 1e-4
+
+    profile = {
+        'name': 'Adaptatif',
+        'description': f'Adapte au dataset ({n_samples} samples, {n_active} features actives)',
+        'hidden_dims': best_dims,
+        'epochs': epochs,
+        'batch_size': batch_size,
+        'lr': lr,
+        'weight_decay': wd,
+        'feature_mask': feature_mask,
+    }
+
+    return profile, n_params, actual_ratio, n_active, warnings
+
+
+def choose_training_profile(dataset=None) -> dict:
     """Demande a l'utilisateur le profil d'entrainement."""
-    print(f"\n  Profil d'entrainement :")
-    print(f"    [1] Rapide    - small model, 50 epochs  (test rapide)")
-    print(f"    [2] Equilibre - medium model, 100 epochs  (bon compromis)")
-    print(f"    [3] Precision - large model, 200 epochs  (meilleure qualite)")
-    print(f"    [4] Custom    - Configuration personnalisee")
+
+    suggested = None
+    if dataset is not None:
+        suggested, n_params, ratio, n_active, warnings = suggest_training_profile(dataset)
+
+        mask = suggested.get('feature_mask')
+        effective_dim = len(mask) if mask else dataset.input_dim
+
+        print(f"\n  Profil suggere (base sur l'analyse du dataset) :")
+        print(f"    Dataset: {len(dataset)} echantillons, {dataset.input_dim} features ({n_active} actives)")
+        if mask:
+            print(f"    Masque: {dataset.input_dim}-dim -> {effective_dim}-dim "
+                  f"({dataset.input_dim - effective_dim} features mortes retirees)")
+        print(f"    Architecture: {effective_dim} -> {' -> '.join(map(str, suggested['hidden_dims']))} -> 2")
+        print(f"    Parametres: {n_params:,} (ratio samples/params: {ratio:.1f}:1)")
+        print(f"    Epochs: {suggested['epochs']}, Batch: {suggested['batch_size']}, LR: {suggested['lr']}")
+
+        if ratio < 2:
+            print(f"    [WARN] Ratio faible ({ratio:.1f}:1) - risque de surapprentissage.")
+            print(f"           Envisagez de collecter plus d'echantillons.")
+
+        for w in warnings:
+            print(f"    {w}")
+
+    print(f"\n  Options :")
+    if suggested:
+        print(f"    [1] Adaptatif  - profil suggere ci-dessus (recommande)")
+    print(f"    [2] Custom     - Configuration personnalisee")
 
     while True:
-        c = input(f"\n  Choix (1/2/3/4) : ").strip()
-        if c == '1':
-            return TRAINING_PROFILES['rapide'].copy()
+        c = input(f"\n  Choix ({('1/' if suggested else '')}2) : ").strip()
+        if c == '1' and suggested:
+            return suggested
         elif c == '2':
-            return TRAINING_PROFILES['equilibre'].copy()
-        elif c == '3':
-            return TRAINING_PROFILES['precision'].copy()
-        elif c == '4':
-            return configure_custom_profile()
-        print("  Choix invalide. Entrer 1, 2, 3 ou 4.")
+            config = configure_custom_profile()
+            # Afficher un avertissement si le custom est risque
+            if dataset is not None:
+                custom_params = _count_params(dataset.input_dim, config['hidden_dims'])
+                custom_ratio = len(dataset) / custom_params if custom_params > 0 else 0
+                print(f"\n    Parametres: {custom_params:,} (ratio samples/params: {custom_ratio:.1f}:1)")
+                if custom_ratio < 2:
+                    print(f"    [WARN] Ratio faible - risque de surapprentissage avec ce dataset.")
+                elif custom_ratio > 20:
+                    print(f"    [INFO] Modele tres petit par rapport aux donnees. Pourrait sous-apprendre.")
+            return config
+        print(f"  Choix invalide.")
 
 
 def configure_custom_profile() -> dict:
@@ -835,8 +968,16 @@ def run_training(script_dir: Path, state: dict):
         print("  -> Executez d'abord l'option [1] Agreger les sequences")
         return False
 
-    # Choisir le profil
-    config = choose_training_profile()
+    # Chemins
+    data_dir = script_dir / "data"
+    save_dir = script_dir / "checkpoints"
+
+    # Charger le dataset pour analyse (avant choix du profil)
+    print("\n  Chargement du dataset pour analyse...")
+    preview_dataset = ZumiControlDataset(str(data_dir))
+
+    # Choisir le profil (adaptatif base sur le dataset)
+    config = choose_training_profile(dataset=preview_dataset)
 
     print(f"\n  Profil selectionne: {config.get('name', 'Custom')}")
     print(f"  Hidden dims: {config.get('hidden_dims', [64, 32])}")
@@ -859,20 +1000,18 @@ def run_training(script_dir: Path, state: dict):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n  Device: {device}")
 
-    # Chemins
-    data_dir = script_dir / "data"
-    save_dir = script_dir / "checkpoints"
-
     # Charger la configuration d'environnement
     print("\n  Chargement de la configuration d'environnement...")
     load_environment_config(script_dir)
 
-    # Chargement des donnees
-    print("\n  Chargement des donnees...")
+    # Chargement des donnees avec masque + normalisation z-score
+    feature_mask = config.get('feature_mask')
+    print("\n  Chargement des donnees + normalisation z-score...")
     train_loader, val_loader, dataset = create_data_loaders(
         str(data_dir),
         batch_size=config.get('batch_size', 32),
-        seed=seed
+        seed=seed,
+        feature_mask=feature_mask
     )
 
     # Creation du modele avec la configuration custom
@@ -892,6 +1031,15 @@ def run_training(script_dir: Path, state: dict):
 
     print(f"\n{model.summary()}\n")
 
+    # Stats de normalisation (calculees par create_data_loaders sur le train set)
+    norm_stats = {}
+    if hasattr(dataset, 'feature_mean'):
+        norm_stats = {
+            'feature_mean': dataset.feature_mean.tolist(),
+            'feature_std': dataset.feature_std.tolist(),
+            'feature_mask': dataset.feature_mask,
+        }
+
     # Entraînement
     trainer = Trainer(
         model=model,
@@ -899,7 +1047,8 @@ def run_training(script_dir: Path, state: dict):
         val_loader=val_loader,
         device=device,
         lr=config.get('lr', 1e-3),
-        weight_decay=config.get('weight_decay', 1e-4)
+        weight_decay=config.get('weight_decay', 1e-4),
+        norm_stats=norm_stats
     )
 
     history = trainer.train(
@@ -980,7 +1129,8 @@ def run_convert_to_tflite(script_dir: Path, quantize: bool = False):
     try:
         from convert_to_tflite import (
             load_pytorch_model, export_to_savedmodel,
-            convert_savedmodel_to_tflite, verify_tflite_model
+            convert_savedmodel_to_tflite, verify_tflite_model,
+            export_normalization_stats
         )
 
         model_path = script_dir / "checkpoints" / "best_model.pt"
@@ -1011,7 +1161,10 @@ def run_convert_to_tflite(script_dir: Path, quantize: bool = False):
         # 3. Convertir TensorFlow -> TFLite
         convert_savedmodel_to_tflite(savedmodel_path, tflite_path, quantize=quantize, input_dim=input_dim)
 
-        # 4. Verification
+        # 4. Exporter les stats de normalisation z-score
+        export_normalization_stats(checkpoint, output_dir)
+
+        # 5. Verification
         verify_tflite_model(tflite_path, input_dim)
 
         print(f"\n  Fichier TFLite cree: {tflite_path}")

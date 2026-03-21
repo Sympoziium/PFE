@@ -38,6 +38,11 @@ class MLController(ControllerBase):
         self._input_details = None
         self._output_details = None
 
+        # Normalisation z-score et masque (chargés depuis normalization_stats.json)
+        self._feature_mean = None
+        self._feature_std = None
+        self._feature_mask = None
+
         # Debug info
         self._last_input = None
         self._last_output = None
@@ -45,6 +50,7 @@ class MLController(ControllerBase):
 
         if self.model_path:
             self._load_model()
+            self._load_normalization_stats()
 
     def _load_model(self):
         """Charge le modèle TensorFlow Lite avec configuration optimale."""
@@ -117,8 +123,61 @@ class MLController(ControllerBase):
         # Retourner les valeurs par défaut
         return {"num_threads": 4, "allow_fp16": False}
 
+    def _load_normalization_stats(self):
+        """Charge les stats de normalisation z-score depuis normalization_stats.json.
+
+        Cherche le fichier dans le même répertoire que le modèle .tflite.
+        Si absent, l'inférence fonctionne sans normalisation (rétrocompatible).
+        """
+        try:
+            from pathlib import Path
+            import json
+
+            model_dir = Path(self.model_path).parent
+            stats_path = model_dir / "normalization_stats.json"
+
+            if not stats_path.exists():
+                print("[MLController] Pas de normalization_stats.json (ancien modèle, pas de z-score)")
+                return
+
+            with open(stats_path, 'r') as f:
+                stats = json.load(f)
+
+            self._feature_mean = np.array(stats['feature_mean'], dtype=np.float32)
+            self._feature_std = np.array(stats['feature_std'], dtype=np.float32)
+            # Protéger contre division par zéro (features mortes)
+            self._feature_std[self._feature_std < 1e-6] = 1.0
+
+            # Masque de features (indices des features actives a conserver)
+            if stats.get('feature_mask') is not None:
+                self._feature_mask = np.array(stats['feature_mask'], dtype=np.int64)
+                print(f"[MLController] Masque chargé: {len(self._feature_mask)} features actives")
+
+            print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features")
+
+        except Exception as e:
+            print(f"[MLController] Erreur chargement normalization_stats: {e}")
+            self._feature_mean = None
+            self._feature_std = None
+            self._feature_mask = None
+
+    def _apply_zscore(self, vector: np.ndarray) -> np.ndarray:
+        """Applique la normalisation z-score au vecteur d'état.
+
+        Args:
+            vector: Vecteur brut du VisionAdapter
+
+        Returns:
+            Vecteur normalisé (même shape)
+        """
+        if self._feature_mean is None or self._feature_std is None:
+            return vector
+        return (vector - self._feature_mean) / self._feature_std
+
     def _build_state_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'état à partir du SensorState.
+
+        Pipeline: VisionAdapter (27-dim) → masque (N-dim) → z-score (N-dim normalisé)
 
         Args:
             state: SensorState contenant les données des capteurs.
@@ -150,7 +209,13 @@ class MLController(ControllerBase):
 
         ir_data = state.ir_sensors if state.ir_sensors else [0] * 6
 
-        return self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
+        raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
+
+        # Appliquer le masque (retirer les features mortes)
+        if self._feature_mask is not None:
+            raw_vector = raw_vector[self._feature_mask]
+
+        return self._apply_zscore(raw_vector)
 
     def _inference(self, input_vector: np.ndarray) -> np.ndarray:
         """Effectue l'inférence avec le modèle TFLite.
@@ -218,6 +283,7 @@ class MLController(ControllerBase):
         self._inference_count = 0
         if self._interpreter is None and self.model_path:
             self._load_model()
+            self._load_normalization_stats()
 
         if self._interpreter:
             print(f"[MLController] Démarré avec modèle: {self.model_path}")
@@ -233,6 +299,7 @@ class MLController(ControllerBase):
         return {
             "model_loaded": self._interpreter is not None,
             "model_path": self.model_path,
+            "zscore_loaded": self._feature_mean is not None,
             "inference_count": self._inference_count,
             "last_input_shape": self._last_input.shape if self._last_input is not None else None,
             "last_output": self._last_output.tolist() if self._last_output is not None else None,
