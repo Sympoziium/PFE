@@ -34,9 +34,11 @@ _ACTION_MAP = {
     "stop":     ( 0,  0),
 }
 
-# Index du cap (heading) intégré dans state.gyro_angles
+# Index du cap (heading) dans state.gyro_angles
 # gyro_angles = [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y, Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt]
-_HEADING_INDEX = 9  # Rot_z = heading intégré en degrés
+# Gyro_z (index 2) = angle yaw intégré du GYROSCOPE — suit les rotations horizontales.
+# Rot_z (index 9) = rotation Z de l'ACCÉLÉROMÈTRE — insensible au yaw sur surface plane.
+_HEADING_INDEX = 2  # Gyro_z = heading intégré en degrés
 
 
 class ManualController(ControllerBase):
