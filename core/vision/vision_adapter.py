@@ -60,7 +60,7 @@ class VisionAdapter:
     La normalisation statistique (z-score) est appliquée séparément.
     """
 
-    MOTOR_SPEED_MAX = 100.0  # Vitesse maximale théorique (-100 à 100)
+    MOTOR_SPEED_MAX = 50.0  # Plage utile des moteurs (-50 à 50), plafond ML
 
     def __init__(self, image_width: int, image_height: int, classes: list[str]):
         self.image_width  = image_width
@@ -126,7 +126,10 @@ class VisionAdapter:
         return state
 
     def encode_label(self, left: float, right: float) -> np.ndarray:
-        """Normalise les commandes moteur brutes en label [-1, 1]."""
+        """Normalise les commandes moteur brutes en label [-1, 1].
+
+        Divise par MOTOR_SPEED_MAX (50). Les vitesses au-dela de 50 sont clippees.
+        """
         left_norm = np.clip(left / self.MOTOR_SPEED_MAX, -1.0, 1.0)
         right_norm = np.clip(right / self.MOTOR_SPEED_MAX, -1.0, 1.0)
         return np.array([left_norm, right_norm], dtype=np.float32)

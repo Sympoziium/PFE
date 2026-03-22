@@ -1238,10 +1238,18 @@ class controller:
         })
  
     def start_sampling(self):
-        """ Démare l'échantillonnage des données des capteurs
+        """ Démare l'échantillonnage des données des capteurs.
+        Recalibre le gyroscope avant chaque séquence pour éviter
+        l'accumulation d'angles entre les séquences d'échantillonnage.
         """
         if self.sampling_active is True:
             return jsonify({'error': 'Sampling already active'}), 400
+        # Reset gyro avant chaque séquence pour que les angles IMU
+        # repartent de zéro (évite le biais cumulatif de gyro_z)
+        try:
+            self.robot.reset_drive_state()
+        except Exception as e:
+            print("[Sampling] Erreur reset gyro avant echantillonnage: {}".format(e))
         self.sampling_vectors = []
         self.sampling_labels = []
         self.sampling_active = True

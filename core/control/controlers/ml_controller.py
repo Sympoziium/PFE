@@ -21,8 +21,12 @@ class MLController(ControllerBase):
     pour produire les commandes moteur à partir de l'état des capteurs.
     """
 
-    # Vitesse maximale des moteurs (correspond à la normalisation du VisionAdapter)
-    MOTOR_SPEED_MAX = 100.0
+    # Plage utile des moteurs (correspond au VisionAdapter, plafond ML)
+    MOTOR_SPEED_MAX = 50.0
+
+    # Indices des features pour le calcul des deltas temporels
+    # Doit correspondre à DELTA_FEATURE_INDICES dans dataset.py
+    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18]  # IR_bot_R, IR_bot_L, IR_diff, IR_sum, gyro_z
 
     def __init__(self, vision_adapter, model_path=None):
         """
@@ -42,6 +46,9 @@ class MLController(ControllerBase):
         self._feature_mean = None
         self._feature_std = None
         self._feature_mask = None
+
+        # État précédent pour calcul des deltas temporels
+        self._prev_raw_vector = None
 
         # Debug info
         self._last_input = None
@@ -180,7 +187,7 @@ class MLController(ControllerBase):
     def _build_state_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'état à partir du SensorState.
 
-        Pipeline: VisionAdapter (27-dim) → masque (N-dim) → z-score (N-dim normalisé)
+        Pipeline: VisionAdapter (27-dim) → deltas (32-dim) → masque (N-dim) → z-score
 
         Args:
             state: SensorState contenant les données des capteurs.
@@ -214,11 +221,20 @@ class MLController(ControllerBase):
 
         raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
 
+        # Calculer les deltas temporels (state[t] - state[t-1])
+        deltas = np.zeros(len(self.DELTA_FEATURE_INDICES), dtype=np.float32)
+        if self._prev_raw_vector is not None:
+            deltas = raw_vector[self.DELTA_FEATURE_INDICES] - self._prev_raw_vector[self.DELTA_FEATURE_INDICES]
+        self._prev_raw_vector = raw_vector.copy()
+
+        # Concaténer: 27-dim + 5 deltas = 32-dim
+        full_vector = np.concatenate([raw_vector, deltas])
+
         # Appliquer le masque (retirer les features mortes)
         if self._feature_mask is not None:
-            raw_vector = raw_vector[self._feature_mask]
+            full_vector = full_vector[self._feature_mask]
 
-        return self._apply_zscore(raw_vector)
+        return self._apply_zscore(full_vector)
 
     def _inference(self, input_vector: np.ndarray) -> np.ndarray:
         """Effectue l'inférence avec le modèle TFLite.

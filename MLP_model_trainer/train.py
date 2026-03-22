@@ -133,7 +133,7 @@ class Trainer:
         self.device = device
         self.norm_stats = norm_stats or {}
 
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.HuberLoss(delta=0.1)
         self.optimizer = optim.AdamW(
             model.parameters(),
             lr=lr,
@@ -399,6 +399,7 @@ class Trainer:
                     checkpoint_data['feature_mean'] = self.norm_stats['feature_mean']
                     checkpoint_data['feature_std'] = self.norm_stats['feature_std']
                     checkpoint_data['feature_mask'] = self.norm_stats.get('feature_mask')
+                    checkpoint_data['motor_speed_max'] = self.norm_stats.get('motor_speed_max', 50.0)
                 torch.save(checkpoint_data, best_model_path)
             else:
                 no_improve_count += 1
@@ -657,7 +658,9 @@ def suggest_training_profile(dataset) -> dict:
 
     # Appliquer le masque si >0 features mortes
     feature_mask = active_indices if n_dead > 0 else None
-    effective_dim = n_active if feature_mask else raw_dim
+    # Le pipeline ajoute 5 delta features (IR_bot_R/L, IR_diff, IR_sum, gyro_z)
+    n_deltas = 5
+    effective_dim = (n_active if feature_mask else raw_dim) + n_deltas
 
     # Budget de parametres: viser ratio 1:5 a 1:10
     target_ratio = 7  # milieu de la fourchette
@@ -709,6 +712,19 @@ def suggest_training_profile(dataset) -> dict:
     else:
         epochs, batch_size, lr, wd = 80, 128, 5e-4, 1e-4
 
+    # Detecter si les labels ont ete encodes avec l'ancien MOTOR_SPEED_MAX=100
+    # et proposer le rescaling vers le nouveau MAX=50
+    label_max = max(abs(dataset.labels.min()), abs(dataset.labels.max()))
+    label_rescale = None
+    if label_max < 0.55:
+        # Labels concentres dans [-0.55, 0.55] → probablement encodes avec MAX=100
+        label_rescale = (100.0, 50.0)
+        warnings.append(
+            f"[INFO] Labels detectes comme encodes avec MOTOR_SPEED_MAX=100\n"
+            f"           (max |label| = {label_max:.3f}, soit vitesse {label_max*100:.1f})\n"
+            f"           Rescaling automatique vers MAX=50 (facteur 2x)"
+        )
+
     profile = {
         'name': 'Adaptatif',
         'description': f'Adapte au dataset ({n_samples} samples, {n_active} features actives)',
@@ -718,6 +734,7 @@ def suggest_training_profile(dataset) -> dict:
         'lr': lr,
         'weight_decay': wd,
         'feature_mask': feature_mask,
+        'label_rescale': label_rescale,
     }
 
     return profile, n_params, actual_ratio, n_active, warnings
@@ -731,13 +748,14 @@ def choose_training_profile(dataset=None) -> dict:
         suggested, n_params, ratio, n_active, warnings = suggest_training_profile(dataset)
 
         mask = suggested.get('feature_mask')
-        effective_dim = len(mask) if mask else dataset.input_dim
+        n_deltas = 5  # delta features ajoutees par le pipeline
+        base_active = n_active
+        effective_dim = (len(mask) if mask else dataset.input_dim) + n_deltas
 
         print(f"\n  Profil suggere (base sur l'analyse du dataset) :")
-        print(f"    Dataset: {len(dataset)} echantillons, {dataset.input_dim} features ({n_active} actives)")
+        print(f"    Dataset: {len(dataset)} echantillons, {dataset.input_dim} features ({base_active} actives + {n_deltas} deltas)")
         if mask:
-            print(f"    Masque: {dataset.input_dim}-dim -> {effective_dim}-dim "
-                  f"({dataset.input_dim - effective_dim} features mortes retirees)")
+            print(f"    Masque: {dataset.input_dim}-dim -> {base_active}-dim actives + {n_deltas} deltas = {effective_dim}-dim")
         print(f"    Architecture: {effective_dim} -> {' -> '.join(map(str, suggested['hidden_dims']))} -> 2")
         print(f"    Parametres: {n_params:,} (ratio samples/params: {ratio:.1f}:1)")
         print(f"    Epochs: {suggested['epochs']}, Batch: {suggested['batch_size']}, LR: {suggested['lr']}")
@@ -760,6 +778,10 @@ def choose_training_profile(dataset=None) -> dict:
             return suggested
         elif c == '2':
             config = configure_custom_profile()
+            # Hériter label_rescale et feature_mask du profil suggéré
+            if suggested:
+                config['label_rescale'] = suggested.get('label_rescale')
+                config['feature_mask'] = suggested.get('feature_mask')
             # Afficher un avertissement si le custom est risque
             if dataset is not None:
                 custom_params = _count_params(dataset.input_dim, config['hidden_dims'])
@@ -1004,14 +1026,18 @@ def run_training(script_dir: Path, state: dict):
     print("\n  Chargement de la configuration d'environnement...")
     load_environment_config(script_dir)
 
-    # Chargement des donnees avec masque + normalisation z-score
+    # Chargement des donnees avec dedup + rescale + masque + z-score + echantillonnage equilibre
     feature_mask = config.get('feature_mask')
-    print("\n  Chargement des donnees + normalisation z-score...")
+    label_rescale = config.get('label_rescale')
+    print("\n  Chargement des donnees (dedup + deltas + rescale + z-score + equilibrage)...")
     train_loader, val_loader, dataset = create_data_loaders(
         str(data_dir),
         batch_size=config.get('batch_size', 32),
         seed=seed,
-        feature_mask=feature_mask
+        feature_mask=feature_mask,
+        deduplicate=True,
+        label_rescale=label_rescale,
+        balanced_sampling=True
     )
 
     # Creation du modele avec la configuration custom
@@ -1038,6 +1064,7 @@ def run_training(script_dir: Path, state: dict):
             'feature_mean': dataset.feature_mean.tolist(),
             'feature_std': dataset.feature_std.tolist(),
             'feature_mask': dataset.feature_mask,
+            'motor_speed_max': 50.0,
         }
 
     # Entraînement

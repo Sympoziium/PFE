@@ -228,6 +228,7 @@ def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
         "feature_std": checkpoint['feature_std'],
         "input_dim": checkpoint['input_dim'],
         "feature_mask": checkpoint.get('feature_mask'),
+        "motor_speed_max": checkpoint.get('motor_speed_max', 50.0),
     }
 
     stats_path = output_dir / "normalization_stats.json"

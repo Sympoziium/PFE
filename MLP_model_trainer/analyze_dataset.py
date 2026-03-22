@@ -120,11 +120,18 @@ def analyze_dataset(captures, labels, save_dir=None):
         "imu_rot_y",            # 24
         "imu_rot_z",            # 25
         "imu_tilt_state",       # 26
+        "IR_bot_R_delta",       # 27 (delta temporel)
+        "IR_bot_L_delta",       # 28 (delta temporel)
+        "IR_diff_delta",        # 29 (delta temporel)
+        "IR_sum_delta",         # 30 (delta temporel)
+        "gyro_z_delta",         # 31 (delta temporel = vitesse angulaire)
     ]
 
+    # Support des anciens datasets 27-dim (sans deltas)
     for i in range(captures.shape[1]):
         feature_data = captures[:, i]
-        print(f"  [{i:2d}] {feature_names[i]:20s} - "
+        name = feature_names[i] if i < len(feature_names) else f"feature_{i}"
+        print(f"  [{i:2d}] {name:20s} - "
               f"Min: {feature_data.min():7.4f}, Max: {feature_data.max():7.4f}, "
               f"Mean: {feature_data.mean():7.4f}, Std: {feature_data.std():7.4f}")
 
@@ -140,7 +147,8 @@ def analyze_dataset(captures, labels, save_dir=None):
     if dead_features:
         print(f"[DEAD] Features mortes (std < {dead_threshold}):")
         for i in dead_features:
-            print(f"  [{i:2d}] {feature_names[i]:20s} - valeur constante: {captures[:, i].mean():.4f}")
+            name = feature_names[i] if i < len(feature_names) else f"feature_{i}"
+            print(f"  [{i:2d}] {name:20s} - valeur constante: {captures[:, i].mean():.4f}")
         print(f"  [WARN] {len(dead_features)} features n'apportent aucune information.")
         print(f"         Elles occupent de la capacite du modele pour rien.")
     else:
@@ -319,12 +327,15 @@ def analyze_dataset(captures, labels, save_dir=None):
     corr_left.sort(key=lambda x: abs(x[1]), reverse=True)
     corr_right.sort(key=lambda x: abs(x[1]), reverse=True)
 
+    def _fname(idx):
+        return feature_names[idx] if idx < len(feature_names) else f"feature_{idx}"
+
     print(f"  Top correlations avec roue gauche:")
     for i, c in corr_left[:5]:
-        print(f"    [{i:2d}] {feature_names[i]:20s}: {c:+.4f}")
+        print(f"    [{i:2d}] {_fname(i):20s}: {c:+.4f}")
     print(f"  Top correlations avec roue droite:")
     for i, c in corr_right[:5]:
-        print(f"    [{i:2d}] {feature_names[i]:20s}: {c:+.4f}")
+        print(f"    [{i:2d}] {_fname(i):20s}: {c:+.4f}")
 
     uncorrelated = [i for i in active_features
                     if abs(np.corrcoef(captures[:, i], labels[:, 0])[0, 1]) < 0.02
@@ -332,7 +343,7 @@ def analyze_dataset(captures, labels, save_dir=None):
     if uncorrelated:
         print(f"  [INFO] Features sans correlation lineaire avec les labels (<0.02):")
         for i in uncorrelated:
-            print(f"    [{i:2d}] {feature_names[i]}")
+            print(f"    [{i:2d}] {_fname(i)}")
 
     print()
 
@@ -368,6 +379,18 @@ def analyze_dataset(captures, labels, save_dir=None):
 
     print()
 
+    # === DETECTION MOTOR_SPEED_MAX ===
+    label_max = max(abs(labels.min()), abs(labels.max()))
+    print(f"[SCALE] Detection de l'echelle des labels:")
+    print(f"  Max |label| = {label_max:.4f}")
+    if label_max < 0.55:
+        print(f"  -> Labels encodes avec MOTOR_SPEED_MAX=100 (vitesse max={label_max*100:.1f})")
+        print(f"  -> Rescaling automatique vers MAX=50 a l'entrainement (facteur 2x)")
+        print(f"     Nouvelle plage: [{labels.min()*2:.3f}, {labels.max()*2:.3f}]")
+    else:
+        print(f"  -> Labels probablement encodes avec MOTOR_SPEED_MAX=50")
+    print()
+
     # === RECOMMANDATIONS ===
     print("[RECOMMEND] Recommandations pour l'entrainement:")
     if total_straight_pct > 85 and detection_pct < 10:
@@ -378,15 +401,15 @@ def analyze_dataset(captures, labels, save_dir=None):
         print("      - Arret au panneau stop")
         print("      - Evitement camion pompier")
     elif total_straight_pct > 80:
-        print("  * Utiliser une strategie d'oversampling pour les actions complexes")
-        print("  * Ou utiliser weighted loss dans l'entrainement")
+        print("  * Echantillonnage equilibre actif (WeightedRandomSampler)")
     else:
         print("  * Dataset bien equilibre")
 
     if dead_features:
-        print(f"  * {len(dead_features)} features mortes pourraient etre retirees de l'entree")
+        print(f"  * {len(dead_features)} features mortes retirees automatiquement (masque)")
     if n_duplicates > len(captures) * 0.1:
-        print(f"  * Envisager de dedupliquer les echantillons statiques")
+        print(f"  * {n_duplicates} doublons retires automatiquement (deduplication)")
+    print(f"  * Dataset effectif apres dedup: ~{len(captures) - n_duplicates} echantillons")
 
     print()
     print("=" * 70)
@@ -413,6 +436,7 @@ def plot_analysis(captures, labels, save_dir=None):
         "bbox_cx", "bbox_cy", "bbox_w", "bbox_h",
         "gyro_x", "gyro_y", "gyro_z", "acc_x", "acc_y",
         "comp_x", "comp_y", "rot_x", "rot_y", "rot_z", "tilt",
+        "d_bot_R", "d_bot_L", "d_IR_diff", "d_IR_sum", "d_gyro_z",
     ]
 
     if save_dir:
@@ -488,7 +512,7 @@ def plot_analysis(captures, labels, save_dir=None):
     # === Figure 4: Matrice de correlation globale (features actives + labels) ===
     n_features = captures.shape[1]
     active_idx = [i for i in range(n_features) if captures[:, i].std() > 1e-6]
-    active_names = [feature_names[i] for i in active_idx]
+    active_names = [feature_names[i] if i < len(feature_names) else f"f{i}" for i in active_idx]
     all_names = active_names + ["V_gauche", "V_droite"]
 
     active_data = captures[:, active_idx]
@@ -580,7 +604,8 @@ def plot_analysis(captures, labels, save_dir=None):
     for i in active_idx:
         cl = np.corrcoef(captures[:, i], labels[:, 0])[0, 1]
         cr = np.corrcoef(captures[:, i], labels[:, 1])[0, 1]
-        corr_with_labels.append((feature_names[i], cl, cr))
+        fname = feature_names[i] if i < len(feature_names) else f"f{i}"
+        corr_with_labels.append((fname, cl, cr))
 
     corr_with_labels.sort(key=lambda x: max(abs(x[1]), abs(x[2])), reverse=True)
     top_n = min(10, len(corr_with_labels))
