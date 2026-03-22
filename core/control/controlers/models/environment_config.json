@@ -1,45 +1,46 @@
 {
-  "timestamp": "2026-03-21T22:02:53.889625",
+  "timestamp": "2026-03-21T22:48:50.580136",
   "system": {
-    "platform": "win32",
-    "architecture": "AMD64",
-    "python_version": "3.13.7",
-    "cpu_count": 20,
-    "ram_gb": 15.71,
-    "os_name": "Windows"
+    "platform": "linux",
+    "architecture": "aarch64",
+    "python_version": "3.11.2",
+    "cpu_count": 4,
+    "ram_gb": 0.41,
+    "os_name": "Linux"
   },
   "pytorch": {
-    "available": true,
-    "version": "2.10.0+cpu",
+    "available": false,
+    "version": null,
     "cuda_available": false,
     "cuda_version": null,
     "device": "cpu",
-    "num_threads": 14
+    "num_threads": 1
   },
   "tensorflow": {
-    "available": true,
-    "version": "2.21.0",
+    "available": false,
+    "version": null,
     "gpu_available": false,
     "gpus": [],
-    "num_threads": 4
+    "num_threads": 1
   },
   "tflite": {
     "available": true,
-    "version": "2.21.0",
+    "version": "2.14.0",
     "delegates": [
       "cpu",
-      "xnnpack"
+      "xnnpack",
+      "nnapi"
     ],
-    "num_threads_recommended": 4
+    "num_threads_recommended": 3
   },
   "recommendations": {
-    "batch_size": 64,
+    "batch_size": 16,
     "learning_rate": 0.001,
     "weight_decay": 0.0001,
     "num_epochs": 100,
     "early_stopping_patience": 20,
-    "model_size": "large",
-    "inference_latency_target_ms": null
+    "model_size": "medium",
+    "inference_latency_target_ms": 10
   },
-  "device_type": "pc"
+  "device_type": "raspberry_pi"
 }
