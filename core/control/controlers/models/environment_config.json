@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-03-21T22:02:53.889625",
+  "system": {
+    "platform": "win32",
+    "architecture": "AMD64",
+    "python_version": "3.13.7",
+    "cpu_count": 20,
+    "ram_gb": 15.71,
+    "os_name": "Windows"
+  },
+  "pytorch": {
+    "available": true,
+    "version": "2.10.0+cpu",
+    "cuda_available": false,
+    "cuda_version": null,
+    "device": "cpu",
+    "num_threads": 14
+  },
+  "tensorflow": {
+    "available": true,
+    "version": "2.21.0",
+    "gpu_available": false,
+    "gpus": [],
+    "num_threads": 4
+  },
+  "tflite": {
+    "available": true,
+    "version": "2.21.0",
+    "delegates": [
+      "cpu",
+      "xnnpack"
+    ],
+    "num_threads_recommended": 4
+  },
+  "recommendations": {
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "num_epochs": 100,
+    "early_stopping_patience": 20,
+    "model_size": "large",
+    "inference_latency_target_ms": null
+  },
+  "device_type": "pc"
+}
