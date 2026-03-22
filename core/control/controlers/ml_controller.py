@@ -134,7 +134,8 @@ class MLController(ControllerBase):
 
             model_dir = Path(self.model_path).parent
             stats_path = model_dir / "normalization_stats.json"
-
+            print(f"[MLController] Recherche de stats de normalisation: {stats_path}")
+            print(f"[MLController] Chemin absolu: {stats_path.resolve()}")
             if not stats_path.exists():
                 print("[MLController] Pas de normalization_stats.json (ancien modèle, pas de z-score)")
                 return
@@ -151,6 +152,8 @@ class MLController(ControllerBase):
             if stats.get('feature_mask') is not None:
                 self._feature_mask = np.array(stats['feature_mask'], dtype=np.int64)
                 print(f"[MLController] Masque chargé: {len(self._feature_mask)} features actives")
+            else:
+                print("[MLController] PAS DE MASQUE (toutes les features utilisées)")
 
             print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features")
 
