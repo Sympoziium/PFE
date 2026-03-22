@@ -134,8 +134,7 @@ class MLController(ControllerBase):
 
             model_dir = Path(self.model_path).parent
             stats_path = model_dir / "normalization_stats.json"
-            print(f"[MLController] Recherche de stats de normalisation: {stats_path}")
-            print(f"[MLController] Chemin absolu: {stats_path.resolve()}")
+
             if not stats_path.exists():
                 print("[MLController] Pas de normalization_stats.json (ancien modèle, pas de z-score)")
                 return
