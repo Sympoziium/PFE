@@ -100,7 +100,6 @@ class MLController(ControllerBase):
 
             # Chercher le fichier config dans le répertoire MLP_model_trainer
             config_paths = [
-                Path(__file__).parent.parent.parent.parent / "MLP_model_trainer" / "environment_config.json",
                 Path.home() / "core" / "control" / "controlers" / "models" / "environment_config.json",  # Pour le Pi
                 Path("/home/pi/core/control/controlers/models/environment_config.json"),       # Chemin Pi absolu
             ]
