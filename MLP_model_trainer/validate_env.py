@@ -377,11 +377,7 @@ def main():
     parser = argparse.ArgumentParser(description="Validation d'environnement MLP")
     parser.add_argument("--verbose", action="store_true", help="Mode verbeux")
     parser.add_argument("--apply", action="store_true", help="Appliquer les configs")
-    PFE_root = Path(__file__).parent.parent
-
-    deploy_path = os.path.join(PFE_root, 'core', 'control', 'controlers', 'models')
-    print(f"Chemin de déploiement des modèles: {deploy_path}")
-
+    
     args = parser.parse_args()
 
     # Générer la config
@@ -389,9 +385,7 @@ def main():
 
     # Toujours sauvegarder
     save_config(config)
-    # exporter pour deployment
-    save_config(config, os.path.join(deploy_path, "environment_config.json"))
-
+    
     # Appliquer si demandé
     if args.apply:
         print("\n🔧 Application des configurations...")
