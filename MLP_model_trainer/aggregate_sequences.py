@@ -41,8 +41,8 @@ def discover_scenarios(sequences_root: Path) -> list:
 
     for item in sorted(sequences_root.iterdir()):
         if item.is_dir():
-            # Vérifier que le dossier contient au moins un sampling_*
-            sampling_dirs = list(item.glob('sampling_*'))
+            # Vérifier que le dossier contient au moins un sampling *
+            sampling_dirs = list(item.glob('sampling *'))
             if sampling_dirs:
                 scenarios.append(item.name)
 
@@ -64,13 +64,13 @@ def aggregate_scenario(scenario_dir: Path, scenario_name: str,
         tuple: (all_captures, all_labels, sequence_stats) ou (None, None, {}) en cas erreur
     """
 
-    # Trouver tous les dossiers sampling_*
+    # Trouver tous les dossiers sampling *
     sampling_dirs = sorted([d for d in scenario_dir.iterdir()
                            if d.is_dir() and d.name.startswith('sampling')])
 
     if not sampling_dirs:
         if verbose:
-            print(f"[WARN] Aucun dossier sampling_* trouvé dans {scenario_dir}")
+            print(f"[WARN] Aucun dossier sampling * trouvé dans {scenario_dir}")
         return [], [], {}
 
     if verbose:

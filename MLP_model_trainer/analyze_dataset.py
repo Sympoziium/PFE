@@ -151,11 +151,60 @@ def analyze_dataset(captures, labels, save_dir=None):
     print("[OUTLIERS] Detection de valeurs aberrantes:")
 
     # Les features doivent etre normalisees entre [-1, 1]
-    out_of_bounds = np.sum((captures < -1.0) | (captures > 1.0))
-    print(f"  Valeurs hors [-1, 1]: {out_of_bounds}")
-
-    if out_of_bounds > 0:
-        print(f"  [WARN] Certaines features ne sont pas normalisees correctement!")
+    out_of_bounds = 0
+    out_of_bounds_details = []
+    
+    # Vérifier les plages brutes pour chaque groupe de features
+    # [0-5]: IR sensors (0-255)
+    ir_oob = np.sum((captures[:, 0:6] < 0) | (captures[:, 0:6] > 255))
+    out_of_bounds += ir_oob
+    if ir_oob > 0:
+        out_of_bounds_details.append(f"IR sensors (0-255): {ir_oob}")
+    
+    # [6-7]: IR engineered (raw values, large range possible)
+    ir_eng_oob = np.sum(np.abs(captures[:, 6:8]) > 255)
+    out_of_bounds += ir_eng_oob
+    if ir_eng_oob > 0:
+        out_of_bounds_details.append(f"IR engineered (|x| > 255): {ir_eng_oob}")
+    
+    # [8]: detection flag (0 ou 1)
+    detect_oob = np.sum((captures[:, 8] < 0) | (captures[:, 8] > 1))
+    out_of_bounds += detect_oob
+    if detect_oob > 0:
+        out_of_bounds_details.append(f"Detection flag (0-1): {detect_oob}")
+    
+    # [9 à 9+N_classes]: class one-hot (0 ou 1)
+    n_classes = 3  # stop_sign, pieton, pompier
+    class_oob = np.sum((captures[:, 9:9+n_classes] < 0) | (captures[:, 9:9+n_classes] > 1))
+    out_of_bounds += class_oob
+    if class_oob > 0:
+        out_of_bounds_details.append(f"Class one-hot (0-1): {class_oob}")
+    
+    # [9+N_classes à 13+N_classes]: bbox normalized (0-1)
+    bbox_oob = np.sum((captures[:, 9+n_classes:13+n_classes] < 0) | (captures[:, 9+n_classes:13+n_classes] > 1))
+    out_of_bounds += bbox_oob
+    if bbox_oob > 0:
+        out_of_bounds_details.append(f"BBox normalized (0-1): {bbox_oob}")
+    
+    # [13+N_classes à 23+N_classes]: IMU raw (angles en degrés, plage [-360, 360])
+    imu_oob = np.sum(np.abs(captures[:, 13+n_classes:13+n_classes+10]) > 360)
+    out_of_bounds += imu_oob
+    if imu_oob > 0:
+        out_of_bounds_details.append(f"IMU angles (|-360, 360|): {imu_oob}")
+    
+    # [23+N_classes]: tilt_state (-1 à 7)
+    tilt_oob = np.sum((captures[:, 13+n_classes+10] < -2) | (captures[:, 13+n_classes+10] > 8))
+    out_of_bounds += tilt_oob
+    if tilt_oob > 0:
+        out_of_bounds_details.append(f"Tilt state (-1 à 7): {tilt_oob}")
+    
+    print(f"  Valeurs hors limites attendues: {out_of_bounds}")
+    if out_of_bounds_details:
+        print(f"  [WARN] Valeurs aberrantes detectees:")
+        for detail in out_of_bounds_details:
+            print(f"    - {detail}")
+    else:
+        print(f"  [OK] Toutes les valeurs sont dans les plages attendues (raw)")
 
     # Vérifier les NaN
     nan_count = np.sum(np.isnan(captures)) + np.sum(np.isnan(labels))
@@ -224,7 +273,6 @@ def analyze_dataset(captures, labels, save_dir=None):
     is_turning = (min_wheel < turn_threshold) & ~is_stop
     is_turn_left = is_turning & (left < right)
     is_turn_right = is_turning & (right < left)
-    is_turn_neutral = is_turning & ~is_turn_left & ~is_turn_right  # roues egales mais lentes
     is_reverse = ~is_stop & ~is_turning & (left < 0) & (right < 0)
     is_forward = ~is_stop & ~is_turning & ~is_reverse
 
@@ -233,7 +281,6 @@ def analyze_dataset(captures, labels, save_dir=None):
         "Tout droit":     np.sum(is_forward),
         "Tourne gauche":  np.sum(is_turn_left),
         "Tourne droite":  np.sum(is_turn_right),
-        "Virage neutre":  np.sum(is_turn_neutral),
         "Recule":         np.sum(is_reverse),
     }
 
@@ -246,7 +293,7 @@ def analyze_dataset(captures, labels, save_dir=None):
 
     # === VISION ANALYSIS ===
     print("[VISION] Analyse des détections:")
-    vision_flag = captures[:, 6]
+    vision_flag = captures[:, 8]  # feature "detect_flag"
     nb_detections = np.sum(vision_flag > 0.5)
     detection_pct = (nb_detections / len(captures)) * 100
     print(f"  Echantillons avec detection: {nb_detections:6d} ({detection_pct:5.1f}%)")
@@ -424,7 +471,7 @@ def plot_analysis(captures, labels, save_dir=None):
     bars = ax.bar(ir_names, ir_stats, color='skyblue', edgecolor='black')
     ax.set_ylabel('Valeur moyenne normalisee')
     ax.set_title('Moyennes des Capteurs IR')
-    ax.set_ylim(0, 1.0)
+    ax.set_ylim(0, 255)
     ax.grid(True, alpha=0.3, axis='y')
 
     for bar, val in zip(bars, ir_stats):
