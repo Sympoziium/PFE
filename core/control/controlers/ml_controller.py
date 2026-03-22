@@ -101,8 +101,8 @@ class MLController(ControllerBase):
             # Chercher le fichier config dans le répertoire MLP_model_trainer
             config_paths = [
                 Path(__file__).parent.parent.parent.parent / "MLP_model_trainer" / "environment_config.json",
-                Path.home() / "robot" / "environment_config.json",  # Pour le Pi
-                Path("/home/pi/robot/environment_config.json"),       # Chemin Pi absolu
+                Path.home() / "core" / "control" / "controlers" / "models" / "environment_config.json",  # Pour le Pi
+                Path("/home/pi/core/control/controlers/models/environment_config.json"),       # Chemin Pi absolu
             ]
 
             for config_path in config_paths:
@@ -117,11 +117,11 @@ class MLController(ControllerBase):
                             "allow_fp16": config.get("device_type") == "raspberry_pi"
                         }
         except Exception as e:
-            # Silencieux si pas de config - utiliser les valeurs par défaut
+            print(f"[MLController] Aucune config présente : {e}")
             pass
 
         # Retourner les valeurs par défaut
-        return {"num_threads": 4, "allow_fp16": False}
+        return {"num_threads": 4, "allow_fp16": True}
 
     def _load_normalization_stats(self):
         """Charge les stats de normalisation z-score depuis normalization_stats.json.
