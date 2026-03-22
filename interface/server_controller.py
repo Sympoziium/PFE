@@ -232,16 +232,38 @@ class controller:
         """
         Callback synchronisé avec la boucle de contrôle (appelé à chaque tick).
 
-        NOTE: L'échantillonnage pour l'apprentissage du MLP est maintenant fait
-        de manière ÉVÉNEMENTIELLE dans _sample_on_command(), appelé uniquement
-        quand une commande est reçue du serveur web. Cela évite le biais des
-        arrêts watchdog/PWM qui ne représentent pas l'intention du pilote.
-
-        Ce callback reste disponible pour d'autres usages (debug, monitoring)
-        mais n'effectue plus d'échantillonnage.
+        Échantillonne quand sampling_active est True ET qu'un contrôleur
+        automatique (PID, etc.) est actif. Pour le contrôle manuel (WASD),
+        l'échantillonnage reste événementiel via _sample_on_command().
         """
-        # L'échantillonnage est désormais événementiel - voir _sample_on_command()
-        pass
+        if not self.sampling_active:
+            return
+
+        # Ne sampler ici que pour les contrôleurs automatiques (PID, etc.)
+        # Le manuel est géré par _sample_on_command()
+        active = self.control_manager._active_controller
+        if active is None or active.name == "manual_controller":
+            return
+
+        try:
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+            label = adapter.encode_label(
+                command.left_speed, command.right_speed
+            ).tolist()
+
+            if vector is None or label is None:
+                return
+
+            import numpy as np
+            v_array = np.array(vector)
+            l_array = np.array(label)
+
+            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                self.sampling_vectors.append(vector)
+                self.sampling_labels.append(label)
+        except Exception as e:
+            print("[Sampling] Erreur callback contrôleur auto: {}".format(e))
 
 # ----------------------------------------------------------------------------
 #            Fonctions de callback pour les actions de vision

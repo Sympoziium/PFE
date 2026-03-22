@@ -133,7 +133,7 @@ class Trainer:
         self.device = device
         self.norm_stats = norm_stats or {}
 
-        self.criterion = nn.HuberLoss(delta=0.1)
+        self.criterion = nn.MSELoss()
         self.optimizer = optim.AdamW(
             model.parameters(),
             lr=lr,

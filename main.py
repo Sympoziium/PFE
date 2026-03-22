@@ -156,10 +156,15 @@ def bootstrap():
     from core.control.controlers.line_follower_controller import LineFollowerController
     from core.control.controlers.manual_controller import ManualController
     from core.control.controlers.ml_controller import MLController
+    from core.control.controlers.pid_ir_controller import PIDIRController
 
-    # instance de controlleur de suivi de ligne
+    # instance de controlleur de suivi de ligne (legacy, vision-based)
     line_follower_ctrl = LineFollowerController()
     control_manager.register_controller(line_follower_ctrl.name, line_follower_ctrl)
+
+    # instance de controlleur PID IR (suivi de ligne par capteurs IR bottom)
+    pid_ir_ctrl = PIDIRController()
+    control_manager.register_controller(pid_ir_ctrl.name, pid_ir_ctrl)
 
     # instance de controlleur manuel (contrôle direct depuis l'interface web)
     manual_ctrl = ManualController()
