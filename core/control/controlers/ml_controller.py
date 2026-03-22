@@ -112,15 +112,17 @@ class MLController(ControllerBase):
                         tflite_cfg = config["tflite"]
                         print(f"[MLController] Configuration TFLite chargée: {config_path}")
                         return {
-                            "num_threads": tflite_cfg.get("num_threads_recommended", 4),
+                            "num_threads": tflite_cfg.get("num_threads_recommended", 3),
                             "allow_fp16": config.get("device_type") == "raspberry_pi"
                         }
+                else:
+                    print(f"[MLController] Config TFLite non trouvée à: {config_path}")
         except Exception as e:
             print(f"[MLController] Aucune config présente : {e}")
             pass
 
         # Retourner les valeurs par défaut
-        return {"num_threads": 4, "allow_fp16": True}
+        return {"num_threads": 3, "allow_fp16": True}
 
     def _load_normalization_stats(self):
         """Charge les stats de normalisation z-score depuis normalization_stats.json.
