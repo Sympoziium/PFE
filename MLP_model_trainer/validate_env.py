@@ -126,7 +126,7 @@ def detect_tflite() -> dict:
     }
 
     try:
-        import tensorflow as tf
+        import tflite_runtime.interpreter as tf
         tflite_info["available"] = True
         tflite_info["version"] = tf.__version__
 
