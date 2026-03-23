@@ -30,6 +30,10 @@ import time
 from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 
+# Index du cap (heading) dans state.gyro_angles
+# gyro_angles = [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y, Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt]
+_HEADING_INDEX = 2  # Gyro_z = cap intégré en degrés
+
 
 class PIDIRController(ControllerBase):
     """Contrôleur PID sur capteurs IR bottom pour le suivi de ligne.
@@ -56,6 +60,9 @@ class PIDIRController(ControllerBase):
         line_lost_threshold=80.0,
         ir_offset=0.0,
         calibration_samples=10,
+        gap_threshold=195.0,
+        heading_kp=1.8,
+        heading_max_correction=10.0,
     ):
         self._base_speed = base_speed
         self._kp = kp
@@ -65,6 +72,14 @@ class PIDIRController(ControllerBase):
         self._line_lost_threshold = line_lost_threshold
         self._ir_offset = ir_offset
         self._calibration_samples = calibration_samples
+
+        # Maintien de cap gyroscopique (actif dans les trous de la ligne traitillée)
+        self._gap_threshold = gap_threshold
+        self._heading_kp = heading_kp
+        self._heading_max_correction = heading_max_correction
+        self._heading_hold_active = False
+        self._desired_heading = 0.0
+        self._in_gap = False
 
         # État PID
         self._integral = 0.0
@@ -106,6 +121,10 @@ class PIDIRController(ControllerBase):
         self._osc_zero_crossings = []
         self._osc_prev_sign = 0
         self._osc_tu = None
+        # Reset heading hold
+        self._heading_hold_active = False
+        self._desired_heading = 0.0
+        self._in_gap = False
         # Lancer l'auto-calibration sur les N premiers ticks
         self._calibrating = True
         self._calibration_buffer = []
@@ -117,8 +136,18 @@ class PIDIRController(ControllerBase):
     def stop(self):
         print("[PID_IR] Arrêté")
 
+    def _get_heading(self, state):
+        """Extrait le cap intégré (Gyro_z) depuis l'état capteur."""
+        if state and state.gyro_angles and len(state.gyro_angles) > _HEADING_INDEX:
+            return float(state.gyro_angles[_HEADING_INDEX])
+        return None
+
     def step(self, state):
-        """Calcule la commande moteur via PID sur IR_diff.
+        """Calcule la commande moteur via PID IR + heading hold dans les trous.
+
+        Deux modes :
+        - Ligne détectée (ir_sum < gap_threshold) : PID classique sur IR_diff
+        - Trou détecté (ir_sum > gap_threshold) : maintien de cap gyroscopique
 
         Args:
             state (SensorState): État capteur courant.
@@ -149,19 +178,60 @@ class PIDIRController(ControllerBase):
             # Pendant la calibration, rouler tout droit sans correction
             return MotorCommand.make_speed(self._base_speed, self._base_speed)
 
-        # Détection de perte de ligne
+        # Détection de perte de ligne (hors piste)
         ir_sum = (ir_bottom_left + ir_bottom_right) / 2.0
         self._last_ir_sum = ir_sum
 
         if ir_sum < self._line_lost_threshold:
             self._line_lost = True
             self._integral = 0.0
+            self._heading_hold_active = False
             return MotorCommand.stop()
 
         self._line_lost = False
 
+        # Détection de trou : les deux capteurs voient du noir (route)
+        self._in_gap = ir_sum > self._gap_threshold
+
+        # =============================================================
+        #  MODE HEADING HOLD (trou entre les tirets)
+        # =============================================================
+        if self._in_gap:
+            heading = self._get_heading(state)
+            if heading is None:
+                # Pas de gyro : rouler droit sans correction (fallback)
+                return MotorCommand.make_speed(self._base_speed, self._base_speed)
+
+            if not self._heading_hold_active:
+                # Premier tick dans le trou : activer le heading hold
+                self._heading_hold_active = True
+                # Si aucun cap n'a encore été capturé en mode IR, prendre le cap courant
+                if self._desired_heading == 0.0:
+                    self._desired_heading = heading
+
+            # Correction proportionnelle sur le cap
+            error = heading - self._desired_heading
+            correction = error * self._heading_kp
+            correction = max(-self._heading_max_correction,
+                             min(self._heading_max_correction, correction))
+
+            self._last_error = error
+            self._last_correction = correction
+
+            left_speed = self._base_speed + correction
+            right_speed = self._base_speed - correction
+
+            left_speed = max(-self.MOTOR_SPEED_MAX, min(self.MOTOR_SPEED_MAX, left_speed))
+            right_speed = max(-self.MOTOR_SPEED_MAX, min(self.MOTOR_SPEED_MAX, right_speed))
+
+            return MotorCommand.make_speed(left_speed, right_speed)
+
+        # =============================================================
+        #  MODE IR PID (ligne détectée)
+        # =============================================================
+        self._heading_hold_active = False
+
         # PID sur l'erreur corrigée du biais capteur
-        # (right - left) - offset pour que Kp positif = suit la ligne
         error = float(ir_bottom_right - ir_bottom_left) - self._ir_offset
         self._last_error = error
 
@@ -185,6 +255,11 @@ class PIDIRController(ControllerBase):
 
         # Détection d'oscillation : tracker les changements de signe de la correction
         self._track_oscillation(correction)
+
+        # Capturer le cap courant pour le heading hold du prochain trou
+        heading = self._get_heading(state)
+        if heading is not None:
+            self._desired_heading = heading
 
         # Commande différentielle (correction > 0 → tourne à droite)
         left_speed = self._base_speed + correction
@@ -260,6 +335,9 @@ class PIDIRController(ControllerBase):
             "line_lost": self._line_lost,
             "integral": self._integral,
             "oscillation_Tu": self._osc_tu,
+            "in_gap": self._in_gap,
+            "heading_hold_active": self._heading_hold_active,
+            "desired_heading": self._desired_heading,
         }
 
     def get_params(self):
@@ -272,6 +350,9 @@ class PIDIRController(ControllerBase):
             "line_lost_threshold": self._line_lost_threshold,
             "ir_offset": self._ir_offset,
             "calibration_samples": self._calibration_samples,
+            "gap_threshold": self._gap_threshold,
+            "heading_kp": self._heading_kp,
+            "heading_max_correction": self._heading_max_correction,
         }
 
     def trigger_calibration(self):
@@ -299,3 +380,9 @@ class PIDIRController(ControllerBase):
             self._ir_offset = float(kwargs["ir_offset"])
         if "calibration_samples" in kwargs:
             self._calibration_samples = int(kwargs["calibration_samples"])
+        if "gap_threshold" in kwargs:
+            self._gap_threshold = float(kwargs["gap_threshold"])
+        if "heading_kp" in kwargs:
+            self._heading_kp = float(kwargs["heading_kp"])
+        if "heading_max_correction" in kwargs:
+            self._heading_max_correction = float(kwargs["heading_max_correction"])
