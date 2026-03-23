@@ -52,6 +52,8 @@ class PIDIRController(ControllerBase):
         kd=-0.58,
         max_correction=8,
         line_lost_threshold=80.0,
+        ir_offset=0.0,
+        calibration_samples=10,
     ):
         self._base_speed = base_speed
         self._kp = kp
@@ -59,10 +61,16 @@ class PIDIRController(ControllerBase):
         self._kd = kd
         self._max_correction = max_correction
         self._line_lost_threshold = line_lost_threshold
+        self._ir_offset = ir_offset
+        self._calibration_samples = calibration_samples
 
         # État PID
         self._integral = 0.0
         self._prev_error = 0.0
+
+        # État calibration
+        self._calibrating = False
+        self._calibration_buffer = []
 
         # Debug
         self._last_error = 0.0
@@ -81,13 +89,17 @@ class PIDIRController(ControllerBase):
         return "pid_ir"
 
     def start(self):
-        """Réinitialise l'état PID."""
+        """Réinitialise l'état PID et lance l'auto-calibration IR."""
         self._integral = 0.0
         self._prev_error = 0.0
         self._line_lost = False
-        print("[PID_IR] Démarré (base_speed={}, Kp={}, Ki={}, Kd={})".format(
-            self._base_speed, self._kp, self._ki, self._kd
+        # Lancer l'auto-calibration sur les N premiers ticks
+        self._calibrating = True
+        self._calibration_buffer = []
+        print("[PID_IR] Démarré (base_speed={}, Kp={}, Ki={}, Kd={}, ir_offset={})".format(
+            self._base_speed, self._kp, self._ki, self._kd, self._ir_offset
         ))
+        print("[PID_IR] Auto-calibration IR sur {} échantillons...".format(self._calibration_samples))
 
     def stop(self):
         print("[PID_IR] Arrêté")
@@ -113,6 +125,17 @@ class PIDIRController(ControllerBase):
         self._last_ir_left = ir_bottom_left
         self._last_ir_right = ir_bottom_right
 
+        # Auto-calibration : accumule les N premiers échantillons puis calcule l'offset
+        if self._calibrating:
+            raw_diff = float(ir_bottom_right - ir_bottom_left)
+            self._calibration_buffer.append(raw_diff)
+            if len(self._calibration_buffer) >= self._calibration_samples:
+                self._ir_offset = sum(self._calibration_buffer) / len(self._calibration_buffer)
+                self._calibrating = False
+                print("[PID_IR] Calibration terminée: ir_offset = {:.1f}".format(self._ir_offset))
+            # Pendant la calibration, rouler tout droit sans correction
+            return MotorCommand.make_speed(self._base_speed, self._base_speed)
+
         # Détection de perte de ligne
         ir_sum = (ir_bottom_left + ir_bottom_right) / 2.0
         self._last_ir_sum = ir_sum
@@ -121,13 +144,12 @@ class PIDIRController(ControllerBase):
             self._line_lost = True
             self._integral = 0.0
             return MotorCommand.stop()
-        
+
         self._line_lost = False
 
-        # PID sur l'erreur (right - left pour que Kp positif = suit la ligne)
-        # Si la ligne est sous le capteur droit → error > 0 → correction > 0
-        # → left accélère, right ralentit → tourne à droite vers la ligne
-        error = float(ir_bottom_right - ir_bottom_left)
+        # PID sur l'erreur corrigée du biais capteur
+        # (right - left) - offset pour que Kp positif = suit la ligne
+        error = float(ir_bottom_right - ir_bottom_left) - self._ir_offset
         self._last_error = error
 
         self._integral += error
@@ -168,9 +190,11 @@ class PIDIRController(ControllerBase):
             "correction": self._last_correction,
             "ir_bottom_left": self._last_ir_left,
             "ir_bottom_right": self._last_ir_right,
-            "left_speed":self._base_speed + self._last_correction,
-            "right_speed":self._base_speed - self._last_correction,
+            "left_speed": self._base_speed + self._last_correction,
+            "right_speed": self._base_speed - self._last_correction,
             "ir_sum": self._last_ir_sum,
+            "ir_offset": self._ir_offset,
+            "calibrating": self._calibrating,
             "line_lost": self._line_lost,
             "integral": self._integral,
         }
@@ -183,7 +207,17 @@ class PIDIRController(ControllerBase):
             "kd": self._kd,
             "max_correction": self._max_correction,
             "line_lost_threshold": self._line_lost_threshold,
+            "ir_offset": self._ir_offset,
+            "calibration_samples": self._calibration_samples,
         }
+
+    def trigger_calibration(self):
+        """Relance l'auto-calibration IR (appelable depuis l'UI)."""
+        self._calibrating = True
+        self._calibration_buffer = []
+        self._integral = 0.0
+        self._prev_error = 0.0
+        print("[PID_IR] Recalibration IR lancée ({} échantillons)...".format(self._calibration_samples))
 
     def update_params(self, **kwargs):
         if "base_speed" in kwargs:
@@ -198,3 +232,7 @@ class PIDIRController(ControllerBase):
             self._max_correction = int(kwargs["max_correction"])
         if "line_lost_threshold" in kwargs:
             self._line_lost_threshold = float(kwargs["line_lost_threshold"])
+        if "ir_offset" in kwargs:
+            self._ir_offset = float(kwargs["ir_offset"])
+        if "calibration_samples" in kwargs:
+            self._calibration_samples = int(kwargs["calibration_samples"])

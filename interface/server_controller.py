@@ -1216,6 +1216,19 @@ class controller:
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    def calibrate_ir(self):
+        """Relance l'auto-calibration IR du contrôleur PID IR actif."""
+        try:
+            active = self.control_manager._active_controller
+            if active is None:
+                return jsonify({'error': 'Aucun contrôleur actif'}), 400
+            if not hasattr(active, 'trigger_calibration'):
+                return jsonify({'error': 'Le contrôleur actif ne supporte pas la calibration IR'}), 400
+            active.trigger_calibration()
+            return jsonify({'status': 'ok', 'message': 'Calibration IR relancée'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
 # ----------------------------------------------------------------------------
 #          Fonctions pour le contrôle du pont
 # ----------------------------------------------------------------------------

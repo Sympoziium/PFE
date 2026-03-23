@@ -94,6 +94,7 @@ def register_routes(ctrl):
     app.add_url_rule('/robot/reset_drive', 'robot_reset_drive', lambda: ctrl.robot_reset_drive(), methods=['POST'])
     app.add_url_rule('/robot/reset_gyro', 'robot_reset_gyro', lambda: ctrl.robot_reset_gyro(), methods=['POST'])
     app.add_url_rule('/robot/reset_pid', 'robot_reset_pid', lambda: ctrl.robot_reset_pid(), methods=['POST'])
+    app.add_url_rule('/controller/calibrate_ir', 'calibrate_ir', lambda: ctrl.calibrate_ir(), methods=['POST'])
 
     # --- PONT (Nouveaux liens) ---
     app.add_url_rule('/bridge/open', 'bridge_open', lambda: ctrl.bridge_open(), methods=['POST'])

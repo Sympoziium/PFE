@@ -374,6 +374,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
                             <button class='primary-btn' id='btnResetDrive' style='width:100%; margin-top:8px;'>Reset Drive State (PID+gyro)</button>
                             <button class='primary-btn' id='btnResetGyro' style='width:100%; margin-top:8px;'>Reset Gyro</button>
                             <button class='primary-btn' id='btnResetPID' style='width:100%; margin-top:8px;'>Reset PID</button>
+                            <button class='primary-btn' id='btnCalibrateIR' style='width:100%; margin-top:8px;'>Calibration IR (offset capteurs)</button>
                         </div>
                     </div>
                 </div>
@@ -572,7 +573,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 {key: 'ki', label: 'Ki (intégral)', min: 0, max: 0.1, step: 0.001, type: 'float'},
                 {key: 'kd', label: 'Kd (dérivé)', min: 0, max: 1, step: 0.01, type: 'float'},
                 {key: 'max_correction', label: 'Correction max', min: 0, max: 50, step: 1, type: 'int'},
-                {key: 'line_lost_threshold', label: 'Seuil perte ligne (IR_sum)', min: 0, max: 255, step: 5, type: 'int'}
+                {key: 'line_lost_threshold', label: 'Seuil perte ligne (IR_sum)', min: 0, max: 255, step: 5, type: 'int'},
+                {key: 'ir_offset', label: 'Offset IR (R-L)', min: -50, max: 50, step: 0.5, type: 'float'},
+                {key: 'calibration_samples', label: 'Échantillons calibration', min: 5, max: 50, step: 1, type: 'int'}
             ]
         }
     };
@@ -1004,6 +1007,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
         if (btnResetGyro) btnResetGyro.addEventListener('click', function() { postReset('/robot/reset_gyro', this); });
         var btnResetPID = document.getElementById('btnResetPID');
         if (btnResetPID) btnResetPID.addEventListener('click', function() { postReset('/robot/reset_pid', this); });
+        var btnCalibrateIR = document.getElementById('btnCalibrateIR');
+        if (btnCalibrateIR) btnCalibrateIR.addEventListener('click', function() { postReset('/controller/calibrate_ir', this); });
     });
 
     // Exposer les fonctions au scope global (pour les onclick inline restants)
