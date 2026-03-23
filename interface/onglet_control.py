@@ -575,7 +575,10 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 {key: 'max_correction', label: 'Correction max', min: 0, max: 50, step: 1, type: 'int', input: 'number'},
                 {key: 'line_lost_threshold', label: 'Seuil perte ligne (IR_sum)', min: 0, max: 255, step: 1, type: 'int', input: 'number'},
                 {key: 'ir_offset', label: 'Offset IR (R-L)', min: -50, max: 50, step: 0.1, type: 'float', input: 'number'},
-                {key: 'calibration_samples', label: 'Échantillons calibration', min: 5, max: 50, step: 1, type: 'int', input: 'number'}
+                {key: 'calibration_samples', label: 'Échantillons calibration', min: 5, max: 50, step: 1, type: 'int', input: 'number'},
+                {key: 'gap_threshold', label: 'Seuil trou (IR_sum)', min: 150, max: 230, step: 1, type: 'float', input: 'number'},
+                {key: 'heading_kp', label: 'Heading Kp (cap gyro)', min: 0, max: 10, step: 0.1, type: 'float', input: 'number'},
+                {key: 'heading_max_correction', label: 'Heading correction max', min: 0, max: 30, step: 1, type: 'float', input: 'number'}
             ]
         }
     };
