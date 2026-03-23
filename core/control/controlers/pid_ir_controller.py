@@ -12,13 +12,13 @@ Contexte physique :
     IR bottom : valeur HAUTE = surface claire (ligne), BASSE = surface sombre (route).
 
 Signal d'erreur :
-    error = IR_bottom_left - IR_bottom_right
-    > 0 : ligne sous capteur gauche → robot décalé à droite → tourner à gauche
-    < 0 : ligne sous capteur droit → robot décalé à gauche → tourner à droite
+    error = IR_bottom_right - IR_bottom_left
+    > 0 : ligne sous capteur droit → robot décalé à gauche → tourner à droite
+    < 0 : ligne sous capteur gauche → robot décalé à droite → tourner à gauche
 
 Commande différentielle :
-    left_speed  = base_speed - correction   (correction > 0 → ralentit gauche → tourne à gauche)
-    right_speed = base_speed + correction
+    left_speed  = base_speed + correction   (correction > 0 → accélère gauche → tourne à droite)
+    right_speed = base_speed - correction
 
 Détection de perte de ligne :
     Si IR_sum (moyenne des deux IR bottom) passe SOUS un seuil, les deux capteurs
@@ -46,11 +46,11 @@ class PIDIRController(ControllerBase):
 
     def __init__(
         self,
-        base_speed=25,
-        kp=0.15,
+        base_speed=5,
+        kp=0.12,
         ki=0.0,
-        kd=0.05,
-        max_correction=30,
+        kd=-0.58,
+        max_correction=8,
         line_lost_threshold=80.0,
     ):
         self._base_speed = base_speed
@@ -124,8 +124,10 @@ class PIDIRController(ControllerBase):
         
         self._line_lost = False
 
-        # PID sur l'erreur
-        error = float(ir_bottom_left - ir_bottom_right)
+        # PID sur l'erreur (right - left pour que Kp positif = suit la ligne)
+        # Si la ligne est sous le capteur droit → error > 0 → correction > 0
+        # → left accélère, right ralentit → tourne à droite vers la ligne
+        error = float(ir_bottom_right - ir_bottom_left)
         self._last_error = error
 
         self._integral += error
@@ -146,9 +148,9 @@ class PIDIRController(ControllerBase):
         correction = max(-self._max_correction, min(self._max_correction, correction))
         self._last_correction = correction
 
-        # Commande différentielle (correction > 0 → tourne à gauche)
-        left_speed = self._base_speed - correction
-        right_speed = self._base_speed + correction
+        # Commande différentielle (correction > 0 → tourne à droite)
+        left_speed = self._base_speed + correction
+        right_speed = self._base_speed - correction
 
         # Clamp aux limites moteur
         left_speed = max(-self.MOTOR_SPEED_MAX, min(self.MOTOR_SPEED_MAX, left_speed))
@@ -166,8 +168,8 @@ class PIDIRController(ControllerBase):
             "correction": self._last_correction,
             "ir_bottom_left": self._last_ir_left,
             "ir_bottom_right": self._last_ir_right,
-            "left_speed":self._base_speed - self._last_correction,
-            "right_speed":self._base_speed + self._last_correction,
+            "left_speed":self._base_speed + self._last_correction,
+            "right_speed":self._base_speed - self._last_correction,
             "ir_sum": self._last_ir_sum,
             "line_lost": self._line_lost,
             "integral": self._integral,

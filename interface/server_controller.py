@@ -227,9 +227,9 @@ class controller:
                 active = self.control_manager._active_controller
                 if active:
                     print(f"[Watchdog] Contrôleur actif: {active.name}")
-                    if hasattr(active, 'debug_state'):
-                        debug_info = active.debug_state()
-                        print(f"[Watchdog] État du contrôleur {active.name}: {json.dumps(debug_info, indent=2)}")
+                    if hasattr(active, 'get_debug_info'):
+                        debug_info = active.get_debug_info()
+                        print(f"[Watchdog] {active.name}: {json.dumps(debug_info, indent=2)}")
 
             # --- Logs des ressources système toutes les 20 secondes (40 itérations * 0.5s) ---
             if iteration_count % 40 == 0:
