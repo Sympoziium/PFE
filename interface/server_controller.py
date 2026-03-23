@@ -157,7 +157,6 @@ class controller:
         self.manual_drive_speed = DRIVE_SPEED
         self.manual_turn_speed = TURN_SPEED
         self.last_action = None  # Pour mémoriser la dernière action de contrôle (pour le sampling)
-        self.debug_active_ctrl = False
 
         
         # --- CONFIGURATION DU PONT ---
@@ -224,7 +223,7 @@ class controller:
             iteration_count += 1
 
             # --- Logs du controleur actif toutes les 3 secondes (6 itérations * 0.5s) ---
-            if self.debug_active_ctrl and self.control_manager and iteration_count % 6 == 0:
+            if self.control_manager and iteration_count % 6 == 0:
                 active = self.control_manager._active_controller
                 if active:
                     print(f"[Watchdog] Contrôleur actif: {active.name}")
@@ -1398,6 +1397,36 @@ class controller:
             return jsonify(payload)
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    def controller_params(self):
+        """GET/POST les paramètres d'un contrôleur par nom.
+
+        GET  /controller/params?name=pid_ir  → retourne les params
+        POST /controller/params  {"name": "pid_ir", "kp": 0.2, ...}  → met à jour
+        """
+        if self.control_manager is None:
+            return jsonify({'error': 'ControlManager non attaché'}), 400
+
+        if request.method == 'GET':
+            ctrl_name = request.args.get('name')
+            if not ctrl_name:
+                return jsonify({'error': 'name parameter required'}), 400
+            ctrl = self.control_manager.get_controller(ctrl_name)
+            if ctrl is None:
+                return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
+            return jsonify({'name': ctrl_name, 'params': ctrl.get_params()})
+
+        # POST: mise à jour des paramètres
+        data = request.get_json(silent=True) or {}
+        ctrl_name = data.pop('name', None)
+        if not ctrl_name:
+            return jsonify({'error': 'name field required'}), 400
+        ctrl = self.control_manager.get_controller(ctrl_name)
+        if ctrl is None:
+            return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
+
+        ctrl.update_params(**data)
+        return jsonify({'name': ctrl_name, 'params': ctrl.get_params()})
 
     def _vectorize_state_with_adapter(self, state, adapter):
         if state is None:

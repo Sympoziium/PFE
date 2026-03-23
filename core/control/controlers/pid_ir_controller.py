@@ -7,18 +7,22 @@
 Implémente ControllerBase. Utilise la différence entre IR_bottom_left et
 IR_bottom_right comme signal d'erreur pour un PID classique.
 
+Contexte physique :
+    Route NOIRE, ligne BLANCHE (traitillée).
+    IR bottom : valeur HAUTE = surface claire (ligne), BASSE = surface sombre (route).
+
 Signal d'erreur :
     error = IR_bottom_left - IR_bottom_right
-    > 0 : surface plus claire à gauche → ligne à droite → tourner à droite
-    < 0 : surface plus claire à droite → ligne à gauche → tourner à gauche
+    > 0 : ligne sous capteur gauche → robot décalé à droite → tourner à gauche
+    < 0 : ligne sous capteur droit → robot décalé à gauche → tourner à droite
 
 Commande différentielle :
-    left_speed  = base_speed + correction
-    right_speed = base_speed - correction
+    left_speed  = base_speed - correction   (correction > 0 → ralentit gauche → tourne à gauche)
+    right_speed = base_speed + correction
 
 Détection de perte de ligne :
-    Si IR_sum (moyenne des deux IR bottom) dépasse un seuil, les deux capteurs
-    voient une surface claire → la ligne est perdue → arrêt.
+    Si IR_sum (moyenne des deux IR bottom) passe SOUS un seuil, les deux capteurs
+    voient du noir (route) → la ligne est perdue → arrêt.
 """
 
 from core.control.controlers.controller_base import ControllerBase
@@ -34,8 +38,8 @@ class PIDIRController(ControllerBase):
         ki (float): Gain intégral.
         kd (float): Gain dérivé.
         max_correction (int): Correction différentielle maximale.
-        line_lost_threshold (float): Seuil IR_sum au-dessus duquel
-            la ligne est considérée perdue (les deux capteurs voient clair).
+        line_lost_threshold (float): Seuil IR_sum en-dessous duquel
+            la ligne est considérée perdue (les deux capteurs voient noir/route).
     """
 
     MOTOR_SPEED_MAX = 50
@@ -47,7 +51,7 @@ class PIDIRController(ControllerBase):
         ki=0.0,
         kd=0.05,
         max_correction=30,
-        line_lost_threshold=220.0,
+        line_lost_threshold=80.0,
     ):
         self._base_speed = base_speed
         self._kp = kp
@@ -113,7 +117,7 @@ class PIDIRController(ControllerBase):
         ir_sum = (ir_bottom_left + ir_bottom_right) / 2.0
         self._last_ir_sum = ir_sum
 
-        if ir_sum > self._line_lost_threshold:
+        if ir_sum < self._line_lost_threshold:
             self._line_lost = True
             self._integral = 0.0
             return MotorCommand.stop()
@@ -142,9 +146,9 @@ class PIDIRController(ControllerBase):
         correction = max(-self._max_correction, min(self._max_correction, correction))
         self._last_correction = correction
 
-        # Commande différentielle
-        left_speed = self._base_speed + correction
-        right_speed = self._base_speed - correction
+        # Commande différentielle (correction > 0 → tourne à gauche)
+        left_speed = self._base_speed - correction
+        right_speed = self._base_speed + correction
 
         # Clamp aux limites moteur
         left_speed = max(-self.MOTOR_SPEED_MAX, min(self.MOTOR_SPEED_MAX, left_speed))
@@ -162,8 +166,8 @@ class PIDIRController(ControllerBase):
             "correction": self._last_correction,
             "ir_bottom_left": self._last_ir_left,
             "ir_bottom_right": self._last_ir_right,
-            "left_speed":self._base_speed + self._last_correction,
-            "right_speed":self._base_speed - self._last_correction,
+            "left_speed":self._base_speed - self._last_correction,
+            "right_speed":self._base_speed + self._last_correction,
             "ir_sum": self._last_ir_sum,
             "line_lost": self._line_lost,
             "integral": self._integral,

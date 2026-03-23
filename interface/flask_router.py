@@ -63,6 +63,7 @@ def register_routes(ctrl):
     app.add_url_rule('/controller/stop', 'controller_stop', lambda: ctrl.stop_controller(), methods=['POST'])
     app.add_url_rule('/controller/status', 'controller_status_route', lambda: ctrl.controller_status())
     app.add_url_rule('/controller/list', 'controller_list', lambda: ctrl.controller_list())
+    app.add_url_rule('/controller/params', 'controller_params', lambda: ctrl.controller_params(), methods=['GET', 'POST'])
 
     # Routes PID
     # app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])

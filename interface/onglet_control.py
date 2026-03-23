@@ -346,43 +346,19 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     </div>
                     <button class='primary-btn' id='controllerToggleBtn' style='margin-top:10px; width:85%;'>▶ Activer le contrôleur</button>
 
-                    <!-- Conteneur du menu de réglages collapsible -->
+                    <!-- Conteneur du menu de réglages adaptatif -->
                     <div class='settings-menu-container' style='margin-top:12px;'>
-                        <button class='primary-btn settings-toggle-btn' id='settingsToggleBtn'>⚙️ Réglages manuels</button>
+                        <button class='primary-btn settings-toggle-btn' id='settingsToggleBtn'>⚙️ Réglages</button>
 
                         <div class='params-card hidden' id='settingsCard'>
                             <div style='position:relative;'>
-                                <div class='tab-subtitle'>Réglages manuels</div>
+                                <div class='tab-subtitle' id='settingsTitle'>Réglages</div>
                                 <button type='button' class='settings-close-btn' id='settingsCloseBtn'>✕</button>
                             </div>
-                            <div class='param-row'>
-                                <label for='driveSpeed'>Vitesse avant (0-60)</label>
-                                <input id='driveSpeed' type='range' min='0' max='60' step='1' value='15'>
-                                <span class='param-value' id='driveSpeedVal'>15</span>
+                            <div id='settingsContent'>
+                                <!-- Contenu généré dynamiquement par JS -->
                             </div>
-                            <div class='param-row'>
-                                <label for='turnSpeed'>Vitesse rotation (0-60)</label>
-                                <input id='turnSpeed' type='range' min='0' max='60' step='1' value='1'>
-                                <span class='param-value' id='turnSpeedVal'>1</span>
-                            </div>
-                            <div class='param-row'>
-                                <label for='steeringRatio'>Ratio virage arc (0-1)</label>
-                                <input id='steeringRatio' type='range' min='0' max='100' step='5' value='50'>
-                                <span class='param-value' id='steeringRatioVal'>0.50</span>
-                            </div>
-                            <hr style='margin:10px 0; border:1px solid #e0f4ff;'>
-                            <div class='tab-subtitle' style='font-size:1rem; margin-bottom:8px;'>PID correction de cap</div>
-                            <div class='param-row'>
-                                <label for='headingKp'>Kp (0-5)</label>
-                                <input id='headingKp' type='range' min='0' max='500' step='10' value='150'>
-                                <span class='param-value' id='headingKpVal'>1.50</span>
-                            </div>
-                            <div class='param-row'>
-                                <label for='headingMaxCorr'>Correction max (0-30)</label>
-                                <input id='headingMaxCorr' type='range' min='0' max='30' step='1' value='15'>
-                                <span class='param-value' id='headingMaxCorrVal'>15</span>
-                            </div>
-                            <button class='primary-btn' id='applyManualSettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
+                            <button class='primary-btn' id='applySettingsBtn' style='margin-top:10px; width:100%;'>Appliquer</button>
                         </div>
                     </div>
 
@@ -570,103 +546,194 @@ def render_control_tab(title: str = "Contrôle") -> str:
         }
     }
 
-    var manualSettingsTimer = null;
+    // ================================================================
+    // Panneau de réglages adaptatif selon le contrôleur sélectionné
+    // ================================================================
+
+    // Définition des paramètres UI par contrôleur
+    var CONTROLLER_PARAMS = {
+        'manual_controller': {
+            title: 'Réglages manuels',
+            endpoint: '/manual/settings',
+            params: [
+                {key: 'drive_speed', label: 'Vitesse avant', min: 0, max: 60, step: 1, type: 'int'},
+                {key: 'turn_speed', label: 'Vitesse rotation', min: 0, max: 60, step: 1, type: 'int'},
+                {key: 'steering_ratio', label: 'Ratio virage arc', min: 0, max: 1, step: 0.05, type: 'float'},
+                {key: 'heading_kp', label: 'PID cap Kp', min: 0, max: 5, step: 0.1, type: 'float'},
+                {key: 'heading_max_correction', label: 'Correction cap max', min: 0, max: 30, step: 1, type: 'int'}
+            ]
+        },
+        'pid_ir': {
+            title: 'Réglages PID IR',
+            endpoint: '/controller/params',
+            params: [
+                {key: 'base_speed', label: 'Vitesse de base', min: 0, max: 50, step: 1, type: 'int'},
+                {key: 'kp', label: 'Kp (proportionnel)', min: -1, max: 1, step: 0.01, type: 'float'},
+                {key: 'ki', label: 'Ki (intégral)', min: 0, max: 0.1, step: 0.001, type: 'float'},
+                {key: 'kd', label: 'Kd (dérivé)', min: 0, max: 1, step: 0.01, type: 'float'},
+                {key: 'max_correction', label: 'Correction max', min: 0, max: 50, step: 1, type: 'int'},
+                {key: 'line_lost_threshold', label: 'Seuil perte ligne (IR_sum)', min: 0, max: 255, step: 5, type: 'int'}
+            ]
+        }
+    };
+
+    var settingsTimer = null;
 
     function toggleSettingsMenu() {
-        const settingsCard = document.getElementById('settingsCard');
-        const settingsToggleBtn = document.getElementById('settingsToggleBtn');
+        var settingsCard = document.getElementById('settingsCard');
+        var settingsToggleBtn = document.getElementById('settingsToggleBtn');
 
         if (settingsCard.classList.contains('hidden')) {
             settingsCard.classList.remove('hidden');
             settingsToggleBtn.textContent = '⬆️ Masquer réglages';
+            loadControllerSettings();
         } else {
             settingsCard.classList.add('hidden');
-            settingsToggleBtn.textContent = '⚙️ Réglages manuels';
+            settingsToggleBtn.textContent = '⚙️ Réglages';
         }
     }
 
-    function applyManualSettings() {
-        var payload = {
-            drive_speed: parseFloat(document.getElementById('driveSpeed').value),
-            turn_speed: parseFloat(document.getElementById('turnSpeed').value),
-            steering_ratio: parseFloat(document.getElementById('steeringRatio').value) / 100.0,
-            heading_kp: parseFloat(document.getElementById('headingKp').value) / 100.0,
-            heading_max_correction: parseFloat(document.getElementById('headingMaxCorr').value)
-        };
-
-        fetch('/manual/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) console.error('manual settings error:', data.error);
-            })
-            .catch(function(e) { console.error('manual settings fetch error:', e); });
+    function getSelectedController() {
+        var select = document.getElementById('controllerSelect');
+        return select ? select.value : 'manual_controller';
     }
 
-    function scheduleManualSettingsUpdate() {
-        if (manualSettingsTimer) clearTimeout(manualSettingsTimer);
-        manualSettingsTimer = setTimeout(applyManualSettings, 250);
+    function loadControllerSettings() {
+        var ctrlName = getSelectedController();
+        var config = CONTROLLER_PARAMS[ctrlName];
+        var container = document.getElementById('settingsContent');
+        var titleEl = document.getElementById('settingsTitle');
+
+        if (!config) {
+            // Contrôleur sans config UI définie : charger les params génériques
+            titleEl.textContent = 'Réglages - ' + ctrlName;
+            loadGenericParams(ctrlName, container);
+            return;
+        }
+
+        titleEl.textContent = config.title;
+
+        if (ctrlName === 'manual_controller') {
+            loadManualSettings(container, config);
+        } else {
+            loadControllerParamsFromAPI(ctrlName, container, config);
+        }
     }
 
-    function bindRange(id) {
-        var input = document.getElementById(id);
-        var valueEl = document.getElementById(id + 'Val');
-        if (!input || !valueEl) return;
-        var update = function() {
-            var value = parseInt(input.value);
-            var displayValue = value > 0 ? '+' + value : value;
-            valueEl.textContent = displayValue;
-        };
-        input.addEventListener('input', function() {
-            update();
-            scheduleManualSettingsUpdate();
-        });
-        update();
-    }
-
-    function loadManualSettings() {
+    function loadManualSettings(container, config) {
         fetch('/manual/settings')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (data.drive_speed !== null && data.drive_speed !== undefined) {
-                    document.getElementById('driveSpeed').value = data.drive_speed;
-                }
-                if (data.turn_speed !== null && data.turn_speed !== undefined) {
-                    document.getElementById('turnSpeed').value = data.turn_speed;
-                }
-                if (data.steering_ratio !== null && data.steering_ratio !== undefined) {
-                    document.getElementById('steeringRatio').value = Math.round(data.steering_ratio * 100);
-                }
-                if (data.heading_kp !== null && data.heading_kp !== undefined) {
-                    document.getElementById('headingKp').value = Math.round(data.heading_kp * 100);
-                }
-                if (data.heading_max_correction !== null && data.heading_max_correction !== undefined) {
-                    document.getElementById('headingMaxCorr').value = data.heading_max_correction;
-                }
-                bindRange('driveSpeed');
-                bindRange('turnSpeed');
-                bindRangeFloat('steeringRatio', 100);
-                bindRangeFloat('headingKp', 100);
-                bindRange('headingMaxCorr');
+                renderParamSliders(container, config.params, data);
             })
-            .catch(function(e) { console.error('load manual settings error:', e); });
+            .catch(function(e) { console.error('load settings error:', e); });
     }
-    
-    function bindRangeFloat(id, divisor) {
-        var input = document.getElementById(id);
-        var valueEl = document.getElementById(id + 'Val');
-        if (!input || !valueEl) return;
-        var update = function() {
-            valueEl.textContent = (parseInt(input.value) / divisor).toFixed(2);
-        };
-        input.addEventListener('input', function() {
-            update();
-            scheduleManualSettingsUpdate();
+
+    function loadControllerParamsFromAPI(ctrlName, container, config) {
+        fetch('/controller/params?name=' + ctrlName)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var params = data.params || data;
+                renderParamSliders(container, config.params, params);
+            })
+            .catch(function(e) { console.error('load controller params error:', e); });
+    }
+
+    function loadGenericParams(ctrlName, container) {
+        fetch('/controller/params?name=' + ctrlName)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var params = data.params || {};
+                var paramDefs = [];
+                Object.keys(params).forEach(function(key) {
+                    var val = params[key];
+                    if (typeof val === 'number') {
+                        var isFloat = !Number.isInteger(val);
+                        paramDefs.push({
+                            key: key, label: key,
+                            min: isFloat ? -10 : -100,
+                            max: isFloat ? 10 : 100,
+                            step: isFloat ? 0.01 : 1,
+                            type: isFloat ? 'float' : 'int'
+                        });
+                    }
+                });
+                renderParamSliders(container, paramDefs, params);
+            })
+            .catch(function(e) {
+                container.innerHTML = '<p style="color:#999;">Aucun paramètre disponible</p>';
+            });
+    }
+
+    function renderParamSliders(container, paramDefs, values) {
+        var html = '';
+        paramDefs.forEach(function(p) {
+            var val = values[p.key];
+            if (val === undefined || val === null) val = p.min;
+            var displayVal = p.type === 'float' ? parseFloat(val).toFixed(3) : parseInt(val);
+            html += '<div class="param-row">';
+            html += '<label for="param_' + p.key + '">' + p.label + '</label>';
+            html += '<input id="param_' + p.key + '" type="range"';
+            html += ' min="' + p.min + '" max="' + p.max + '" step="' + p.step + '"';
+            html += ' value="' + val + '">';
+            html += '<span class="param-value" id="param_' + p.key + '_val">' + displayVal + '</span>';
+            html += '</div>';
         });
-        update();
+        container.innerHTML = html;
+
+        // Bind live updates
+        paramDefs.forEach(function(p) {
+            var input = document.getElementById('param_' + p.key);
+            var valEl = document.getElementById('param_' + p.key + '_val');
+            if (!input || !valEl) return;
+            input.addEventListener('input', function() {
+                valEl.textContent = p.type === 'float'
+                    ? parseFloat(input.value).toFixed(3)
+                    : parseInt(input.value);
+            });
+        });
+    }
+
+    function applySettings() {
+        var ctrlName = getSelectedController();
+        var config = CONTROLLER_PARAMS[ctrlName];
+
+        if (ctrlName === 'manual_controller' && config) {
+            var payload = {};
+            config.params.forEach(function(p) {
+                var input = document.getElementById('param_' + p.key);
+                if (input) payload[p.key] = parseFloat(input.value);
+            });
+            fetch('/manual/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).catch(function(e) { console.error('apply settings error:', e); });
+        } else {
+            // Contrôleur générique via /controller/params
+            var payload = {name: ctrlName};
+            var paramDefs = config ? config.params : [];
+
+            if (paramDefs.length === 0) {
+                // Params génériques : lire tous les inputs param_*
+                var inputs = document.querySelectorAll('#settingsContent input[type="range"]');
+                Array.prototype.forEach.call(inputs, function(input) {
+                    var key = input.id.replace('param_', '');
+                    payload[key] = parseFloat(input.value);
+                });
+            } else {
+                paramDefs.forEach(function(p) {
+                    var input = document.getElementById('param_' + p.key);
+                    if (input) payload[p.key] = parseFloat(input.value);
+                });
+            }
+
+            fetch('/controller/params', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).catch(function(e) { console.error('apply controller params error:', e); });
+        }
     }
 
     // --- CONTRÔLE WASD (clavier) ---
@@ -867,8 +934,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 .catch(function(e) { console.error('controller list error:', e); });
         }
 
-        var applyManualBtn = document.getElementById('applyManualSettingsBtn');
-        if (applyManualBtn) applyManualBtn.addEventListener('click', applyManualSettings);
+        var applySettingsBtn = document.getElementById('applySettingsBtn');
+        if (applySettingsBtn) applySettingsBtn.addEventListener('click', applySettings);
 
         // Settings menu toggle
         var settingsToggleBtn = document.getElementById('settingsToggleBtn');
@@ -877,7 +944,16 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var settingsCloseBtn = document.getElementById('settingsCloseBtn');
         if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', toggleSettingsMenu);
 
-        loadManualSettings();
+        // Recharger les réglages quand on change de contrôleur
+        var controllerSelect = document.getElementById('controllerSelect');
+        if (controllerSelect) {
+            controllerSelect.addEventListener('change', function() {
+                var card = document.getElementById('settingsCard');
+                if (card && !card.classList.contains('hidden')) {
+                    loadControllerSettings();
+                }
+            });
+        }
         
         // D-pad: register mouse + passive touch events
         var dpadButtons = document.querySelectorAll('.dpad-button[data-direction]');
@@ -940,7 +1016,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
     window.startMove = startMove;
     window.stopMove = stopMove;
     window.stopWASD = stopWASD;
-    window.applyManualSettings = applyManualSettings;
+    window.applySettings = applySettings;
+    window.loadControllerSettings = loadControllerSettings;
     window.postReset = postReset;
 
     </script>
