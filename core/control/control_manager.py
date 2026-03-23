@@ -73,6 +73,12 @@ class ControlManager:
         # Signature: fn(state: SensorState, command: MotorCommand) -> None
         self._sampling_callback = None
 
+        # Override manuel temporaire (WASD pendant qu'un contrôleur auto est actif)
+        # Permet de corriger manuellement sans changer le contrôleur actif.
+        self._override_command = None       # MotorCommand ou None
+        self._override_time = 0.0           # Timestamp de la dernière commande override
+        self._override_timeout = 0.3        # Timeout watchdog (secondes)
+
         self._init_new_arch_drivers() # Initialise les drivers de la nouvelle architecture (SensorDriver et MotorDriver)
         self._init_robot_sensors() # Initialise les capteurs du robot (MPU, IR, batterie) au demarrage du manager
 
@@ -118,6 +124,33 @@ class ControlManager:
         # SÉCURITÉ : Forcer l'arrêt du robot physiquement quand aucun contrôleur n'est actif
         if self._motor_driver:
             self._motor_driver.execute(MotorCommand.stop())
+
+    # ------------------------------------------------------------------
+    #  Override manuel temporaire (WASD pendant contrôleur auto)
+    # ------------------------------------------------------------------
+    def set_manual_override(self, command):
+        """Injecte une commande moteur temporaire sans changer le contrôleur actif.
+
+        Le contrôleur actif (PID, etc.) reste en place mais ses commandes sont
+        ignorées tant que l'override est alimenté. Quand l'override expire
+        (watchdog timeout), le contrôleur reprend automatiquement.
+
+        Args:
+            command: MotorCommand à envoyer aux moteurs.
+        """
+        self._override_command = command
+        self._override_time = time.time()
+
+    def clear_manual_override(self):
+        """Annule l'override manuel. Le contrôleur actif reprend immédiatement."""
+        self._override_command = None
+
+    @property
+    def manual_override_active(self):
+        """True si un override manuel est en cours (non expiré)."""
+        if self._override_command is None:
+            return False
+        return (time.time() - self._override_time) <= self._override_timeout
 
     def set_loop_delay(self, delay_sec):
         """Modifier le délai de la boucle de contrôle (delay en secondes)"""
@@ -268,6 +301,22 @@ class ControlManager:
             return None, None
 
         state = self.get_last_sensor_data()
+
+        # Override manuel : si actif et non expiré, envoyer la commande override
+        # au lieu de celle du contrôleur. Le contrôleur reste actif (état PID préservé).
+        if self.manual_override_active:
+            command = self._override_command
+            self._motor_driver.execute(command)
+            with self._data_lock:
+                self.last_left_speed = command.left_speed
+                self.last_right_speed = command.right_speed
+                self.last_motor_command = command
+            return state, command
+
+        # Si l'override vient d'expirer, nettoyer
+        if self._override_command is not None:
+            self._override_command = None
+
         command = self._active_controller.step(state)
         self._motor_driver.execute(command)
         with self._data_lock: # récupération des commandes de vitesses aux roues

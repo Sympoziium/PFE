@@ -897,10 +897,11 @@ class controller:
     def _dispatch_manual_action(self, action, speed=DRIVE_SPEED):
         """Délègue la commande de mouvement au ManualController via l'orchestrateur.
 
-        Effectue également l'échantillonnage événementiel: chaque commande reçue
-        du serveur web génère un échantillon (état capteur → commande).
-        Cela évite le biais de l'échantillonnage périodique qui capture les arrêts
-        du watchdog (non représentatifs de l'intention du pilote).
+        Si un contrôleur automatique (PID, etc.) est actif, utilise l'override
+        temporaire pour envoyer les commandes moteur sans changer de contrôleur.
+        Quand les touches sont relâchées, le contrôleur actif reprend automatiquement.
+
+        Si aucun contrôleur n'est actif, active le contrôleur manuel normalement.
         """
         if not self.control_manager:
             return "ControlManager missing"
@@ -908,17 +909,33 @@ class controller:
         if self.control_manager.get_controller("manual_controller") is None:
             return "Manual controller missing"
 
-        # Si le contrôleur manuel n'est pas le contrôleur actif
         active = self.control_manager._active_controller
-        if not active or active.name != "manual_controller":
-            if active:
-                self.control_manager.deactivate_controller()
-            # On réinitialise l'état avant pour garantir que forward_step reste droit
+
+        # --- Override temporaire si un contrôleur auto est actif ---
+        if active and active.name != "manual_controller":
+            if action == "stop":
+                # Relâchement des touches : annuler l'override, le contrôleur reprend
+                self.control_manager.clear_manual_override()
+                return "ok"
+
+            # Calculer la commande moteur et l'injecter en override
+            from core.control.controlers.manual_controller import _ACTION_MAP
+            throttle, steering = _ACTION_MAP.get(action, (0, 0))
+            left, right = ManualController.compute_speeds(
+                throttle, steering, speed, speed)
+            self.control_manager.set_manual_override(
+                MotorCommand.make_speed(left, right))
+
+            if self.sampling_active and action in ("forward", "left", "right", "reverse"):
+                self._sample_on_command(action, speed)
+            return "ok"
+
+        # --- Pas de contrôleur actif : activer le contrôleur manuel ---
+        if not active:
             self.control_manager._reset_robot_drive_state()
             self.control_manager.activate_controller("manual_controller")
 
-        # Échantillonnage événementiel: capturer l'état + commande à chaque action de mouvement
-        # On échantillonne UNIQUEMENT les actions de mouvement valides (forward/left/right/reverse)
+        # Échantillonnage événementiel
         if self.sampling_active and action in ("forward", "left", "right", "reverse", "stop"):
             self._sample_on_command(action, speed)
 
@@ -1000,8 +1017,13 @@ class controller:
     def right(self): 
         return self._dispatch_manual_action("right", self.manual_turn_speed)
         
-    def stop(self): 
+    def stop(self):
         try:
+            # Si un override est actif, le nettoyer directement
+            # pour que le contrôleur auto reprenne immédiatement
+            if self.control_manager and self.control_manager.manual_override_active:
+                self.control_manager.clear_manual_override()
+                return "ok"
             return self._dispatch_manual_action("stop", 0)
         except Exception as e:
             print("[ERREUR] _dispatch_manual_action(stop):", e)
@@ -1071,10 +1093,10 @@ class controller:
         return throttle, steering
 
     def _dispatch_compound_action(self, throttle, steering):
-        """Dispatch une action composée (throttle+steering) au ManualController.
+        """Dispatch une action composée (throttle+steering).
 
-        Gère l'activation du contrôleur manuel si nécessaire, l'échantillonnage
-        événementiel, et le reset gyro aux transitions virage→droit.
+        Si un contrôleur auto est actif, utilise l'override temporaire.
+        Le contrôleur reprend automatiquement quand les touches sont relâchées.
         """
         if not self.control_manager:
             return "ControlManager missing"
@@ -1082,22 +1104,36 @@ class controller:
         if self.control_manager.get_controller("manual_controller") is None:
             return "Manual controller missing"
 
-        # Activer le contrôleur manuel s'il n'est pas actif
         active = self.control_manager._active_controller
-        if not active or active.name != "manual_controller":
-            if active:
-                self.control_manager.deactivate_controller()
+
+        # --- Override temporaire si un contrôleur auto est actif ---
+        if active and active.name != "manual_controller":
+            if throttle == 0 and steering == 0:
+                self.control_manager.clear_manual_override()
+                return "ok"
+
+            ctrl = self.control_manager.get_controller("manual_controller")
+            left, right = ManualController.compute_speeds(
+                throttle, steering,
+                self.manual_drive_speed, self.manual_turn_speed,
+                ctrl.steering_ratio)
+            self.control_manager.set_manual_override(
+                MotorCommand.make_speed(left, right))
+
+            if self.sampling_active:
+                self._sample_compound(left, right)
+            return "ok"
+
+        # --- Pas de contrôleur actif : activer le contrôleur manuel ---
+        if not active:
             self.control_manager._reset_robot_drive_state()
             self.control_manager.activate_controller("manual_controller")
 
         ctrl = self.control_manager.get_controller("manual_controller")
-
-        # Mettre à jour l'action composée
         ctrl.set_compound_action(throttle, steering,
                                  drive_speed=self.manual_drive_speed,
                                  turn_speed=self.manual_turn_speed)
 
-        # Échantillonnage événementiel (seulement pour les mouvements, pas les stops)
         if self.sampling_active and (throttle != 0 or steering != 0):
             left_speed, right_speed = ManualController.compute_speeds(
                 throttle, steering,
@@ -1390,6 +1426,7 @@ class controller:
                 'active': bool(active),
                 'controller': active.name if active else None,
                 'running': self.control_manager._running,
+                'manual_override': self.control_manager.manual_override_active,
             }
             if active:
                 payload['controller_debug'] = active.get_debug_info()
