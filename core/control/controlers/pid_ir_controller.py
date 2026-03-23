@@ -117,7 +117,7 @@ class PIDIRController(ControllerBase):
             self._line_lost = True
             self._integral = 0.0
             return MotorCommand.stop()
-
+        
         self._line_lost = False
 
         # PID sur l'erreur
@@ -162,6 +162,8 @@ class PIDIRController(ControllerBase):
             "correction": self._last_correction,
             "ir_bottom_left": self._last_ir_left,
             "ir_bottom_right": self._last_ir_right,
+            "left_speed":self._base_speed + self._last_correction,
+            "right_speed":self._base_speed - self._last_correction,
             "ir_sum": self._last_ir_sum,
             "line_lost": self._line_lost,
             "integral": self._integral,

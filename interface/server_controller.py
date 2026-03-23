@@ -157,6 +157,7 @@ class controller:
         self.manual_drive_speed = DRIVE_SPEED
         self.manual_turn_speed = TURN_SPEED
         self.last_action = None  # Pour mémoriser la dernière action de contrôle (pour le sampling)
+        self.debug_active_ctrl = False
 
         
         # --- CONFIGURATION DU PONT ---
@@ -209,7 +210,7 @@ class controller:
         func()
         return ('', 204)
     
-    def motor_watchdog(self):
+    def Log_watchdog(self):
         """
         Thread qui s'exécute en arrière-plan.
         Gère les logs ressources système.
@@ -221,6 +222,15 @@ class controller:
 
         while True:
             iteration_count += 1
+
+            # --- Logs du controleur actif toutes les 3 secondes (6 itérations * 0.5s) ---
+            if self.debug_active_ctrl and self.control_manager and iteration_count % 6 == 0:
+                active = self.control_manager._active_controller
+                if active:
+                    print(f"[Watchdog] Contrôleur actif: {active.name}")
+                    if hasattr(active, 'debug_state'):
+                        debug_info = active.debug_state()
+                        print(f"[Watchdog] État du contrôleur {active.name}: {json.dumps(debug_info, indent=2)}")
 
             # --- Logs des ressources système toutes les 20 secondes (40 itérations * 0.5s) ---
             if iteration_count % 40 == 0:
@@ -603,7 +613,7 @@ class controller:
 
     def _log_resource_usage_internal(self):
         """
-        Helper interne: Log LÉGER des ressources du Pi (appelé par motor_watchdog toutes les 5s).
+        Helper interne: Log LÉGER des ressources du Pi (appelé par Log_watchdog toutes les 5s).
         Optimisé pour Pi Zero V1 - zéro overhead, directement dans stdout du serveur.
         """
         try:

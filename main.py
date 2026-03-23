@@ -222,7 +222,7 @@ if __name__ == '__main__':
     # qu'à la demande depuis l'interface web (bouton Start Camera,
     # activation PID, etc.).
 
-    watchdog_thread = threading.Thread(target=ctrl.motor_watchdog)
+    watchdog_thread = threading.Thread(target=ctrl.Log_watchdog)
     watchdog_thread.daemon = True
     watchdog_thread.start()
 
