@@ -568,14 +568,14 @@ def render_control_tab(title: str = "Contrôle") -> str:
             title: 'Réglages PID IR',
             endpoint: '/controller/params',
             params: [
-                {key: 'base_speed', label: 'Vitesse de base', min: 0, max: 50, step: 1, type: 'int'},
-                {key: 'kp', label: 'Kp (proportionnel)', min: -1, max: 1, step: 0.01, type: 'float'},
-                {key: 'ki', label: 'Ki (intégral)', min: 0, max: 0.1, step: 0.001, type: 'float'},
-                {key: 'kd', label: 'Kd (dérivé)', min: 0, max: 1, step: 0.01, type: 'float'},
-                {key: 'max_correction', label: 'Correction max', min: 0, max: 50, step: 1, type: 'int'},
-                {key: 'line_lost_threshold', label: 'Seuil perte ligne (IR_sum)', min: 0, max: 255, step: 5, type: 'int'},
-                {key: 'ir_offset', label: 'Offset IR (R-L)', min: -50, max: 50, step: 0.5, type: 'float'},
-                {key: 'calibration_samples', label: 'Échantillons calibration', min: 5, max: 50, step: 1, type: 'int'}
+                {key: 'base_speed', label: 'Vitesse de base', min: 0, max: 50, step: 1, type: 'int', input: 'number'},
+                {key: 'kp', label: 'Kp (proportionnel)', min: -1, max: 1, step: 0.001, type: 'float', input: 'number'},
+                {key: 'ki', label: 'Ki (intégral)', min: -0.1, max: 0.1, step: 0.0001, type: 'float', input: 'number'},
+                {key: 'kd', label: 'Kd (dérivé)', min: -2, max: 2, step: 0.001, type: 'float', input: 'number'},
+                {key: 'max_correction', label: 'Correction max', min: 0, max: 50, step: 1, type: 'int', input: 'number'},
+                {key: 'line_lost_threshold', label: 'Seuil perte ligne (IR_sum)', min: 0, max: 255, step: 1, type: 'int', input: 'number'},
+                {key: 'ir_offset', label: 'Offset IR (R-L)', min: -50, max: 50, step: 0.1, type: 'float', input: 'number'},
+                {key: 'calibration_samples', label: 'Échantillons calibration', min: 5, max: 50, step: 1, type: 'int', input: 'number'}
             ]
         }
     };
@@ -673,19 +673,29 @@ def render_control_tab(title: str = "Contrôle") -> str:
         paramDefs.forEach(function(p) {
             var val = values[p.key];
             if (val === undefined || val === null) val = p.min;
-            var displayVal = p.type === 'float' ? parseFloat(val).toFixed(3) : parseInt(val);
             html += '<div class="param-row">';
             html += '<label for="param_' + p.key + '">' + p.label + '</label>';
-            html += '<input id="param_' + p.key + '" type="range"';
-            html += ' min="' + p.min + '" max="' + p.max + '" step="' + p.step + '"';
-            html += ' value="' + val + '">';
-            html += '<span class="param-value" id="param_' + p.key + '_val">' + displayVal + '</span>';
+            if (p.input === 'number') {
+                // Champ numérique direct (précision fine pour PID)
+                html += '<input id="param_' + p.key + '" type="number"';
+                html += ' min="' + p.min + '" max="' + p.max + '" step="' + p.step + '"';
+                html += ' value="' + val + '"';
+                html += ' style="flex:2; padding:6px 8px; border-radius:8px; border:2px solid #B5FFFC; font-weight:bold; font-size:0.95rem; text-align:center;">';
+            } else {
+                // Slider classique
+                var displayVal = p.type === 'float' ? parseFloat(val).toFixed(3) : parseInt(val);
+                html += '<input id="param_' + p.key + '" type="range"';
+                html += ' min="' + p.min + '" max="' + p.max + '" step="' + p.step + '"';
+                html += ' value="' + val + '">';
+                html += '<span class="param-value" id="param_' + p.key + '_val">' + displayVal + '</span>';
+            }
             html += '</div>';
         });
         container.innerHTML = html;
 
-        // Bind live updates
+        // Bind live updates (sliders only)
         paramDefs.forEach(function(p) {
+            if (p.input === 'number') return;
             var input = document.getElementById('param_' + p.key);
             var valEl = document.getElementById('param_' + p.key + '_val');
             if (!input || !valEl) return;

@@ -25,6 +25,8 @@ Détection de perte de ligne :
     voient du noir (route) → la ligne est perdue → arrêt.
 """
 
+import time
+
 from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
 
@@ -72,6 +74,13 @@ class PIDIRController(ControllerBase):
         self._calibrating = False
         self._calibration_buffer = []
 
+        # Détection d'oscillation (pour trouver Tu)
+        self._osc_zero_crossings = []  # timestamps des changements de signe de correction
+        self._osc_prev_sign = 0        # signe précédent de la correction (+1, -1, 0)
+        self._osc_tu = None            # période d'oscillation détectée (secondes)
+        self._osc_min_crossings = 6    # min de zero-crossings pour valider Tu
+        self._osc_max_variation = 0.3  # variation max entre périodes (30%) pour considérer stable
+
         # Debug
         self._last_error = 0.0
         self._last_correction = 0.0
@@ -93,6 +102,10 @@ class PIDIRController(ControllerBase):
         self._integral = 0.0
         self._prev_error = 0.0
         self._line_lost = False
+        # Reset oscillation detection
+        self._osc_zero_crossings = []
+        self._osc_prev_sign = 0
+        self._osc_tu = None
         # Lancer l'auto-calibration sur les N premiers ticks
         self._calibrating = True
         self._calibration_buffer = []
@@ -170,6 +183,9 @@ class PIDIRController(ControllerBase):
         correction = max(-self._max_correction, min(self._max_correction, correction))
         self._last_correction = correction
 
+        # Détection d'oscillation : tracker les changements de signe de la correction
+        self._track_oscillation(correction)
+
         # Commande différentielle (correction > 0 → tourne à droite)
         left_speed = self._base_speed + correction
         right_speed = self._base_speed - correction
@@ -179,6 +195,52 @@ class PIDIRController(ControllerBase):
         right_speed = max(-self.MOTOR_SPEED_MAX, min(self.MOTOR_SPEED_MAX, right_speed))
 
         return MotorCommand.make_speed(left_speed, right_speed)
+
+    # ------------------------------------------------------------------
+    #  Détection d'oscillation (mesure de Tu pour Ziegler-Nichols)
+    # ------------------------------------------------------------------
+
+    def _track_oscillation(self, correction):
+        """Détecte les oscillations en suivant les changements de signe de la correction.
+
+        Quand la correction change de signe de façon régulière (période stable),
+        on en déduit Tu. Un cycle complet = 2 zero-crossings (positif→négatif→positif).
+        """
+        if abs(correction) < 0.001:
+            return  # ignorer les valeurs quasi-nulles
+
+        current_sign = 1 if correction > 0 else -1
+
+        if self._osc_prev_sign != 0 and current_sign != self._osc_prev_sign:
+            # Changement de signe détecté
+            now = time.monotonic()
+            self._osc_zero_crossings.append(now)
+
+            # Garder seulement les crossings récents (dernières 10s)
+            cutoff = now - 10.0
+            self._osc_zero_crossings = [t for t in self._osc_zero_crossings if t > cutoff]
+
+            # Calculer Tu si assez de crossings
+            if len(self._osc_zero_crossings) >= self._osc_min_crossings:
+                # Intervalles entre crossings consécutifs
+                intervals = []
+                for i in range(1, len(self._osc_zero_crossings)):
+                    intervals.append(self._osc_zero_crossings[i] - self._osc_zero_crossings[i - 1])
+
+                mean_interval = sum(intervals) / len(intervals)
+                if mean_interval > 0.01:
+                    # Vérifier la stabilité des intervalles
+                    max_dev = max(abs(iv - mean_interval) for iv in intervals)
+                    if max_dev / mean_interval <= self._osc_max_variation:
+                        # Tu = période complète = 2 x intervalle moyen entre crossings
+                        tu = mean_interval * 2.0
+                        if self._osc_tu is None or abs(tu - self._osc_tu) > 0.01:
+                            self._osc_tu = tu
+                            print("[PID_IR] Oscillation détectée! Tu = {:.3f}s ({:.1f} ticks à 20Hz)".format(
+                                tu, tu * 20))
+                    else:
+                        self._osc_tu = None  # oscillations instables
+        self._osc_prev_sign = current_sign
 
     # ------------------------------------------------------------------
     #  Debug & tuning
@@ -197,6 +259,7 @@ class PIDIRController(ControllerBase):
             "calibrating": self._calibrating,
             "line_lost": self._line_lost,
             "integral": self._integral,
+            "oscillation_Tu": self._osc_tu,
         }
 
     def get_params(self):
