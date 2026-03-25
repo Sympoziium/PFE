@@ -13,10 +13,21 @@ import torch
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 from pathlib import Path
 
-# Indices des features dans le vecteur 27-dim pour lesquelles calculer un delta temporel
-# delta[t] = state[t] - state[t-1], approxime les dérivées (vitesse de changement)
-DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18]  # IR_bot_R, IR_bot_L, IR_diff, IR_sum, gyro_z
-DELTA_FEATURE_NAMES = ['IR_bot_R_delta', 'IR_bot_L_delta', 'IR_diff_delta', 'IR_sum_delta', 'gyro_z_delta']
+# Features engineered ajoutees au vecteur de base (27-dim -> 29-dim)
+ENGINEERED_FEATURE_NAMES = ['line_position', 'line_confidence']
+
+# Indices des features pour lesquelles calculer des deltas temporels
+# Note: indices 27-28 sont les features engineered (line_position, line_confidence)
+# ajoutees par compute_line_features() avant l'appel a compute_deltas()
+DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 27, 28]
+DELTA_FEATURE_NAMES = [
+    'IR_bot_R_delta', 'IR_bot_L_delta', 'IR_diff_delta', 'IR_sum_delta', 'gyro_z_delta',
+    'line_pos_delta', 'line_conf_delta',
+]
+
+# Deltas multi-pas: 3 pas d'historique avec ponderation exponentielle
+DELTA_STEPS = 3
+DELTA_WEIGHTS = [1.0, 0.5, 0.25]  # Plus recent = plus important
 
 
 class ZumiControlDataset(Dataset):
@@ -114,48 +125,103 @@ class ZumiControlDataset(Dataset):
         self.labels = self.labels[keep]
         print(f"[Dataset] Deduplication: {n_removed} doublons retires ({len(self)} restants)")
 
-    def compute_deltas(self, delta_indices: list = None):
-        """Calcule les features temporelles delta[t] = state[t] - state[t-1].
+    def compute_line_features(self):
+        """Ajoute des features engineered pour le suivi de ligne.
+
+        Calcule a partir des capteurs IR bottom (indices 1 et 3 du vecteur 27-dim):
+        - line_position: position laterale normalisee [-1, 1], robuste aux variations
+          de luminosite. Positif = ligne a gauche, negatif = ligne a droite.
+        - line_confidence: intensite de la detection de ligne. Fort quand la ligne
+          est clairement d'un cote, faible quand centree ou absente.
+
+        Doit etre appelee AVANT compute_deltas() pour que les deltas
+        puissent etre calcules sur ces nouvelles features.
+        """
+        ir_bot_r = self.captures[:, 1]  # IR_bottom_right
+        ir_bot_l = self.captures[:, 3]  # IR_bottom_left
+
+        # Position laterale normalisee: invariant a la luminosite ambiante
+        line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
+
+        # Confiance: ratio du differentiel sur la moyenne
+        line_conf = np.abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
+
+        new_features = np.column_stack([line_pos, line_conf]).astype(np.float32)
+        original_dim = self.captures.shape[1]
+        self.captures = np.hstack([self.captures, new_features])
+
+        print(f"[Dataset] Features engineered: {len(ENGINEERED_FEATURE_NAMES)} ajoutees "
+              f"({original_dim}-dim -> {self.captures.shape[1]}-dim): "
+              + ", ".join(ENGINEERED_FEATURE_NAMES))
+
+    def compute_deltas(self, delta_indices: list = None, n_steps: int = None, weights: list = None):
+        """Calcule les features temporelles multi-pas avec ponderation exponentielle.
+
+        Pour chaque pas k (1..n_steps), calcule:
+          delta_k[t] = (state[t] - state[t-k]) * weights[k-1]
 
         Les deltas approximent les derivees temporelles (vitesse de changement)
         et sont appeles AVANT le shuffle pour que les echantillons consecutifs
         soient coherents. Chaque delta est ensuite attache a son echantillon.
 
         Args:
-            delta_indices: Indices des features source dans le vecteur original.
+            delta_indices: Indices des features source dans le vecteur.
                           Par defaut DELTA_FEATURE_INDICES.
+            n_steps: Nombre de pas d'historique (defaut: DELTA_STEPS = 3).
+            weights: Poids par pas (defaut: DELTA_WEIGHTS = [1.0, 0.5, 0.25]).
         """
         if delta_indices is None:
             delta_indices = DELTA_FEATURE_INDICES
+        if n_steps is None:
+            n_steps = DELTA_STEPS
+        if weights is None:
+            weights = DELTA_WEIGHTS
 
         if len(self.captures) < 2:
             return
 
-        # Calculer les deltas pour les features selectionnees
-        selected = self.captures[:, delta_indices]
-        deltas = np.zeros_like(selected)
-        deltas[1:] = selected[1:] - selected[:-1]
+        # Detecter les frontieres de sequence AVANT de calculer les deltas
+        # On utilise le delta pas-1 sur les features IR seulement (indices bruts 0-7)
+        selected_step1 = self.captures[:, delta_indices]
+        delta_step1 = np.zeros_like(selected_step1)
+        delta_step1[1:] = selected_step1[1:] - selected_step1[:-1]
 
-        # Detecter les frontieres de sequence (transition entre sessions d'echantillonnage)
-        # On utilise uniquement les features IR (indices 0-3 dans delta_indices) pour la detection
-        # car gyro_z peut varier enormement au sein d'une meme session.
-        # Seuil: un saut > 150 en L2 sur les IR seulement indique un changement de session.
-        ir_delta_cols = [j for j, idx in enumerate(delta_indices) if idx <= 7]  # IR features (indices 0-7)
+        ir_delta_cols = [j for j, idx in enumerate(delta_indices) if idx <= 7]
         if ir_delta_cols:
-            ir_jumps = np.linalg.norm(deltas[:, ir_delta_cols], axis=1)
+            ir_jumps = np.linalg.norm(delta_step1[:, ir_delta_cols], axis=1)
             boundary_mask = ir_jumps > 150.0
         else:
-            boundary_mask = np.zeros(len(deltas), dtype=bool)
+            boundary_mask = np.zeros(len(self.captures), dtype=bool)
         boundary_mask[0] = True  # premier echantillon = pas de precedent
         n_boundaries = int(np.sum(boundary_mask))
-        deltas[boundary_mask] = 0.0
 
-        # Ajouter les deltas comme nouvelles colonnes
-        self.captures = np.hstack([self.captures, deltas.astype(np.float32)])
+        # Propager les frontieres: pour un delta de pas k, zeroiser si une
+        # frontiere existe dans les k echantillons precedents
+        boundary_indices = np.where(boundary_mask)[0]
 
-        n_deltas = len(delta_indices)
-        print(f"[Dataset] Deltas temporels: {n_deltas} features ajoutees "
-              f"({self.captures.shape[1] - n_deltas}-dim -> {self.captures.shape[1]}-dim)"
+        # Calculer les deltas multi-pas
+        original_dim = self.captures.shape[1]
+        all_deltas = []
+        for step in range(1, n_steps + 1):
+            selected = self.captures[:, delta_indices]
+            delta = np.zeros_like(selected)
+            delta[step:] = (selected[step:] - selected[:-step]) * weights[step - 1]
+
+            # Zeroiser les frontieres: pour le pas k, zeroiser les indices
+            # qui ont une frontiere dans [t-k+1, t]
+            for bi in boundary_indices:
+                start = bi
+                end = min(bi + step, len(delta))
+                delta[start:end] = 0.0
+
+            all_deltas.append(delta.astype(np.float32))
+
+        self.captures = np.hstack([self.captures] + all_deltas)
+
+        n_total_deltas = len(delta_indices) * n_steps
+        print(f"[Dataset] Deltas temporels: {n_total_deltas} features ajoutees "
+              f"({original_dim}-dim -> {self.captures.shape[1]}-dim, "
+              f"{len(delta_indices)} features x {n_steps} pas)"
               + (f", {n_boundaries} frontieres de sequence detectees" if n_boundaries > 0 else ""))
 
     def compute_sample_weights(self) -> np.ndarray:
@@ -257,8 +323,9 @@ def create_data_loaders(
     Pipeline complet:
       1. Chargement des donnees
       2. Deduplication des echantillons consecutifs quasi-identiques
-      3. Calcul des deltas temporels (avant shuffle, sur echantillons consecutifs)
-      4. Calcul des poids d'echantillonnage equilibre
+      3. Features engineered (line_position, line_confidence)
+      4. Deltas temporels multi-pas (7 features x 3 pas = 21 colonnes)
+      5. Calcul des poids d'echantillonnage equilibre
       6. Application du masque de features mortes
       7. Split train/validation
       8. Normalisation z-score (stats calculees sur train uniquement)
@@ -283,24 +350,29 @@ def create_data_loaders(
     if deduplicate:
         dataset.deduplicate()
 
-    # 2. Deltas temporels (avant shuffle, sur echantillons consecutifs)
+    # 2. Features engineered (27-dim -> 29-dim)
+    dataset.compute_line_features()
+
+    # 3. Deltas temporels multi-pas (avant shuffle, sur echantillons consecutifs)
     dataset.compute_deltas()
 
-    # 3. Calculer les poids d'echantillonnage (avant masque, base sur les labels)
+    # 4. Calculer les poids d'echantillonnage (avant masque, base sur les labels)
     sample_weights = None
     if balanced_sampling:
         sample_weights = dataset.compute_sample_weights()
 
     # 5. Appliquer le masque de features (retire les features mortes)
     #    Le masque est calcule sur les features originales (27-dim).
-    #    Les delta features (ajoutees apres) sont toujours actives, on les inclut.
+    #    Les features engineered et deltas (ajoutees apres) sont toujours actives.
     if feature_mask is not None:
-        n_deltas = len(DELTA_FEATURE_INDICES)
-        original_dim = dataset.captures.shape[1] - n_deltas
-        delta_indices = list(range(original_dim, original_dim + n_deltas))
-        extended_mask = feature_mask + delta_indices
+        n_engineered = len(ENGINEERED_FEATURE_NAMES)
+        n_deltas = len(DELTA_FEATURE_INDICES) * DELTA_STEPS
+        n_extra = n_engineered + n_deltas
+        original_dim = dataset.captures.shape[1] - n_extra
+        extra_indices = list(range(original_dim, original_dim + n_extra))
+        extended_mask = feature_mask + extra_indices
         dataset.apply_feature_mask(extended_mask)
-        dataset.feature_mask = extended_mask  # masque etendu (inclut les deltas)
+        dataset.feature_mask = extended_mask
     else:
         dataset.feature_mask = None
 

@@ -379,6 +379,48 @@ def analyze_dataset(captures, labels, save_dir=None):
 
     print()
 
+    # === FEATURES ENGINEERED ===
+    print("[ENGINEERED] Analyse des features de suivi de ligne (calculees a la volee):")
+    ir_bot_l = captures[:, 3]
+    ir_bot_r = captures[:, 1]
+    line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
+    line_conf = np.abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
+
+    corr_pos_steering = np.corrcoef(line_pos, steering_cmd)[0, 1]
+    corr_conf_abs_steering = np.corrcoef(line_conf, np.abs(steering_cmd))[0, 1]
+    spear_pos, _ = spearmanr(line_pos, steering_cmd)
+
+    print(f"  line_position (normalise): mean={line_pos.mean():.4f}, std={line_pos.std():.4f}")
+    print(f"  line_confidence:           mean={line_conf.mean():.4f}, std={line_conf.std():.4f}")
+    print(f"  Pearson  line_pos vs steering:    {corr_pos_steering:+.4f}")
+    print(f"  Spearman line_pos vs steering:    {spear_pos:+.4f}")
+    print(f"  Pearson  line_conf vs |steering|: {corr_conf_abs_steering:+.4f}")
+    print(f"  (comparaison IR_diff brut Pearson: {corr_diff_steering:+.4f})")
+    if abs(corr_pos_steering) > abs(corr_diff_steering):
+        print(f"  [OK] line_position ameliore la correlation vs IR_diff brut "
+              f"({abs(corr_pos_steering):.4f} > {abs(corr_diff_steering):.4f})")
+    else:
+        print(f"  [INFO] line_position n'ameliore pas la correlation lineaire vs IR_diff brut")
+    print()
+
+    # === TEST D'IMPACT DES FEATURES ===
+    print("[FEATURE-IMPACT] Evaluation rapide de l'apport des features engineered:")
+    try:
+        from sklearn.linear_model import LinearRegression
+        from sklearn.model_selection import cross_val_score
+
+        base_features = captures[:, [0, 1, 2, 3, 4, 5, 6, 7]]
+        enriched_features = np.column_stack([base_features, line_pos, line_conf])
+
+        for feat_name, X in [("IR bruts (8 feat)", base_features),
+                              ("IR + engineered (10 feat)", enriched_features)]:
+            scores = cross_val_score(LinearRegression(), X, labels, cv=5, scoring='r2')
+            print(f"  {feat_name:30s}: R2={scores.mean():.4f} (+/- {scores.std():.4f})")
+        print()
+    except ImportError:
+        print("  [SKIP] sklearn non disponible, test d'impact ignore.")
+        print()
+
     # === ECHELLE DES LABELS ===
     label_max = max(abs(labels.min()), abs(labels.max()))
     print(f"[SCALE] Echelle des labels:")

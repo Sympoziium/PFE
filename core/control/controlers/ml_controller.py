@@ -9,6 +9,7 @@ le SensorState en vecteur, passe ce vecteur à un modèle d'inférence (TFLite),
 et convertit la sortie en MotorCommand.
 """
 
+import collections
 import numpy as np
 from core.control.controlers.controller_base import ControllerBase
 from core.control.IO_drivers.motor_command import MotorCommand
@@ -26,7 +27,10 @@ class MLController(ControllerBase):
 
     # Indices des features pour le calcul des deltas temporels
     # Doit correspondre à DELTA_FEATURE_INDICES dans dataset.py
-    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18]  # IR_bot_R, IR_bot_L, IR_diff, IR_sum, gyro_z
+    # Note: indices 27-28 sont line_position et line_confidence (ajoutees dynamiquement)
+    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 27, 28]
+    DELTA_STEPS = 3
+    DELTA_WEIGHTS = [1.0, 0.5, 0.25]
 
     def __init__(self, vision_adapter, model_path=None):
         """
@@ -47,8 +51,8 @@ class MLController(ControllerBase):
         self._feature_std = None
         self._feature_mask = None
 
-        # État précédent pour calcul des deltas temporels
-        self._prev_raw_vector = None
+        # Buffer circulaire pour calcul des deltas temporels multi-pas
+        self._prev_vectors = collections.deque(maxlen=self.DELTA_STEPS)
 
         # Debug info
         self._last_input = None
@@ -221,14 +225,26 @@ class MLController(ControllerBase):
 
         raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
 
-        # Calculer les deltas temporels (state[t] - state[t-1])
-        deltas = np.zeros(len(self.DELTA_FEATURE_INDICES), dtype=np.float32)
-        if self._prev_raw_vector is not None:
-            deltas = raw_vector[self.DELTA_FEATURE_INDICES] - self._prev_raw_vector[self.DELTA_FEATURE_INDICES]
-        self._prev_raw_vector = raw_vector.copy()
+        # Features engineered: line_position et line_confidence
+        ir_bot_r = raw_vector[1]  # IR_bottom_right
+        ir_bot_l = raw_vector[3]  # IR_bottom_left
+        line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
+        line_conf = abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
+        raw_vector = np.concatenate([raw_vector, np.array([line_pos, line_conf], dtype=np.float32)])
+        # raw_vector est maintenant 29-dim
 
-        # Concaténer: 27-dim + 5 deltas = 32-dim
-        full_vector = np.concatenate([raw_vector, deltas])
+        # Calculer les deltas temporels multi-pas
+        all_deltas = []
+        for step, weight in enumerate(self.DELTA_WEIGHTS):
+            d = np.zeros(len(self.DELTA_FEATURE_INDICES), dtype=np.float32)
+            if step < len(self._prev_vectors):
+                prev = self._prev_vectors[-(step + 1)]
+                d = (raw_vector[self.DELTA_FEATURE_INDICES] - prev[self.DELTA_FEATURE_INDICES]) * weight
+            all_deltas.append(d)
+        self._prev_vectors.append(raw_vector.copy())
+
+        # Concaténer: 29-dim + 7*3 deltas = 50-dim
+        full_vector = np.concatenate([raw_vector] + all_deltas)
 
         # Appliquer le masque (retirer les features mortes)
         if self._feature_mask is not None:

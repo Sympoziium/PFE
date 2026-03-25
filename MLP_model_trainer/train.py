@@ -615,10 +615,11 @@ def show_main_menu(script_dir: Path) -> tuple:
     print(f"    [1] Agreger les sequences (consolide tous les scenarios -> data/)")
     print(f"    [2] Analyser le dataset (statistiques + graphiques)")
     print(f"    [3] Entrainer un modele")
+    print(f"    [4] Simulation & evaluation avancee")
     print(f"    [Q] Quitter")
 
     # Validation du choix
-    valid_choices = {'1', '2', '3', 'Q'}
+    valid_choices = {'1', '2', '3', '4', 'Q'}
 
     while True:
         choice = input(f"\n  Choix : ").strip().upper()
@@ -658,9 +659,11 @@ def suggest_training_profile(dataset) -> dict:
 
     # Appliquer le masque si >0 features mortes
     feature_mask = active_indices if n_dead > 0 else None
-    # Le pipeline ajoute 5 delta features (IR_bot_R/L, IR_diff, IR_sum, gyro_z)
-    n_deltas = 5
-    effective_dim = (n_active if feature_mask else raw_dim) + n_deltas
+    # Le pipeline ajoute 2 features engineered + 7 features x 3 pas = 21 deltas
+    from dataset import ENGINEERED_FEATURE_NAMES, DELTA_FEATURE_INDICES, DELTA_STEPS
+    n_engineered = len(ENGINEERED_FEATURE_NAMES)
+    n_deltas = len(DELTA_FEATURE_INDICES) * DELTA_STEPS
+    effective_dim = (n_active if feature_mask else raw_dim) + n_engineered + n_deltas
 
     # Budget de parametres: viser ratio 1:5 a 1:10
     target_ratio = 7  # milieu de la fourchette
@@ -733,15 +736,20 @@ def choose_training_profile(dataset=None) -> dict:
     if dataset is not None:
         suggested, n_params, ratio, n_active, warnings = suggest_training_profile(dataset)
 
+        from dataset import ENGINEERED_FEATURE_NAMES, DELTA_FEATURE_INDICES, DELTA_STEPS
+        n_eng = len(ENGINEERED_FEATURE_NAMES)
+        n_dlt = len(DELTA_FEATURE_INDICES) * DELTA_STEPS
+
         mask = suggested.get('feature_mask')
-        n_deltas = 5  # delta features ajoutees par le pipeline
         base_active = n_active
-        effective_dim = (len(mask) if mask else dataset.input_dim) + n_deltas
+        effective_dim = (len(mask) if mask else dataset.input_dim) + n_eng + n_dlt
 
         print(f"\n  Profil suggere (base sur l'analyse du dataset) :")
-        print(f"    Dataset: {len(dataset)} echantillons, {dataset.input_dim} features ({base_active} actives + {n_deltas} deltas)")
+        print(f"    Dataset: {len(dataset)} echantillons, {dataset.input_dim} features "
+              f"({base_active} actives + {n_eng} engineered + {n_dlt} deltas)")
         if mask:
-            print(f"    Masque: {dataset.input_dim}-dim -> {base_active}-dim actives + {n_deltas} deltas = {effective_dim}-dim")
+            print(f"    Masque: {dataset.input_dim}-dim -> {base_active}-dim actives "
+                  f"+ {n_eng} eng + {n_dlt} deltas = {effective_dim}-dim")
         print(f"    Architecture: {effective_dim} -> {' -> '.join(map(str, suggested['hidden_dims']))} -> 2")
         print(f"    Parametres: {n_params:,} (ratio samples/params: {ratio:.1f}:1)")
         print(f"    Epochs: {suggested['epochs']}, Batch: {suggested['batch_size']}, LR: {suggested['lr']}")
@@ -1230,6 +1238,10 @@ def main():
         elif choice == '3':
             run_training(script_dir, state)
             input("\n  Appuyez sur Entree pour continuer...")
+
+        elif choice == '4':
+            from simulate import run_simulation_menu
+            run_simulation_menu(script_dir, state)
 
         elif choice == 'Q':
             print("\n  Au revoir!")
