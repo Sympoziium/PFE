@@ -158,29 +158,6 @@ class ZumiControlDataset(Dataset):
               f"({self.captures.shape[1] - n_deltas}-dim -> {self.captures.shape[1]}-dim)"
               + (f", {n_boundaries} frontieres de sequence detectees" if n_boundaries > 0 else ""))
 
-    def rescale_labels(self, old_max: float, new_max: float):
-        """Re-encode les labels pour un nouveau MOTOR_SPEED_MAX.
-
-        Les labels existants ont ete normalises par old_max (ex: 100).
-        On les convertit pour new_max (ex: 50) pour mieux utiliser la plage [-1, 1].
-
-        Args:
-            old_max: Ancien MOTOR_SPEED_MAX utilise lors de l'echantillonnage.
-            new_max: Nouveau MOTOR_SPEED_MAX.
-        """
-        if old_max == new_max:
-            return
-
-        scale = old_max / new_max
-        rescaled = self.labels * scale
-        n_clipped = int(np.sum(np.abs(rescaled) > 1.0))
-        self.labels = np.clip(rescaled, -1.0, 1.0)
-        print(f"[Dataset] Labels rescales: MAX {old_max} -> {new_max} "
-              f"(facteur {scale:.1f}x, plage effective [{self.labels.min():.3f}, {self.labels.max():.3f}])")
-        if n_clipped > 0:
-            print(f"[Dataset] {n_clipped} valeurs clippees a [-1, 1] "
-                  f"(vitesses > {new_max} dans les donnees originales)")
-
     def compute_sample_weights(self) -> np.ndarray:
         """Calcule les poids par echantillon pour equilibrer les categories d'actions.
 
@@ -273,7 +250,6 @@ def create_data_loaders(
     seed: int = 42,
     feature_mask: list = None,
     deduplicate: bool = True,
-    label_rescale: tuple = None,
     balanced_sampling: bool = True
 ) -> tuple:
     """Crée les DataLoaders pour l'entraînement et la validation.
@@ -282,8 +258,7 @@ def create_data_loaders(
       1. Chargement des donnees
       2. Deduplication des echantillons consecutifs quasi-identiques
       3. Calcul des deltas temporels (avant shuffle, sur echantillons consecutifs)
-      4. Rescaling des labels (migration MOTOR_SPEED_MAX)
-      5. Calcul des poids d'echantillonnage equilibre
+      4. Calcul des poids d'echantillonnage equilibre
       6. Application du masque de features mortes
       7. Split train/validation
       8. Normalisation z-score (stats calculees sur train uniquement)
@@ -297,7 +272,6 @@ def create_data_loaders(
         seed: Graine aléatoire pour reproductibilité
         feature_mask: Liste d'indices de features a conserver (None = toutes)
         deduplicate: Retirer les doublons consecutifs (defaut: True)
-        label_rescale: Tuple (old_max, new_max) pour rescaler les labels (None = pas de rescaling)
         balanced_sampling: Utiliser WeightedRandomSampler pour equilibrer les categories (defaut: True)
 
     Returns:
@@ -312,12 +286,7 @@ def create_data_loaders(
     # 2. Deltas temporels (avant shuffle, sur echantillons consecutifs)
     dataset.compute_deltas()
 
-    # 3. Rescaling des labels (migration MOTOR_SPEED_MAX)
-    if label_rescale is not None:
-        old_max, new_max = label_rescale
-        dataset.rescale_labels(old_max, new_max)
-
-    # 4. Calculer les poids d'echantillonnage (avant masque, base sur les labels)
+    # 3. Calculer les poids d'echantillonnage (avant masque, base sur les labels)
     sample_weights = None
     if balanced_sampling:
         sample_weights = dataset.compute_sample_weights()

@@ -379,16 +379,10 @@ def analyze_dataset(captures, labels, save_dir=None):
 
     print()
 
-    # === DETECTION MOTOR_SPEED_MAX ===
+    # === ECHELLE DES LABELS ===
     label_max = max(abs(labels.min()), abs(labels.max()))
-    print(f"[SCALE] Detection de l'echelle des labels:")
-    print(f"  Max |label| = {label_max:.4f}")
-    if label_max < 0.55:
-        print(f"  -> Labels encodes avec MOTOR_SPEED_MAX=100 (vitesse max={label_max*100:.1f})")
-        print(f"  -> Rescaling automatique vers MAX=50 a l'entrainement (facteur 2x)")
-        print(f"     Nouvelle plage: [{labels.min()*2:.3f}, {labels.max()*2:.3f}]")
-    else:
-        print(f"  -> Labels probablement encodes avec MOTOR_SPEED_MAX=50")
+    print(f"[SCALE] Echelle des labels:")
+    print(f"  Max |label| = {label_max:.4f} (vitesse max={label_max*50:.1f} avec MOTOR_SPEED_MAX=50)")
     print()
 
     # === RECOMMANDATIONS ===

@@ -13,7 +13,7 @@ import builtins
 # -----------------------------------------------------------------------------
 # Gestion des profils de verbosité (désactive les logs de Flask/Werkzeug)
 # -----------------------------------------------------------------------------
-VERBOSITY_LEVEL = "verbose"  # Options: "silent", "prints_only", "verbose"
+VERBOSITY_LEVEL = "silent"  # Options: "silent", "prints_only", "verbose"
 
 _original_print = builtins.print
 
@@ -28,7 +28,7 @@ def _verbosity_print(*args, **kwargs):
     # Messages essentiels conservés dans tous les modes (Boot et Profilage Système)
     is_essential = any(tag in out_text for tag in [
         "[Zumi] CPU", "[RAM]", "[Timestamp]", "[BOOT]", 
-        "DÉMARRAGE DU ZUMI", "Flask server", "Arrêt propre"
+        "DÉMARRAGE DU ZUMI", "Flask server", "Arrêt propre", "[Exception]"
     ])
 
     if VERBOSITY_LEVEL == "silent":

@@ -712,19 +712,6 @@ def suggest_training_profile(dataset) -> dict:
     else:
         epochs, batch_size, lr, wd = 80, 128, 5e-4, 1e-4
 
-    # Detecter si les labels ont ete encodes avec l'ancien MOTOR_SPEED_MAX=100
-    # et proposer le rescaling vers le nouveau MAX=50
-    label_max = max(abs(dataset.labels.min()), abs(dataset.labels.max()))
-    label_rescale = None
-    if label_max < 0.55:
-        # Labels concentres dans [-0.55, 0.55] → probablement encodes avec MAX=100
-        label_rescale = (100.0, 50.0)
-        warnings.append(
-            f"[INFO] Labels detectes comme encodes avec MOTOR_SPEED_MAX=100\n"
-            f"           (max |label| = {label_max:.3f}, soit vitesse {label_max*100:.1f})\n"
-            f"           Rescaling automatique vers MAX=50 (facteur 2x)"
-        )
-
     profile = {
         'name': 'Adaptatif',
         'description': f'Adapte au dataset ({n_samples} samples, {n_active} features actives)',
@@ -734,7 +721,6 @@ def suggest_training_profile(dataset) -> dict:
         'lr': lr,
         'weight_decay': wd,
         'feature_mask': feature_mask,
-        'label_rescale': label_rescale,
     }
 
     return profile, n_params, actual_ratio, n_active, warnings
@@ -778,9 +764,8 @@ def choose_training_profile(dataset=None) -> dict:
             return suggested
         elif c == '2':
             config = configure_custom_profile()
-            # Hériter label_rescale et feature_mask du profil suggéré
+            # Hériter feature_mask du profil suggéré
             if suggested:
-                config['label_rescale'] = suggested.get('label_rescale')
                 config['feature_mask'] = suggested.get('feature_mask')
             # Afficher un avertissement si le custom est risque
             if dataset is not None:
@@ -1026,17 +1011,15 @@ def run_training(script_dir: Path, state: dict):
     print("\n  Chargement de la configuration d'environnement...")
     load_environment_config(script_dir)
 
-    # Chargement des donnees avec dedup + rescale + masque + z-score + echantillonnage equilibre
+    # Chargement des donnees avec dedup + masque + z-score + echantillonnage equilibre
     feature_mask = config.get('feature_mask')
-    label_rescale = config.get('label_rescale')
-    print("\n  Chargement des donnees (dedup + deltas + rescale + z-score + equilibrage)...")
+    print("\n  Chargement des donnees (dedup + deltas + z-score + equilibrage)...")
     train_loader, val_loader, dataset = create_data_loaders(
         str(data_dir),
         batch_size=config.get('batch_size', 32),
         seed=seed,
         feature_mask=feature_mask,
         deduplicate=True,
-        label_rescale=label_rescale,
         balanced_sampling=True
     )
 
