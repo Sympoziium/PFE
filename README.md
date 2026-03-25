@@ -14,12 +14,14 @@ Ce projet s'inscrit dans la continuité d'un PFE multi-session dont l'objectif e
 
 | # | Objectif | État |
 |---|----------|------|
-| 1 | **Modularisation** — Refactoriser le code monolithique de l'équipe précédente en une architecture modulaire, testable et extensible. | Complété |
-| 2 | **Vision artificielle** — Implémenter et comparer plusieurs détecteurs d'objets (HSV, Haar/LBP cascades) pour la signalisation routière. | En cours |
-| 3 | **Interface opérateur** — Fournir un serveur web Flask embarqué pour le contrôle du robot, le live feed caméra et le diagnostic de détection. | Complété |
-| 4 | **Entraînement de modèles** — Développer un pipeline automatisé d'entraînement de cascades Haar/LBP (PC-side) avec évaluation et hard negative mining. | Complété |
-| 5 | **Contrôle par apprentissage** — Implémenter un contrôleur MLP (Multilayer Perceptron) avec pipeline d'entraînement PyTorch et déploiement TFLite. | Complété |
-| 6 | **Continuité** — Poursuivre l'amélioration du projet en s'appuyant sur les travaux des équipes précédentes. | En cours |
+| 1 | **Migration matérielle** — Migrer du Pi Zero W (V1) au Pi Zero 2W (V2) : OS Bookworm 64-bit, Python 3.11, compatibilité SDK Zumi, drivers OLED et caméra. | Complété |
+| 2 | **Modularisation** — Refactoriser le code monolithique en architecture modulaire (pattern Strategy) avec contrôleurs interchangeables et DTOs standardisés. | Complété |
+| 3 | **Vision artificielle** — Implémenter et valider les détecteurs d'objets (HSV, Haar/LBP cascades) pour la signalisation routière, avec estimation de distance. | Complété |
+| 4 | **Interface opérateur** — Serveur web Flask embarqué : contrôle du robot, live feed caméra, diagnostic de détection, réglage PID et collecte de données. | Complété |
+| 5 | **Entraînement Haar/LBP** — Pipeline automatisé d'entraînement de cascades avec évaluation, hard negative mining et hard positive mining. | Complété |
+| 6 | **Contrôle par apprentissage** — Contrôleur MLP avec pipeline PyTorch complet (entraînement, normalisation z-score, conversion TFLite, déploiement embarqué). | Complété |
+| 7 | **Réseau AP+STA** — Point d'accès Wi-Fi permanent + connexion station simultanée via interface virtuelle sur puce unique. | Complété |
+| 8 | **Continuité** — Documentation complète, transfert de connaissances et préparation pour les sessions futures. | Complété |
 
 ---
 
@@ -33,50 +35,52 @@ PFE/
 ├── main.py                          # Point d'entrée principal (robot)
 ├── README.md
 ├── CHANGELOG.md                     # Historique des modifications
+├── ARCHITECTURE_CONTROLE.md         # Documentation architecture du module de contrôle
+├── MIGRATION_NOTES.md               # Journal de migration Pi Zero W → Pi Zero 2W
+├── requirements-robot.txt           # Dépendances Python (robot)
 │
 ├── script/                          # Scripts système embarqués
 │   ├── zumi_ap_setup.sh             # Configuration initiale du profil AP (une seule fois)
 │   ├── zumi_ap_sta_start.sh         # Démarrage AP+STA au boot (appelé par systemd)
 │   ├── zumi_wifi_config.sh          # Configuration interactive de la connexion STA
-│   └── zumi_prepare.sh              # [DEPRECATED — V1 uniquement] Arrêt services Robolink
+│   ├── setup_dns_rpi.sh             # Configuration DNS du Raspberry Pi
+│   ├── zumi-ap.service              # Service systemd pour le point d'accès
+│   └── zumi_prepare.sh              # [DEPRECATED — V1 uniquement]
 │
 ├── core/                            # Couche métier embarquée
 │   ├── camera/
-│   │   ├── __init__.py
 │   │   ├── camera_base.py           # Interface abstraite caméra
 │   │   ├── picam2.py                # Driver PiCamera2 (Raspberry Pi)
 │   │   └── zumi_camera.py           # Wrapper Zumi (RGB → BGR)
 │   │
 │   ├── control/
-│   │   ├── __init__.py
-│   │   ├── control_manager.py       # Orchestrateur (dynamique) des contrôleurs
-│   │   ├── controller_base.py       # Interface abstraite (pattern strategy)
-│   │   ├── controlers/              # Implémentations concrètes
-│   │   │   ├── line_follower_controller.py
-│   │   │   └── ml_controller.py     # Contrôleur prédictif par réseau de neurones 
-│   │   ├── IO_drivers/              # Couche traductrice robotique/framework avec DTOs
+│   │   ├── control_manager.py       # Orchestrateur pluggable des contrôleurs
+│   │   ├── controlers/              # Implémentations concrètes (pattern Strategy)
+│   │   │   ├── controller_base.py   # Interface abstraite contrôleur (ABC)
+│   │   │   ├── manual_controller.py # Contrôle manuel (joystick)
+│   │   │   ├── ml_controller.py     # Contrôleur prédictif MLP (TFLite)
+│   │   │   ├── pid_ir_controller.py # Contrôleur PID par capteurs infrarouges
+│   │   │   └── models/              # Modèles TFLite + stats de normalisation
+│   │   ├── IO_drivers/              # Couche traductrice robotique/framework (DTOs)
 │   │   │   ├── motor_command.py
 │   │   │   ├── motor_driver.py
 │   │   │   ├── sensor_driver.py
 │   │   │   └── sensor_state.py
-│   │   └── legacy/                  # Anciennes implémentations et algorithmes retirés
-│   │       ├── line_following_pid.py
-│   │       ├── line_following_state_machine.py
-│   │       └── pid_line_follower.py
+│   │   └── legacy/                  # Anciennes implémentations retirées
 │   │
 │   ├── hardware/
 │   │   ├── boot.py                  # Handshake Pi ↔ ATmega (patch compatibilité V2)
+│   │   ├── personality.py           # Expressions et personnalité du robot
 │   │   ├── screen.py                # Driver OLED (luma.oled — remplace Adafruit_SSD1306)
 │   │   └── postbootup.service       # Service systemd handshake (V2)
 │   │
 │   ├── robot/
-│   │   ├── __init__.py
 │   │   ├── robot_base.py            # Interface abstraite robot
 │   │   ├── robot_zumi.py            # Implémentation Zumi (moteurs, capteurs)
 │   │   └── Archive/                 # Code legacy conservé pour référence
 │   │
 │   └── vision/
-│       ├── vision_adapter.py        # Vecteurisateur numérique mathématique (Inférences ML)
+│       ├── vision_adapter.py        # Vectorisateur numérique (inférences ML)
 │       ├── vision_pipeline.py       # Orchestrateur : capture → détection → résultats
 │       └── detectors/
 │           ├── detector_base.py     # Classe de base pour tous les détecteurs
@@ -103,16 +107,22 @@ PFE/
 │   └── ...                          # Voir Haar_Classifier_model_trainer/README.md
 │
 ├── MLP_model_trainer/               # Pipeline d'entraînement MLP PyTorch (PC-side)
-│   ├── data/                        # Données d'entraînement (captures.jsonl + labels.jsonl)
+│   ├── sequences/                   # Séquences de conduite (captures.jsonl + labels.jsonl)
 │   ├── checkpoints/                 # Modèles sauvegardés (.pt)
 │   ├── export/                      # Modèles convertis (.onnx, .tflite)
 │   ├── dataset.py                   # Chargement JSONL → PyTorch DataLoader
 │   ├── model.py                     # Architecture MLP (Small/Medium/Large)
-│   ├── train.py                     # Script d'entraînement avec validation
+│   ├── train.py                     # Script d'entraînement interactif avec validation
 │   ├── convert_to_tflite.py         # Conversion PyTorch → ONNX → TFLite
+│   ├── validate_env.py              # Validation de l'environnement d'entraînement
+│   ├── aggregate_sequences.py       # Agrégation des séquences de conduite
+│   ├── analyze_dataset.py           # Analyse statistique du dataset
 │   ├── requirements.txt             # Dépendances Python
-│   ├── DEV_PLAN.md                  # Plan de développement
+│   ├── GUIDE_UTILISATION.md         # Guide d'utilisation complet
 │   └── TUTORIAL_MLP_PYTORCH.md      # Tutoriel complet PyTorch/MLP
+│
+├── Pont/                            # Code Arduino pour le pont (ATmega)
+│   └── Pont.ino
 │
 └── Doc/                             # Documentation interne
     ├── AIDE_MEMOIRE_GIT.md
@@ -128,7 +138,7 @@ PFE/
 | Principe | Application |
 |----------|-------------|
 | **Abstraction matérielle** | Les interfaces `camera_base` et `robot_base` découplent le matériel du reste du système. Un changement de caméra ou de plateforme robot n'impacte pas la logique applicative. |
-| **Couche de contrôle dédiée** | Le dossier `core/control/` centralise la logique de suivi de ligne (PID, machine d'états, drivers moteurs/capteurs) pour isoler le comportement de conduite du reste du système. |
+| **Couche de contrôle pluggable** | Le dossier `core/control/` utilise le pattern Strategy : chaque contrôleur hérite de `ControllerBase` et implémente `step(SensorState) → MotorCommand`. Le `ControlManager` orchestre le cycle lecture → inférence → exécution sans connaître les détails des contrôleurs. |
 | **Pipeline de vision modulaire** | `vision_pipeline.py` orchestre la capture et la détection sans connaître les détecteurs spécifiques. Chaque détecteur hérite de `detector_base` et peut être ajouté ou retiré sans modifier le pipeline. |
 | **Séparation entraînement / déploiement** | L'entraînement des modèles s'exécute sur PC (`Haar_Classifier_model_trainer/` pour les cascades, `MLP_model_trainer/` pour les réseaux de neurones). Seuls les artefacts (`.xml`, `.tflite`) sont déployés sur le robot. |
 | **Interface opérateur découplée** | Le serveur Flask communique avec le pipeline de vision via une API Python interne, sans dépendance directe au matériel. |
@@ -137,10 +147,9 @@ PFE/
 
 ## 3. Matériel
 
-> ⚠️ **Note de compatibilité — Session Hiver 2026**
-> Le projet est en cours de migration du Pi Zero W (V1) vers le Pi Zero 2W (V2).
-> Les deux configurations coexistent temporairement. Consulter la section [4. Démarrage rapide](#4-démarrage-rapide) correspondant à votre hardware.
-> Voir `MIGRATION_NOTES.md` pour le détail complet de la migration.
+> **Note — Session Hiver 2026**
+> La migration du Pi Zero W (V1) vers le Pi Zero 2W (V2) est **complétée**. Le V2 est désormais la plateforme active.
+> La section V1 ci-dessous est conservée pour référence. Voir `MIGRATION_NOTES.md` pour le journal complet de la migration.
 
 ### Pi Zero W — V1 (configuration originale Robolink)
 
@@ -271,29 +280,25 @@ python train.py --epochs 100 --model-size medium
 python convert_to_tflite.py --quantize
 
 # Déployer sur le robot
-scp export/zumi_mlp_quant.tflite pi@192.168.0.1:~/robot/models/
+scp export/zumi_mlp_quant.tflite pi@192.168.0.1:~/PFE/core/control/controlers/models/
 ```
 
 Voir [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md) pour le tutoriel complet.
 
 ---
 
-## 5. Gestion des branches — compatibilité V1/V2
+## 5. Gestion des branches
 
-La coexistence temporaire des deux configurations hardware impose une stratégie de branches explicite.
+La migration V1 → V2 est complétée. La branche `main` est désormais la référence pour le Pi Zero 2W.
 
-| Branche | Description | À utiliser par |
-|---------|-------------|----------------|
-| `main` | Configuration stable V1 (Robolink originale) | Équipiers sur Pi Zero W V1 |
-| `Migration-Pi_2` | Migration complète vers Pi Zero 2W V2 | Référence — ne pas modifier directement |
-| `feature/*` | Développement de nouvelles fonctionnalités | Partir de `Migration-Pi_2` si sur V2, de `main` si sur V1 |
-
-> ⚠️ **Ne pas merger `Migration-Pi_2` dans `main` avant que le second robot soit migré.**
-> Le merge final sera effectué par le responsable de la migration une fois les deux robots sur V2.
+| Branche | Description |
+|---------|-------------|
+| `main` | Branche stable — plateforme V2 (Pi Zero 2W, Bookworm 64-bit) |
+| `feature/*` | Développement de nouvelles fonctionnalités — partir de `main` |
 
 ```bash
-# Démarrage d'une nouvelle feature sur V2
-git checkout Migration-Pi_2
+# Démarrage d'une nouvelle feature
+git checkout main
 git checkout -b feature/ma-fonctionnalite
 git push -u origin feature/ma-fonctionnalite
 ```
@@ -307,9 +312,12 @@ Consulter [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) et [Doc/Workflow_GIT.md](Doc/Work
 | Document | Description |
 |----------|-------------|
 | [CHANGELOG.md](CHANGELOG.md) | Historique détaillé des modifications par branche |
+| [ARCHITECTURE_CONTROLE.md](ARCHITECTURE_CONTROLE.md) | Architecture détaillée du module de contrôle (pattern Strategy) |
 | [MIGRATION_NOTES.md](MIGRATION_NOTES.md) | Journal complet de la migration Pi Zero W → Pi Zero 2W |
 | [Haar_Classifier_model_trainer/README.md](Haar_Classifier_model_trainer/README.md) | Guide complet du pipeline d'entraînement Haar/LBP |
+| [MLP_model_trainer/GUIDE_UTILISATION.md](MLP_model_trainer/GUIDE_UTILISATION.md) | Guide d'utilisation du pipeline MLP |
 | [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md) | Tutoriel complet : MLP avec PyTorch et déploiement TFLite |
+| [core/control/controlers/PID_IR_TUNING.md](core/control/controlers/PID_IR_TUNING.md) | Guide de réglage du contrôleur PID infrarouge |
 | [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) | Guide Git pour les membres de l'équipe |
 | [Doc/AIDE_MEMOIRE_GIT.md](Doc/AIDE_MEMOIRE_GIT.md) | Aide-mémoire Git (référence rapide) |
 | [Doc/Workflow_GIT.md](Doc/Workflow_GIT.md) | Workflow de branches Git pour le projet |

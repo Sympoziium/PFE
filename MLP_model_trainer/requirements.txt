@@ -1,0 +1,18 @@
+# Requirements pour l'entraînement du MLP (côté PC)
+# Installation: pip install -r requirements.txt
+#
+# ⚠️ IMPORTANTE: Ce projet nécessite Python 3.11 ou 3.12 (pas 3.13)
+#    La librairie onnx-tf n'a pas de support Python 3.13
+#    Créez un venv: python -m venv venv
+#                    venv\Scripts\activate
+
+# Framework d'entraînement
+torch>=2.0.0
+numpy>=1.24.0
+
+# Conversion vers TFLite
+tensorflow>=2.13.0
+
+# Utilitaires (optionnel)
+tqdm>=4.65.0
+matplotlib>=3.7.0
