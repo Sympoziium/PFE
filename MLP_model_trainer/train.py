@@ -1033,7 +1033,7 @@ def run_training(script_dir: Path, state: dict):
         seed=seed,
         feature_mask=feature_mask,
         deduplicate=True,
-        balanced_sampling=True
+        balanced_sampling=False
     )
 
     # Creation du modele avec la configuration custom
