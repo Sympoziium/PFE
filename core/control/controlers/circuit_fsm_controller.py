@@ -55,7 +55,10 @@ class CircuitFSMController(ControllerBase):
     """Contrôleur FSM pour navigation autonome sur circuit avec pointillés.
 
     Utilise le LineDetector (caméra) pour la détection de ligne.
-    Navigation step-by-step : arrêt → capture → calcul → avance → arrêt.
+    Navigation step-by-step :
+        1. Arrêt → capture frame → lire offset
+        2. Si offset grand → rotation en place (make_turn) pour se centrer → retour 1
+        3. Si offset petit → avance d'un pas avec correction PID → retour 1
 
     Args:
         base_speed (int): Vitesse de base pour les pas [1-50].
@@ -64,6 +67,8 @@ class CircuitFSMController(ControllerBase):
         kd (float): Gain dérivé.
         max_correction (int): Correction différentielle maximale.
         turn_threshold (int): Offset pixels au-delà duquel faire une rotation pure.
+        turn_angle_scale (float): Facteur offset → angle de rotation (degrés/pixel).
+        max_turn_angle (float): Angle maximum de rotation de centrage (degrés).
         line_lost_timeout (float): Secondes sans ligne → PREVOIR_MANOEUVRE.
         search_timeout (float): Secondes en CHERCHER sans succès → RECUPERATION.
         search_spin_speed (int): Vitesse de pivot pendant la recherche.
@@ -86,6 +91,8 @@ class CircuitFSMController(ControllerBase):
         kd=0.0,
         max_correction=25,
         turn_threshold=60,
+        turn_angle_scale=0.25,
+        max_turn_angle=30.0,
         line_lost_timeout=1.0,
         search_timeout=5.0,
         search_spin_speed=3,
@@ -104,6 +111,8 @@ class CircuitFSMController(ControllerBase):
         self._kd = kd
         self._max_correction = max_correction
         self._turn_threshold = turn_threshold
+        self._turn_angle_scale = turn_angle_scale
+        self._max_turn_angle = max_turn_angle
 
         # FSM timing
         self._line_lost_timeout = line_lost_timeout
@@ -266,7 +275,6 @@ class CircuitFSMController(ControllerBase):
             return MotorCommand.stop()
 
         # Pivoter lentement pour chercher la ligne
-        # Rotation différentielle: gauche en avant, droite en arrière → pivot à droite
         self._last_command_type = "search_spin"
         return MotorCommand.make_speed(
             self._search_spin_speed,
@@ -276,7 +284,13 @@ class CircuitFSMController(ControllerBase):
     def _handle_suivre(self, state):
         """SUIVRE_POINTILLES : Navigation step-by-step.
 
-        Cycle : PAUSE_CAPTURE → MOVING → PAUSE_CAPTURE → ...
+        Cycle :
+          1. PAUSE_CAPTURE — robot à l'arrêt, capture frame, lit l'offset
+          2. Décision :
+             - |offset| > turn_threshold → make_turn() pour se centrer,
+               puis retour en PAUSE_CAPTURE pour re-vérifier
+             - |offset| <= turn_threshold → avance d'un pas avec correction PID
+          3. MOVING — avance pendant step_duration, puis retour en PAUSE_CAPTURE
         """
         now = time.time()
 
@@ -294,7 +308,7 @@ class CircuitFSMController(ControllerBase):
                 self._state = FSMState.PREVOIR_MANOEUVRE
                 return MotorCommand.stop()
 
-        # ── Phase PAUSE_CAPTURE : à l'arrêt, capturer et calculer ──
+        # ── Phase PAUSE_CAPTURE : à l'arrêt, capturer et décider ──
         if self._step_phase == StepPhase.PAUSE_CAPTURE:
             elapsed = now - self._phase_start_time
 
@@ -478,6 +492,8 @@ class CircuitFSMController(ControllerBase):
             "kd": self._kd,
             "max_correction": self._max_correction,
             "turn_threshold": self._turn_threshold,
+            "turn_angle_scale": self._turn_angle_scale,
+            "max_turn_angle": self._max_turn_angle,
             "line_lost_timeout": self._line_lost_timeout,
             "search_timeout": self._search_timeout,
             "search_spin_speed": self._search_spin_speed,
@@ -511,6 +527,12 @@ class CircuitFSMController(ControllerBase):
         if "turn_threshold" in kwargs:
             self._turn_threshold = int(kwargs["turn_threshold"])
             updated.append("turn_threshold={}".format(self._turn_threshold))
+        if "turn_angle_scale" in kwargs:
+            self._turn_angle_scale = float(kwargs["turn_angle_scale"])
+            updated.append("turn_angle_scale={}".format(self._turn_angle_scale))
+        if "max_turn_angle" in kwargs:
+            self._max_turn_angle = float(kwargs["max_turn_angle"])
+            updated.append("max_turn_angle={}".format(self._max_turn_angle))
         if "line_lost_timeout" in kwargs:
             self._line_lost_timeout = float(kwargs["line_lost_timeout"])
             updated.append("line_lost_timeout={}".format(self._line_lost_timeout))

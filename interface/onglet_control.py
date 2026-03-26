@@ -601,7 +601,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         {key: 'ki', label: 'Ki (intégral)', min: -1, max: 1, step: 0.01, type: 'float', input: 'number'},
                         {key: 'kd', label: 'Kd (dérivé)', min: -2, max: 2, step: 0.01, type: 'float', input: 'number'},
                         {key: 'max_correction', label: 'Correction max', min: 0, max: 50, step: 1, type: 'int', input: 'number'},
-                        {key: 'turn_threshold', label: 'Seuil rotation (px)', min: 0, max: 200, step: 5, type: 'int', input: 'number'}
+                        {key: 'turn_threshold', label: 'Seuil rotation (px)', min: 0, max: 200, step: 5, type: 'int', input: 'number'},
+                        {key: 'turn_angle_scale', label: 'Facteur angle rotation (°/px)', min: 0.01, max: 2, step: 0.01, type: 'float', input: 'number'},
+                        {key: 'max_turn_angle', label: 'Angle rotation max (°)', min: 1, max: 90, step: 1, type: 'float', input: 'number'}
                     ]
                 },
                 {
