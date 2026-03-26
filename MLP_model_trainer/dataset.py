@@ -335,14 +335,22 @@ class ZumiControlDataset(Dataset):
 
         class_counts = np.bincount(categories, minlength=5).astype(np.float64)
         class_counts[class_counts == 0] = 1.0  # eviter div par zero
-        class_weights = 1.0 / class_counts
+
+        # Utiliser 1/sqrt(count) au lieu de 1/count pour adoucir le reequilibrage.
+        # Avec la categorisation IMU, "tout droit" domine (~60%) et 1/count
+        # l'ecrase completement (ratio 28:1 vs recule). sqrt donne un ratio
+        # plus raisonnable (~5:1) qui booste les actions rares sans empecher
+        # le modele d'apprendre a aller droit.
+        class_weights = 1.0 / np.sqrt(class_counts)
         sample_weights = class_weights[categories]
 
-        print("[Dataset] Poids par categorie (echantillonnage equilibre, IMU-based):")
+        # Afficher le ratio max pour debug
+        max_ratio = class_weights.max() / class_weights.min()
+        print(f"[Dataset] Poids par categorie (equilibrage sqrt, IMU-based, ratio max: {max_ratio:.1f}x):")
         for i, name in enumerate(ACTION_NAMES):
             count = int(class_counts[i])
             weight = class_weights[i]
-            print(f"  {name:15s}: {count:5d} samples, poids {weight:.4f}")
+            print(f"  {name:15s}: {count:5d} samples, poids {weight:.6f}")
 
         return sample_weights
 
