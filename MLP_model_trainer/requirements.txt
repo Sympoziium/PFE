@@ -16,3 +16,4 @@ tensorflow>=2.13.0
 # Utilitaires (optionnel)
 tqdm>=4.65.0
 matplotlib>=3.7.0
+pygame>=2.6.0 # simulation 2D du Zumi pour visualiser les trajectoires d'entraînement

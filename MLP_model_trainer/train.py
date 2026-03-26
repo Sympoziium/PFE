@@ -616,10 +616,11 @@ def show_main_menu(script_dir: Path) -> tuple:
     print(f"    [2] Analyser le dataset (statistiques + graphiques)")
     print(f"    [3] Entrainer un modele")
     print(f"    [4] Simulation & evaluation avancee")
+    print(f"    [5] Simulateur 2D (circuit virtuel temps reel)")
     print(f"    [Q] Quitter")
 
     # Validation du choix
-    valid_choices = {'1', '2', '3', '4', 'Q'}
+    valid_choices = {'1', '2', '3', '4', '5', 'Q'}
 
     while True:
         choice = input(f"\n  Choix : ").strip().upper()
@@ -1242,6 +1243,10 @@ def main():
         elif choice == '4':
             from simulate import run_simulation_menu
             run_simulation_menu(script_dir, state)
+
+        elif choice == '5':
+            from simulator_2d import run_simulator_menu
+            run_simulator_menu(script_dir, state)
 
         elif choice == 'Q':
             print("\n  Au revoir!")
