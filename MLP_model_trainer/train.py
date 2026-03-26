@@ -547,15 +547,10 @@ def check_data_state(data_dir: Path, sequences_dir: Path) -> dict:
     export_dir = data_dir.parent / "export"
     state['has_tflite'] = False
     tflite_path = export_dir / "zumi_mlp.tflite"
-    tflite_quant_path = export_dir / "zumi_mlp_quant.tflite"
     if tflite_path.exists():
         state['has_tflite'] = True
         state['tflite_path'] = tflite_path
         state['tflite_size'] = tflite_path.stat().st_size / 1024
-    elif tflite_quant_path.exists():
-        state['has_tflite'] = True
-        state['tflite_path'] = tflite_quant_path
-        state['tflite_size'] = tflite_quant_path.stat().st_size / 1024
 
     return state
 
@@ -1149,12 +1144,12 @@ def run_training(script_dir: Path, state: dict):
 
 
 def run_convert_to_tflite(script_dir: Path, quantize: bool = False):
-    """Execute la conversion en TFLite."""
+    """Execute la conversion en TFLite et deploie vers models/."""
     try:
         from convert_to_tflite import (
             load_pytorch_model, export_to_savedmodel,
             convert_savedmodel_to_tflite, verify_tflite_model,
-            export_normalization_stats
+            export_normalization_stats, deploy_to_models_dir
         )
 
         model_path = script_dir / "checkpoints" / "best_model.pt"
@@ -1166,10 +1161,9 @@ def run_convert_to_tflite(script_dir: Path, quantize: bool = False):
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Chemins de sortie
+        # Chemins de sortie (toujours zumi_mlp.tflite, meme avec quantization)
         savedmodel_path = output_dir / "zumi_mlp_tf"
-        tflite_name = "zumi_mlp_quant.tflite" if quantize else "zumi_mlp.tflite"
-        tflite_path = output_dir / tflite_name
+        tflite_path = output_dir / "zumi_mlp.tflite"
 
         print("  Conversion PyTorch -> TFLite...")
 
@@ -1191,9 +1185,11 @@ def run_convert_to_tflite(script_dir: Path, quantize: bool = False):
         # 5. Verification
         verify_tflite_model(tflite_path, input_dim)
 
+        # 6. Deployer vers core/control/controlers/models/
+        print()
+        deploy_to_models_dir(output_dir, script_dir)
+
         print(f"\n  Fichier TFLite cree: {tflite_path}")
-        print(f"  Pour deployer sur le robot:")
-        print(f"    scp {tflite_path} pi@<ip_robot>:~/robot/models/")
 
         return True
 

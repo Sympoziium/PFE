@@ -242,6 +242,43 @@ def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
     return True
 
 
+def deploy_to_models_dir(export_dir: Path, script_dir: Path):
+    """Copie les fichiers exportes vers core/control/controlers/models/.
+
+    Remplace les fichiers existants pour que le modele soit pret a
+    etre stage et push via git pour deploiement sur le robot.
+    """
+    models_dir = script_dir.parent / "core" / "control" / "controlers" / "models"
+    if not models_dir.exists():
+        print(f"[Deploy] Repertoire non trouve: {models_dir}")
+        return False
+
+    files_to_deploy = [
+        ("zumi_mlp.tflite", "zumi_mlp.tflite"),
+        ("normalization_stats.json", "normalization_stats.json"),
+    ]
+
+    deployed = 0
+    for src_name, dst_name in files_to_deploy:
+        src = export_dir / src_name
+        dst = models_dir / dst_name
+
+        if not src.exists():
+            print(f"[Deploy] Source non trouvee: {src}")
+            continue
+
+        # Supprimer l'ancien fichier s'il existe
+        if dst.exists():
+            dst.unlink()
+
+        shutil.copy2(src, dst)
+        deployed += 1
+        print(f"[Deploy] {src_name} -> {dst}")
+
+    print(f"[Deploy] {deployed} fichier(s) deploye(s) dans {models_dir}")
+    return deployed > 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Conversion PyTorch → TFLite")
     parser.add_argument("--model", type=str, default="checkpoints/best_model.pt",
@@ -266,7 +303,7 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Chemins de sortie
+    # Chemins de sortie (toujours zumi_mlp.tflite, meme avec quantization)
     savedmodel_path = output_dir / "zumi_mlp_tf"
     tflite_name = "zumi_mlp.tflite"
     tflite_path = output_dir / tflite_name
@@ -294,14 +331,14 @@ def main():
     if not args.skip_verification:
         verify_tflite_model(tflite_path, input_dim)
 
+    # 6. Deployer vers core/control/controlers/models/
+    print()
+    deploy_to_models_dir(output_dir, script_dir)
+
     print("\n" + "=" * 60)
     print("Conversion terminée!")
     print(f"Fichier TFLite: {tflite_path}")
     print("=" * 60)
-
-    # Instructions de déploiement
-    print("\nPour déployer sur le robot:")
-    print(f"  scp {tflite_path} normalization_stats.json pi@<ip_robot>:~/robot/models/")
 
 
 if __name__ == "__main__":
