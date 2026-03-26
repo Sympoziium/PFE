@@ -1528,6 +1528,9 @@ class controller:
             else:
                 ctrl_params[k] = v
 
+        print("[DEBUG controller_params POST] ctrl={} ctrl_params={} line_params={}".format(
+            ctrl_name, ctrl_params, line_params))
+
         # Mettre à jour les params du contrôleur
         if ctrl_params:
             ctrl.update_params(**ctrl_params)
