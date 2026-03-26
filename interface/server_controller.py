@@ -1407,9 +1407,7 @@ class controller:
             # Auto-switch: appliquer le profil caméra 'passive' (320x240) pour économiser le CPU
             self._apply_camera_profile('passive')
 
-            # Auto-calibration IR light avant activation (robot doit etre immobile)
-            if self.robot is not None and hasattr(self.robot, 'calibrate_ir'):
-                self.robot.calibrate_ir(n_samples=50)
+            self.robot.reset_drive_state() # reset gyro + PID pour des conditions de contrôle optimales au démarrage
 
             self.control_manager.activate_controller(controller_name)
             return jsonify({'status': 'started', 'controller': controller_name})

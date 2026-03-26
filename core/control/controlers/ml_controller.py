@@ -355,6 +355,17 @@ class MLController(ControllerBase):
                 self._last_output = output
                 self._inference_count += 1
 
+                # Diagnostic aux premiers ticks
+                if self._inference_count <= 3:
+                    print(f"[MLController] Tick {self._inference_count}: "
+                          f"input_shape={input_vector.shape}, "
+                          f"input_range=[{input_vector.min():.2f}, {input_vector.max():.2f}], "
+                          f"output=[{output[0]:.4f}, {output[1]:.4f}]")
+                    if state.ir_sensors:
+                        ir = state.ir_sensors
+                        print(f"  IR raw: fr={ir[0]}, br={ir[1]}, bkr={ir[2]}, "
+                              f"bl={ir[3]}, bkl={ir[4]}, fl={ir[5]}")
+
                 # Dénormaliser: [-1, 1] -> [-MOTOR_SPEED_MAX, MOTOR_SPEED_MAX]
                 left_speed = float(output[0]) * self.MOTOR_SPEED_MAX
                 right_speed = float(output[1]) * self.MOTOR_SPEED_MAX
@@ -372,12 +383,18 @@ class MLController(ControllerBase):
     def start(self):
         """Démarre le contrôleur ML."""
         self._inference_count = 0
+        self._prev_vectors.clear()  # Reset l'historique temporel
         if self._interpreter is None and self.model_path:
             self._load_model()
             self._load_normalization_stats()
 
         if self._interpreter:
-            print(f"[MLController] Démarré avec modèle: {self.model_path}")
+            expected_dim = self._input_details[0]['shape'][1]
+            print(f"[MLController] Demarré: {self.model_path}")
+            print(f"[MLController] TFLite input: {expected_dim}-dim, "
+                  f"feature_version={self._feature_version}, "
+                  f"mask={'{}d'.format(len(self._feature_mask)) if self._feature_mask is not None else 'None'}, "
+                  f"ir_offset={self.IR_OFFSET_BOTTOM:.1f}")
         else:
             print("[MLController] Démarré SANS modèle (commandes = 0)")
 
