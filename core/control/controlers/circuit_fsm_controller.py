@@ -303,9 +303,12 @@ class CircuitFSMController(ControllerBase):
                 self._last_command_type = "pause_capture"
                 return MotorCommand.stop()
 
-            # Pause terminée → calculer la correction et passer en mouvement
+            # Pause terminée → capturer l'offset et calculer la correction
             if state.line_detected and state.line_offset is not None:
+                self._last_line_offset = state.line_offset
                 self._step_correction = self._compute_pid_correction(state.line_offset)
+                print("[CIRCUIT_FSM] CAPTURE: offset={:.1f}px correction={:.1f}".format(
+                    state.line_offset, self._step_correction))
             else:
                 # Pas de détection, avancer droit
                 self._step_correction = 0.0
@@ -313,6 +316,8 @@ class CircuitFSMController(ControllerBase):
             self._step_phase = StepPhase.MOVING
             self._phase_start_time = now
             self._last_command_type = "step_start"
+            # Ne pas tomber dans MOVING immédiatement — attendre le prochain tick
+            return MotorCommand.stop()
 
         # ── Phase MOVING : avancer d'un pas avec la correction calculée ──
         if self._step_phase == StepPhase.MOVING:
@@ -325,12 +330,14 @@ class CircuitFSMController(ControllerBase):
                 self._last_command_type = "step_done"
                 return MotorCommand.stop()
 
-            # Vérifier si l'offset nécessite une rotation pure
+            # Vérifier si l'offset capturé nécessite une rotation pure
             if abs(self._last_line_offset) > self._turn_threshold:
                 # Rotation proportionnelle à l'offset
                 angle = -self._last_line_offset * 0.25  # scale factor
                 angle = max(-30.0, min(30.0, angle))
                 self._last_command_type = "step_turn"
+                print("[CIRCUIT_FSM] TURN: offset={:.1f} → angle={:.1f}°".format(
+                    self._last_line_offset, angle))
                 return MotorCommand.make_turn(angle)
 
             # Avance différentielle avec correction
@@ -485,35 +492,54 @@ class CircuitFSMController(ControllerBase):
 
     def update_params(self, **kwargs):
         """Met à jour les paramètres en runtime."""
+        updated = []
         if "base_speed" in kwargs:
             self._base_speed = int(kwargs["base_speed"])
+            updated.append("base_speed={}".format(self._base_speed))
         if "kp" in kwargs:
             self._kp = float(kwargs["kp"])
+            updated.append("kp={}".format(self._kp))
         if "ki" in kwargs:
             self._ki = float(kwargs["ki"])
+            updated.append("ki={}".format(self._ki))
         if "kd" in kwargs:
             self._kd = float(kwargs["kd"])
+            updated.append("kd={}".format(self._kd))
         if "max_correction" in kwargs:
             self._max_correction = int(kwargs["max_correction"])
+            updated.append("max_correction={}".format(self._max_correction))
         if "turn_threshold" in kwargs:
             self._turn_threshold = int(kwargs["turn_threshold"])
+            updated.append("turn_threshold={}".format(self._turn_threshold))
         if "line_lost_timeout" in kwargs:
             self._line_lost_timeout = float(kwargs["line_lost_timeout"])
+            updated.append("line_lost_timeout={}".format(self._line_lost_timeout))
         if "search_timeout" in kwargs:
             self._search_timeout = float(kwargs["search_timeout"])
+            updated.append("search_timeout={}".format(self._search_timeout))
         if "search_spin_speed" in kwargs:
             self._search_spin_speed = int(kwargs["search_spin_speed"])
+            updated.append("search_spin_speed={}".format(self._search_spin_speed))
         if "init_stabilize_ticks" in kwargs:
             self._init_stabilize_ticks = int(kwargs["init_stabilize_ticks"])
+            updated.append("init_stabilize_ticks={}".format(self._init_stabilize_ticks))
         if "maneuver_forward_cm" in kwargs:
             self._maneuver_forward_cm = float(kwargs["maneuver_forward_cm"])
+            updated.append("maneuver_forward_cm={}".format(self._maneuver_forward_cm))
         if "maneuver_turn_angle" in kwargs:
             self._maneuver_turn_angle = float(kwargs["maneuver_turn_angle"])
+            updated.append("maneuver_turn_angle={}".format(self._maneuver_turn_angle))
         if "forward_speed" in kwargs:
             self._forward_speed = int(kwargs["forward_speed"])
+            updated.append("forward_speed={}".format(self._forward_speed))
         if "cm_per_second" in kwargs:
             self._cm_per_second = float(kwargs["cm_per_second"])
+            updated.append("cm_per_second={}".format(self._cm_per_second))
         if "step_duration" in kwargs:
             self._step_duration = float(kwargs["step_duration"])
+            updated.append("step_duration={}".format(self._step_duration))
         if "pause_duration" in kwargs:
             self._pause_duration = float(kwargs["pause_duration"])
+            updated.append("pause_duration={}".format(self._pause_duration))
+        if updated:
+            print("[CIRCUIT_FSM] Params mis à jour: {}".format(", ".join(updated)))
