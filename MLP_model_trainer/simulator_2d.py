@@ -869,11 +869,10 @@ def _build_offset_polyline(track, offset):
                 bx /= b_len
                 by /= b_len
                 # Miter length: offset / cos(half_angle) pour maintenir la largeur
-                # cos(half_angle) = dot(normal, bisectrice) = (n1·b)
                 dot = n1x * bx + n1y * by
-                if dot < 0.3:
-                    # Angle trop serre: limiter le miter pour eviter les spikes
-                    dot = 0.3
+                # Clamper: le miter ne doit jamais depasser 1.5x l'offset
+                # pour eviter les spikes aux angles serres
+                dot = max(dot, 0.67)  # 1/0.67 = 1.49x max
                 miter_offset = offset / dot
                 result.append((pts[i][0] + bx * miter_offset, pts[i][1] + by * miter_offset))
 
