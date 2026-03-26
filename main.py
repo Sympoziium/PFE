@@ -7,7 +7,53 @@ import os
 import signal
 import threading
 import time
+import logging
+import builtins
+
+# -----------------------------------------------------------------------------
+# Gestion des profils de verbosité (désactive les logs de Flask/Werkzeug)
+# -----------------------------------------------------------------------------
+VERBOSITY_LEVEL = "silent"  # Options: "silent", "prints_only", "verbose"
+
+_original_print = builtins.print
+
+def _verbosity_print(*args, **kwargs):
+    if VERBOSITY_LEVEL == "verbose":
+        _original_print(*args, **kwargs)
+        return
+
+    # Convert args to text
+    out_text = " ".join(str(a) for a in args)
+
+    # Messages essentiels conservés dans tous les modes (Boot et Profilage Système)
+    is_essential = any(tag in out_text for tag in [
+        "[Zumi] CPU", "[RAM]", "[Timestamp]", "[BOOT]", 
+        "DÉMARRAGE DU ZUMI", "Flask server", "Arrêt propre", "[Exception]"
+    ])
+
+    if VERBOSITY_LEVEL == "silent":
+        if is_essential:
+            _original_print(*args, **kwargs)
+    elif VERBOSITY_LEVEL == "prints_only":
+        # Masquer les messages typiquement étiquetés débug en mode intermédiaire
+        if "[Debug]" not in out_text and "[Sampling]" not in out_text:
+            _original_print(*args, **kwargs)
+
+# Remplacer print globalement
+builtins.print = _verbosity_print
+
+# Désactiver les logs de requêtes du serveur Flask (Werkzeug)
+werkzeug_log = logging.getLogger('werkzeug')
+if VERBOSITY_LEVEL == "verbose":
+    werkzeug_log.setLevel(logging.INFO)
+else:
+    werkzeug_log.setLevel(logging.ERROR)
+# -----------------------------------------------------------------------------
+
+from core.control.controlers.ml_controller import MLController
 from core.robot.robot_zumi import RobotZumi
+from core.vision import vision_pipeline
+from core.vision.vision_adapter import VisionAdapter # nécessaire pour le bootstrap
 
 # ═════════════════════════════════════════════════════════════════════
 #  Fonctions de bootstrap avec affichage de progression
@@ -53,13 +99,10 @@ def bootstrap():
     # Étape 2 : Créer les détecteurs
     print("[BOOT] Chargement des détecteurs... (10-30%)")
     
-    from core.vision.detectors.Stop_detector_zumi import StopDetectorZumi
     from core.vision.detectors.Stop_detector_cv import StopDetectorCV
     from core.vision.detectors.Haar_classifier import HaarDetector
     from core.vision.detectors.Line_detector import LineDetector
-    stop_detector = StopDetectorZumi()
-    draw_progress_bar(zumi.screen, 15)
-    
+
     line_detector = LineDetector(white_threshold=180, min_area=50, offset_ratio=0.3)
     draw_progress_bar(zumi.screen, 20)
     
@@ -76,7 +119,7 @@ def bootstrap():
     haar_classifier.add_classifier('stop_sign', os.path.join(MODELS_DIR, 'LBP_Stop_Sign.xml'), scaleFactor=1.03, minNeighbors=3)
     draw_progress_bar(zumi.screen, 40)
     
-    haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Beta_Prime.xml'), scaleFactor=1.03, minNeighbors=2)
+    haar_classifier.add_classifier('Pieton', os.path.join(MODELS_DIR, 'LBP_Pieton.xml'), scaleFactor=1.03, minNeighbors=5)
     draw_progress_bar(zumi.screen, 50)
     
     haar_classifier.add_classifier('Camion_Pompier', os.path.join(MODELS_DIR, 'LBP_Camion_Beta.xml'), scaleFactor=1.05, minNeighbors=12)
@@ -87,64 +130,69 @@ def bootstrap():
     from core.vision.vision_pipeline import VisionPipeline
     vision_pipeline = VisionPipeline(camera=zumi.camera)
     vision_pipeline.add_detectors(line_detector)
-    vision_pipeline.add_detectors(stop_detector)
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
-    vision_pipeline.add_passive_detectors(line_detector)
     draw_progress_bar(zumi.screen, 70)
-    
-    # Étape 5 : Créer les contrôleurs
-    print("[BOOT] Initialisation des contrôleurs...")
-    from core.control.pid_controller import PIDController
-    from core.control.line_following_state_machine import LineFollowingStateMachine, State
-    from core.control.control_manager import ControlManager
-    pid_controller = PIDController(
-        kp=0.2, 
-        ki=0.0, 
-        kd=0.1, 
-        base_speed=15, 
-        max_correction=25,
-        rotation_mode=True,
-        deadband=1,
-        rotation_scale=0.2,
-        auto_reset_threshold=80
-    )
-    draw_progress_bar(zumi.screen, 75)
-    
-    state_machine = LineFollowingStateMachine(
-        robot=zumi,
-        vision_pipeline=vision_pipeline,
-        pid_controller=pid_controller,
-        stop_condition_detector=stop_detector
-    )
-    
-    state_machine.set_rotation_angle(90)
-    draw_progress_bar(zumi.screen, 80)
     
     # Étape 6 : Initialiser Flask et routes
     print("[BOOT] Initialisation du serveur Flask...")
     from interface import server_controller as flask_controller
     from interface import flask_router as routes
-    ctrl = flask_controller.controller(zumi, debug=True)
+    
+    # Activer le debug dans le contrôleur seulement en mode 'verbose'
+    is_debug = (VERBOSITY_LEVEL == "verbose")
+    ctrl = flask_controller.controller(zumi, debug=is_debug)
+    
     routes.register_routes(ctrl)
     ctrl.attach_pipeline_vision(vision_pipeline)
     draw_progress_bar(zumi.screen, 90)
     
     # Étape 7 : Attacher le ControlManager
     print("[BOOT] Initialisation du ControlManager...")
+    from core.control.control_manager import ControlManager
     control_manager = ControlManager(robot=zumi, vision_pipeline=vision_pipeline)
-    control_manager.register_pid(pid_controller)
-    control_manager.register_state_machine(state_machine)
-    
+
+    from core.control.legacy.line_follower_controller import LineFollowerController
+    from core.control.controlers.manual_controller import ManualController
+    from core.control.controlers.ml_controller import MLController
+    from core.control.controlers.pid_ir_controller import PIDIRController
+
+    # instance de controlleur de suivi de ligne (legacy, vision-based)
+    # line_follower_ctrl = LineFollowerController()
+    # control_manager.register_controller(line_follower_ctrl.name, line_follower_ctrl)
+
+    # instance de controlleur PID IR (suivi de ligne par capteurs IR bottom)
+    pid_ir_ctrl = PIDIRController()
+    control_manager.register_controller(pid_ir_ctrl.name, pid_ir_ctrl)
+
+    # instance de controlleur manuel (contrôle direct depuis l'interface web)
+    manual_ctrl = ManualController()
+    control_manager.register_controller(manual_ctrl.name, manual_ctrl)
+
+    # instance de controlleur ML (contrôle par apprentissage par imitation avec un modèle MLP)
+    from core.vision.vision_adapter import VisionAdapter
+
+    # ⚠️ IMPORTANT: La liste des classes DOIT correspondre exactement à celle utilisée lors de l'entraînement!
+    classes = ['stop_sign', 'Pieton', 'Camion_Pompier']  # 3 classes pour 20 dims input
+    adapter = VisionAdapter(320, 240, classes) # Initialisation nécessaire pour le MLController (ATTENTION LA TAILLE DE L'IMAGE EST ARDCODÉ ICI ON DEVRAIT REENDRE SA DYNAMIQUE en fonction du profil de caméra de détection passive)
+    MLP_MODELS_DIR = os.path.join(os.path.dirname(__file__), 'core', 'control', 'controlers', 'models')
+    MLP_model_path = os.path.join(MLP_MODELS_DIR, 'zumi_mlp.tflite')
+
+    # Validation: vérifier que les dimensions correspondent
+    print(f"[BOOT] ML Controller:")
+    print(f"  - Classes utilisées: {classes}")
+
+    ml_ctrl = MLController(vision_adapter=adapter, model_path=MLP_model_path)
+    control_manager.register_controller(ml_ctrl.name, ml_ctrl)
+
     ctrl.attach_control_manager(control_manager)
-    ctrl.state_machine = state_machine
     draw_progress_bar(zumi.screen, 95)
     
     # Étape 8 : Affichage final
     print("[BOOT] Bootstrap complet!")
     zumi.clear_screen()
-    zumi.display_text("READY!")
+    # zumi.display_text("READY!") broken
     time.sleep(0.5)
     zumi.clear_screen()
     
@@ -174,7 +222,7 @@ if __name__ == '__main__':
     # qu'à la demande depuis l'interface web (bouton Start Camera,
     # activation PID, etc.).
 
-    watchdog_thread = threading.Thread(target=ctrl.motor_watchdog)
+    watchdog_thread = threading.Thread(target=ctrl.Log_watchdog)
     watchdog_thread.daemon = True
     watchdog_thread.start()
 

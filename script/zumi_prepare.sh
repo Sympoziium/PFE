@@ -5,6 +5,9 @@
 # Désactive les services automatiques du fabricant et configure le réseau Wi-Fi
 # pour le développement. Ce script doit être lancé via SSH.
 #
+# DEPRECATED : Depuis la migration vers le Pi Zero 2W, ce script n'est plus nécessaire.
+# Utiliser le script zumi_wifi_config.sh pour configurer le Wi-Fi (SSID + PSK) du réseau STA
+#
 # Utilisation :
 #   sudo ~/PFE/zumi_prepare.sh          # Menu interactif
 #   sudo ~/PFE/zumi_prepare.sh full     # Préparation complète (après power cycle)

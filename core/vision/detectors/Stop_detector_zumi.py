@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 # Stop_detector_zumi.py
 # ------------------
+#
+#   DEPRECATION NOTICE : Ce détecteur ne fonctionne plus avec la mise a jours du Pi vers le 2W
+#                        Les fichier .xml de Robolink nont pas été copier sur le nouveau système,
+#                        comme nous faisons notre propre détecteur avec nos propre .xml on en a plus de besoin.
+#
+#
 # Ce module implémente le détecteur de panneau stop pour le robot Zumi
 # en utilisant la bibliothèque Zumi (zumi.util.vision.Vision).
 # La bibliothèque utilise un classifieur Haar pré-optimisé pour le Zumi.

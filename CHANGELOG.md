@@ -5,6 +5,289 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publié] — Optimisation pipeline MLP : normalisation z-score, profil adaptatif et feature engineering (2026-03-21)
+
+### Objectif
+Optimiser le pipeline d'entraînement MLP pour améliorer la qualité d'apprentissage et préparer le passage à l'échelle (de ~3 400 à ~10 000+ échantillons). Les changements touchent la normalisation des features, la sélection automatique d'architecture, et l'ajout de features engineered pour le suivi de ligne.
+
+### Phase 1 — Fondations de l'entraînement
+
+#### Normalisation z-score (pipeline complet)
+- **`MLP_model_trainer/dataset.py`**
+  - Ajout de `normalize(mean, std)` : applique la normalisation z-score aux captures
+  - Ajout de `apply_feature_mask(mask)` : retire les features mortes (std < 1e-6)
+  - `create_data_loaders()` : calcule mean/std sur le train set uniquement (après masque), normalise tout le dataset, stocke les stats pour export
+  - Ajout du paramètre `feature_mask` optionnel
+- **`MLP_model_trainer/train.py`**
+  - Sauvegarde `feature_mean`, `feature_std` et `feature_mask` dans le checkpoint PyTorch
+  - Le profil adaptatif passe le masque à `create_data_loaders()`
+- **`MLP_model_trainer/convert_to_tflite.py`**
+  - Ajout de `export_normalization_stats()` : exporte `normalization_stats.json` à côté du `.tflite` depuis le checkpoint (contient mean, std, mask, input_dim)
+  - Intégré comme étape 4 dans la pipeline de conversion
+- **`core/control/controlers/ml_controller.py`**
+  - Ajout de `_load_normalization_stats()` : charge `normalization_stats.json` depuis le même répertoire que le modèle .tflite
+  - Ajout de `_apply_zscore()` : applique la normalisation z-score au vecteur d'état
+  - `_build_state_vector()` : pipeline complet VisionAdapter → masque → z-score
+  - `get_debug_info()` : expose `zscore_loaded` pour le diagnostic
+
+#### Pipeline de normalisation — z-score unique
+La range normalization (IR/255, IMU/180) qui était dans le VisionAdapter a été retirée
+car elle est redondante avec le z-score : mathématiquement, le z-score absorbe toute
+transformation linéaire préalable. Le VisionAdapter ne fait désormais que la vectorisation
+structurelle (assemblage, one-hot, bbox relative). Les valeurs IR (0-255) et IMU (degrés)
+sont stockées brutes dans captures.jsonl, ce qui rend les données plus lisibles et élimine
+le travail en double.
+
+```
+                        Entraînement                         Inférence
+                        ─────────────                        ─────────
+VisionAdapter           vectorisation structurelle            (identique)
+    ↓ raw               → IR brut 0-255, IMU degrés          → IR brut 0-255, IMU degrés
+    ↓                   → bbox relative [0,1] (structurel)   → bbox relative [0,1]
+    ↓ captures.jsonl    → sauvegardé                         (pas de fichier)
+    ↓ feature_mask      → retrait features mortes            → retrait features mortes
+    ↓ z-score           → (x - mean) / std                   → (x - mean) / std
+    ↓ modèle            → entraînement                       → inférence TFLite
+```
+
+#### Profil d'entraînement adaptatif
+- **`MLP_model_trainer/train.py`** — `suggest_training_profile()`
+  - Remplace les 3 profils hardcodés (Rapide/Équilibré/Précision) par une analyse automatique
+  - Calcule le nombre de features actives (std > 1e-6) et propose un masque
+  - Calcule le budget de paramètres (ratio cible params:samples = 1:7)
+  - Recherche les architectures candidates maintenant un ratio sain
+  - Warning "dataset insuffisant" quand la meilleure architecture a <2 couches cachées : affiche l'architecture minimale viable ([32,16]) et le nombre d'échantillons nécessaires
+  - Affiche les justifications (ex: "3425 samples, 19 features actives → [32,16] recommandé")
+  - Option Custom préservée pour ajustement manuel
+
+#### Shuffle activé par défaut
+- **`MLP_model_trainer/dataset.py`** : `shuffle=True` par défaut dans `create_data_loaders()`
+
+### Phase 2 — Feature Engineering
+
+#### Features IR engineered (`IR_diff`, `IR_sum`)
+- **`core/vision/vision_adapter.py`**
+  - Vecteur d'état passe de 22+N à **24+N** dimensions (27-dim avec N=3 classes)
+  - `IR_diff = bottom_left - bottom_right` (indice 6) : position latérale de la ligne
+  - `IR_sum = (bottom_left + bottom_right) / 2` (indice 7) : confiance
+  - Tous les indices suivants décalés de +2 (détection à 8, classes à 9, bbox à 9+N, IMU à 13+N)
+  - Mise à jour de `debug_print_state()`, `validate_imu()`, `validate_detection()`, `validate_IR()`
+
+#### Retrait de la range normalization (valeurs brutes)
+- **`core/vision/vision_adapter.py`**
+  - Retrait de `/IR_MAX_VALUE` (255), `/ANGLE_MAX_DEG` (180), `/TILT_STATE_MAX` (7)
+  - Retrait du `np.clip(-1, 1)` final (cachait les outliers au z-score)
+  - Les IR sont stockés bruts (0-255), les IMU bruts (degrés), les features engineered brutes
+  - Seule la bbox reste normalisée par les dimensions image (transform structurel, résolution-indépendant)
+  - Raison : la range normalization est mathématiquement redondante avec le z-score.
+    `zscore(x/255) = (x/255 - μ) / σ` est équivalent à un z-score avec des stats différentes.
+    Stocker les valeurs brutes rend les données plus lisibles et élimine le travail en double.
+
+**Nouveau layout du vecteur d'état (27-dim avec 3 classes)** :
+
+| Index | Donnée | Plage | Description |
+|-------|--------|-------|-------------|
+| 0-5 | IR sensors [6] | 0-255 | Capteurs infrarouges bruts (8 bits) |
+| 6 | IR_diff | -255..255 | Position latérale ligne (bottom_L - bottom_R) |
+| 7 | IR_sum | 0-255 | Confiance ligne (bottom_L + bottom_R)/2 |
+| 8 | detect_flag | {0, 1} | Drapeau détection |
+| 9-11 | class [N] | {0, 1} | Classes détectées (one-hot) |
+| 12-15 | bbox [4] | [0, 1] | Boîte englobante relative (cx, cy, w, h) |
+| 16-26 | IMU [11] | degrés | Gyro(3) + Acc(2) + Comp(2) + Rot(3) + Tilt(1) |
+
+#### Masque de features mortes
+- **`MLP_model_trainer/dataset.py`** : `apply_feature_mask(mask)` applique le masque avant z-score
+- **`MLP_model_trainer/train.py`** : détection automatique des features mortes, masque sauvé dans checkpoint
+- **`MLP_model_trainer/convert_to_tflite.py`** : masque exporté dans `normalization_stats.json`
+- **`core/control/controlers/ml_controller.py`** : masque chargé et appliqué à l'inférence
+
+#### Analyse du dataset mise à jour
+- **`MLP_model_trainer/analyze_dataset.py`** : `feature_names` mis à jour pour 27 features (ajout IR_diff, IR_sum)
+
+### Résultats de validation Phase 1
+- Courbe d'entraînement beaucoup plus saine (lisse, pas de gap overfitting)
+- Val_loss : 0.010701 (vs baseline 0.009296)
+- R² = -0.047 → diagnostic : dataset trop petit (3 425 échantillons < minimum viable)
+- Le profil adaptatif recommande correctement [16] (1 couche) pour ce dataset, avec warning que c'est insuffisant pour apprendre la relation non-linéaire
+- Estimation minimum : ~7 742 échantillons pour architecture [32,16] (ratio 7:1)
+
+### Fichiers modifiés
+
+| Fichier | Modifications |
+|---------|--------------|
+| `MLP_model_trainer/dataset.py` | z-score, masque, shuffle par défaut |
+| `MLP_model_trainer/train.py` | profil adaptatif, sauvegarde norm stats + masque, warning dataset insuffisant |
+| `MLP_model_trainer/convert_to_tflite.py` | export normalization_stats.json |
+| `MLP_model_trainer/analyze_dataset.py` | feature_names 27-dim |
+| `core/vision/vision_adapter.py` | IR_diff, IR_sum, layout 24+N |
+| `core/control/controlers/ml_controller.py` | chargement z-score + masque, pipeline inférence |
+
+### Prochaines étapes
+- Rééchantillonner ~10 000+ échantillons avec le nouveau vecteur 27-dim
+- Revalider le pipeline complet avec un dataset suffisant
+- Phase 3 (optionnel) : HuberLoss, déduplication, split stratifié
+
+---
+
+## [Non publié] — Pipeline d'entraînement MLP complet (2026-03-18)
+
+### Objectif
+Implémenter un pipeline complet d'entraînement et de déploiement de modèles MLP (Multilayer Perceptron) pour le contrôle du robot par apprentissage par imitation. Le modèle est entraîné côté PC avec PyTorch, converti en TensorFlow Lite, puis déployé sur le Raspberry Pi Zero 2.
+
+### Architecture du pipeline
+```
+[Collecte données] → [JSONL] → [PyTorch Dataset] → [Entraînement MLP]
+                                                          ↓
+[Robot Pi Zero] ← [TFLite] ← [TensorFlow] ← [ONNX] ← [PyTorch Model]
+```
+
+### Ajouté
+
+#### Module d'entraînement (`MLP_model_trainer/`)
+- **`dataset.py`** — Chargement des données JSONL et création des DataLoaders PyTorch
+  - Classe `ZumiControlDataset` héritant de `torch.utils.data.Dataset`
+  - Fonction `create_data_loaders()` avec split train/validation (80/20)
+  - Statistiques du dataset (moyennes, écarts-types, distributions)
+
+- **`model.py`** — Architecture MLP avec plusieurs variantes
+  - `ZumiMLP` : Architecture modulaire avec couches configurables
+  - `ZumiMLPSmall` : Version compacte [32, 16] pour Pi Zero (1410 paramètres)
+  - `ZumiMLPLarge` : Version étendue [128, 64, 32] pour tâches complexes
+  - Initialisation Xavier, dropout configurable, sortie Tanh bornée [-1, 1]
+
+- **`train.py`** — Script d'entraînement complet
+  - Classe `Trainer` avec boucle d'entraînement PyTorch standard
+  - Optimiseur AdamW avec weight decay (régularisation L2)
+  - Learning rate scheduler `ReduceLROnPlateau`
+  - Early stopping configurable (patience=20 par défaut)
+  - Gradient clipping pour stabilité
+  - Sauvegarde automatique du meilleur modèle + rapport JSON
+
+- **`convert_to_tflite.py`** — Conversion vers TensorFlow Lite
+  - Export PyTorch → ONNX avec `torch.onnx.export()`
+  - Conversion ONNX → TensorFlow SavedModel via `onnx-tf`
+  - Conversion TensorFlow → TFLite avec quantization optionnelle
+  - Vérification automatique du modèle converti
+
+- **`requirements.txt`** — Dépendances Python pour l'entraînement PC
+
+- **`TUTORIAL_MLP_PYTORCH.md`** — Tutoriel complet de 12 sections
+  - Fondamentaux PyTorch et MLPs
+  - Architecture du pipeline de bout en bout
+  - Explication détaillée de chaque composant
+  - Techniques d'optimisation avancées
+  - Guide de déploiement sur système embarqué
+  - Dépannage et bonnes pratiques
+
+#### MLController finalisé (`core/control/controlers/ml_controller.py`)
+- Chargement du modèle TFLite (compatible `tflite_runtime` et `tensorflow`)
+- Méthode `_build_state_vector()` pour construire le vecteur d'état depuis SensorState
+- Méthode `_inference()` pour l'inférence TFLite optimisée
+- Dénormalisation automatique des sorties [-1, 1] → commandes moteur
+- Méthodes de debug : `get_debug_info()`, `get_params()`
+- Fallback gracieux si modèle non chargé (commandes = 0)
+
+### Données d'entraînement
+- 1405 échantillons collectés via le système de sampling existant
+- Format JSONL : `captures.jsonl` (états) + `labels.jsonl` (commandes)
+- Vecteur d'état : 21 dimensions (6 IR + 1 flag + 4 classes + 4 bbox + 6 IMU)
+- Vecteur de sortie : 2 dimensions (vitesses gauche/droite normalisées)
+
+### Choix techniques
+
+| Aspect | Choix | Justification |
+|--------|-------|---------------|
+| Framework entraînement | PyTorch | API intuitive, debugging facile, écosystème riche |
+| Framework déploiement | TFLite | Optimisé ARM, faible empreinte mémoire (~5MB runtime) |
+| Format intermédiaire | ONNX | Standard portable, conversion bidirectionnelle |
+| Fonction d'activation sortie | Tanh | Garantit sorties dans [-1, 1] |
+| Optimiseur | AdamW | Convergence rapide + weight decay correct |
+| Régularisation | Dropout + L2 | Prévention du sur-apprentissage |
+
+### Fichiers créés
+- `MLP_model_trainer/dataset.py`
+- `MLP_model_trainer/model.py`
+- `MLP_model_trainer/train.py`
+- `MLP_model_trainer/convert_to_tflite.py`
+- `MLP_model_trainer/requirements.txt`
+- `MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md`
+- `MLP_model_trainer/data/` (données extraites du sampling)
+
+### Fichiers modifiés
+- `core/control/controlers/ml_controller.py` — Implémentation complète
+- `MLP_model_trainer/DEV_PLAN.md` — Mise à jour avec documentation du pipeline
+
+### Usage
+```bash
+# 1. Installer les dépendances (PC)
+cd MLP_model_trainer
+pip install -r requirements.txt
+
+# 2. Entraîner le modèle
+python train.py --epochs 100 --model-size medium
+
+# 3. Convertir vers TFLite
+python convert_to_tflite.py --quantize
+
+# 4. Déployer sur le robot
+scp export/zumi_mlp_quant.tflite pi@<ip>:~/robot/models/
+```
+
+### Optimisation du ControlManager et de la gestion des contrôleurs
+le but est d'améliorer la fluidité des commandes manuelles afin d'avoir une meilleure réactivité du robot lors du contrôle manuel, et aussi de réduire la latence globale du système pour les futurs contrôleurs ML qui seront plus gourmands en ressources. 
+
+┌─────────────────────────────────────────────────────────────┐
+│  AVANT                        APRÈS                        │
+├─────────────────────────────────────────────────────────────┤
+│  Polling: 250ms (4 Hz)   →   80ms (12.5 Hz)                │
+│  Watchdog: 0.6s          →   0.3s                          │
+│  Loop delay: fixe 50ms   →   adaptatif (33/50ms)           │
+│  Line detection: toujours →   skip en manuel/ML            │
+│  Debug prints: activé    →   désactivé                     │
+│  Constantes: éparpillées →   centralisées                  │
+└─────────────────────────────────────────────────────────────┘
+
+---
+
+## [Non publié] — Refactor complet du control manager (2026-03-16)
+
+### Objectif
+Refonte architecturale intégrale du module de contrôle (`core/control/`) pour adopter le patron de conception **Strategy**. Le but est de rendre l'orchestrateur (`ControlManager`) complètement agnostique (aveugle) aux détails d'implémentation des algorithmes de contrôle (PID, State Machine, ML), permettant un système 100% "Plug & Play". 
+
+![Architecture de Contrôle V2](control_module_architecture_v2.svg)
+
+### Modifications apportées
+- **Standardisation des Entrées/Sorties (DTO)** :
+  - Création de `SensorState` : DTO encapsulant de manière uniforme toutes les lectures des capteurs du robot à l' instant T (IR, IMU, offset ligne, batterie, détections).
+  - Création de `MotorCommand` : DTO décrivant les intentions de mouvement (`CommandType` : SPEED, TURN, STOP, FORWARD_STEP) pour abstraire l'interface matérielle.
+- **Couche Drivers IO (`core/control/IO_drivers/`)** :
+  - `SensorDriver` : Lit l'état du SDK robotique et de la vision pour construire et retourner un objet `SensorState` propre.
+  - `MotorDriver` : Interprète les objets `MotorCommand` et les traduit en commandes hardware spécifiques de notre Zumi.
+- **Contrat d'interface (Pattern Strategy)** :
+  - Création de `ControllerBase` : Classe de base abstraite (ABC) dictant le format d'un contrôleur. Tout nouveau contrôleur implémente obligatoirement `step(sensor_state) -> MotorCommand`.
+- **Refonte de l'orchestrateur (`ControlManager`)** :
+  - Disparition complète des constantes de mode hardcodés (`MODE_PID`, etc.) et des fonctions `_tick_pid`.
+  - Intégration d'un registre dynamique sous forme de dictionnaire (`_controllers`) alimenté via `register_controller(name, controller)`. 
+  - La boucle principale de contrôle est désormais universelle : `1. Lecture capteurs -> 2. Inférence du contrôleur actif -> 3. Exécution de la commande moteur`.
+- **Nouveaux Contrôleurs (`core/control/controlers/`)** :
+  - Adaptation de la logique existante en un `LineFollowerController` unifié et compatible avec la nouvelle baseline.
+  - Création à blanc d'un `MLController`, conçu comme prochain jalon utilisant un Multi-Layer Perceptron (MLP) en inférence via TFLite.
+  - Création d'un `ManualController` pour le contrôle manuel via l'interface, avec PWM logiciel pour les virages (configurable).
+- **Adaptateur Vision** :
+  - Création de `VisionAdapter` (`core/vision/vision_adapter.py`) responsable de prendre un `SensorState` en entrée et de la vectoriser mathématiquement (Bounding Boxes, encodage one-hot des classes, normalisation MPU/IR). Ce qui retire cette lourde logique anciennement codée en dur dans les objets DTO.
+- **Assainissement du module de contrôle** :
+  - Déplacement des anciens outils ou algorithmes obsolètes/déclinés dans un sous-dossier de maintien `legacy/`.
+- **Sampling MLP (dataset)** :
+  - Export ZIP en `captures.jsonl` + `labels.jsonl` (entrees vectorisees + labels moteurs par ligne).
+  - Vectorisation alignee sur `VisionAdapter` avec classes inferees depuis les detecteurs.
+  - Labels derives de la derniere commande moteur (SPEED/FORWARD_STEP, STOP/TURN -> zeros).
+- **Controle modulaire via ControlManager** :
+  - Routes controleur mises a jour (start/stop/status) avec selection par nom de controleur.
+  - Override manuel: la croix directionnelle force le basculement sur `manual_controller`.
+- **UI onglet controle** :
+  - Ajout d'un selecteur de controleur + bouton toggle.
+  - Ajout d'un bouton de telechargement des echantillons.
+
 
 ## [Non publié] — Rework complet du LineDetector et intégration VisionPipeline (2026-03-05)
 

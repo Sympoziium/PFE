@@ -40,6 +40,11 @@ class HaarDetector(BaseDetector):
         self.logs = []
         self.steps = []
         
+    @property
+    def classes(self):
+        """Retourne la liste des noms de classes (les noms des classifieurs chargés)."""
+        return list(self.classifiers.keys())
+        
     def add_classifier(self, name, cascade_path, scaleFactor=1.1, minNeighbors=5):
         """Ajoute un classifieur .xml à la liste.
         
@@ -89,6 +94,10 @@ class HaarDetector(BaseDetector):
             if self.debug:
                 print("Classifieur '{}' non trouvé.".format(name))
             return None
+
+    def get_classifier_name_list(self):
+        """Retourne la liste des classifieurs chargés."""
+        return list(self.classifiers.keys())
 
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""

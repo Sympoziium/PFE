@@ -1,0 +1,14 @@
+[Unit]
+Description=Zumi AP+STA Mode
+After=network.target NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/pi/PFE/script/zumi_ap_sta_start.sh
+ExecStop=/usr/sbin/iw dev wlan1 del
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

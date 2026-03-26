@@ -13,26 +13,19 @@ Responsabilités :
 
 Architecture :
     ControlManager (orchestrateur)
-    ├── PIDController               (asservissement PID)
-    ├── LineFollowingStateMachine    (séquence arrêt/photo/rotation)
-    └── StepByStepStateMachine      (mode pas-à-pas avancé)
+    ├── (A mettre a jours avec la nouvelle arch)
 
 Seul le mode actif a le droit d'envoyer des commandes moteur.
 """
 
 import threading
 import time
-
-
-# ---------------------------------------------------------------------------
-#  Constantes – modes de contrôle
-# ---------------------------------------------------------------------------
-
-MODE_IDLE = 'idle'
-MODE_PID = 'pid'
-MODE_STATE_MACHINE = 'state_machine'
-MODE_STEP_BY_STEP = 'step_by_step'
-
+from core.control.IO_drivers.sensor_state import SensorState
+from core.control.IO_drivers.motor_command import MotorCommand, CommandType
+from core.control.IO_drivers.sensor_driver import SensorDriver
+from core.control.IO_drivers.motor_driver import MotorDriver
+from core.control.controlers.manual_controller import ManualController
+from core.control.controlers.ml_controller import MLController
 
 class ControlManager:
     """
@@ -41,11 +34,9 @@ class ControlManager:
     Usage typique (dans main.py) ::
 
         ctrl_mgr = ControlManager(robot, vision_pipeline)
-        ctrl_mgr.register_pid(pid_controller)
-        ctrl_mgr.register_state_machine(state_machine)
+        ctrl_mgr.register_controller(pid_controller)
         ctrl_mgr.start()            # lance la boucle de contrôle
         ...
-        ctrl_mgr.activate(MODE_PID)  # active le suivi PID
     """
 
     def __init__(self, robot, vision_pipeline):
@@ -55,82 +46,175 @@ class ControlManager:
             vision_pipeline:  Instance de VisionPipeline.
         """
         self.robot = robot
-        self.vision_pipeline = vision_pipeline
-
-        # Mode de contrôle actif
-        self._mode = MODE_IDLE
-        self._mode_lock = threading.Lock()
+        self.vp = vision_pipeline
 
         # Contrôleurs enregistrés
-        self._pid_controller = None
-        self._state_machine = None          # LineFollowingStateMachine
-        self._step_machine = None           # StepByStepStateMachine
-        self._line_detector = None          # Référence au détecteur de ligne
+        self._controllers = {}  # dict de tous les contrôleurs
+
+        # Contrôleur actif (et instance de drivers)
+        self._active_controller = None      # ControllerBase instance
+        self._sensor_driver = None          # SensorDriver
+        self._motor_driver = None           # MotorDriver
 
         # Boucle de contrôle
         self._thread = None
         self._running = False
+        self._loop_delay = 0.05 # férquence de tic limité a 20Hz
 
         # Données partagées (mises à jour par la boucle, lues par le serveur)
         self._data_lock = threading.Lock()
-        self.last_line_offset = None
-        self.last_correction = 0
-        self.last_left_speed = 0
+        self.last_sensor_data = SensorState()
+        self.last_motor_command = MotorCommand(CommandType.STOP, 0, 0)
+        
+        self.last_left_speed = 0 # voir si on garde
         self.last_right_speed = 0
+        
+        # Callbacks pour l'échantillonnage par le serveur
+        # Signature: fn(state: SensorState, command: MotorCommand) -> None
+        self._sampling_callback = None
+
+        # Override manuel temporaire (WASD pendant qu'un contrôleur auto est actif)
+        # Permet de corriger manuellement sans changer le contrôleur actif.
+        self._override_command = None       # MotorCommand ou None
+        self._override_time = 0.0           # Timestamp de la dernière commande override
+        self._override_timeout = 0.3        # Timeout watchdog (secondes)
+
+        self._init_new_arch_drivers() # Initialise les drivers de la nouvelle architecture (SensorDriver et MotorDriver)
+        self._init_robot_sensors() # Initialise les capteurs du robot (MPU, IR, batterie) au demarrage du manager
 
     # ------------------------------------------------------------------
     #  Enregistrement des contrôleurs
     # ------------------------------------------------------------------
-
-    def register_pid(self, pid_controller):
-        """Enregistre le contrôleur PID partagé."""
-        self._pid_controller = pid_controller
-
-    def register_state_machine(self, state_machine):
-        """Enregistre la machine à états de suivi de ligne (arrêt/photo/rotation)."""
-        self._state_machine = state_machine
-
-    def register_step_machine(self, step_machine):
-        """Enregistre la machine à états pas-à-pas."""
-        self._step_machine = step_machine
-
-    def register_line_detector(self, line_detector):
-        """Enregistre la référence au détecteur de ligne (pour l'offset)."""
-        self._line_detector = line_detector
+    def register_controller(self, name, controller):
+        """Enregistre un contrôleur avec un nom unique."""
+        if name in self._controllers:
+            raise ValueError(f"Contrôleur '{name}' déjà enregistré.")
+        self._controllers[name] = controller
 
     # ------------------------------------------------------------------
     #  Accès aux contrôleurs
     # ------------------------------------------------------------------
+    def get_controller(self, name):
+        """Retourne le contrôleur enregistré sous le nom donné."""
+        return self._controllers.get(name)
+    
+    def activate_controller(self, name):
+        """Active le contrôleur enregistré sous le nom donné."""
+        if name not in self._controllers:
+            raise ValueError(f"Contrôleur '{name}' non trouvé.")    
+        
+        # Arrêter le contrôleur précédent s'il y en avait un
+        if self._active_controller:
+            self._active_controller.stop()
+            
+        self._active_controller = self._controllers[name]
+        self._active_controller.start()  # On laisse le contrôleur s'initialiser
+        self.vp.start_passive_detection() # On démarre la détection passive
+        self._start_loop()
 
-    @property
-    def pid_controller(self):
-        return self._pid_controller
-
-    @property
-    def state_machine(self):
-        return self._state_machine
-
-    @property
-    def step_machine(self):
-        return self._step_machine
-
-    @property
-    def mode(self):
-        with self._mode_lock:
-            return self._mode
+    def deactivate_controller(self):
+        """Désactive le contrôleur actif (retour à IDLE) et arrête les moteurs."""
+        if self._active_controller:
+            self._active_controller.stop()
+            
+        self._active_controller = None
+        self._stop_loop()
+        self.vp.stop_passive_detection()
+        
+        # SÉCURITÉ : Forcer l'arrêt du robot physiquement quand aucun contrôleur n'est actif
+        if self._motor_driver:
+            self._motor_driver.execute(MotorCommand.stop())
 
     # ------------------------------------------------------------------
-    #  Démarrage de la vision (sans boucle de contrôle)
+    #  Override manuel temporaire (WASD pendant contrôleur auto)
     # ------------------------------------------------------------------
+    def set_manual_override(self, command):
+        """Injecte une commande moteur temporaire sans changer le contrôleur actif.
 
-    def start_vision(self):
-        """Démarre le pipeline de vision (caméra) sans lancer la boucle de contrôle.
+        Le contrôleur actif (PID, etc.) reste en place mais ses commandes sont
+        ignorées tant que l'override est alimenté. Quand l'override expire
+        (watchdog timeout), le contrôleur reprend automatiquement.
 
-        La boucle de contrôle ne démarre que via ``activate(mode)`` et
-        s'arrête automatiquement via ``deactivate()``.  Cela évite de
-        consommer du CPU tant qu'aucun mode n'est actif.
+        Args:
+            command: MotorCommand à envoyer aux moteurs.
         """
-        self.vision_pipeline.start()
+        self._override_command = command
+        self._override_time = time.time()
+
+    def clear_manual_override(self):
+        """Annule l'override manuel. Le contrôleur actif reprend immédiatement."""
+        self._override_command = None
+
+    @property
+    def manual_override_active(self):
+        """True si un override manuel est en cours (non expiré)."""
+        if self._override_command is None:
+            return False
+        return (time.time() - self._override_time) <= self._override_timeout
+
+    def set_loop_delay(self, delay_sec):
+        """Modifier le délai de la boucle de contrôle (delay en secondes)"""
+        with self._data_lock:
+            self._loop_delay = delay_sec
+
+    # ------------------------------------------------------------------
+    #  Callback de sampling (appelé à chaque tick de la boucle)
+    # ------------------------------------------------------------------
+    def set_sampling_callback(self, callback):
+        """
+        Enregistre un callback appelé à chaque tick de la boucle de contrôle,
+        immédiatement après step() et avant execute().
+
+        Args:
+            callback: Fonction avec signature fn(state: SensorState, command: MotorCommand) -> None
+        """
+        self._sampling_callback = callback
+
+    def clear_sampling_callback(self):
+        """Désactive le callback de sampling."""
+        self._sampling_callback = None
+
+
+    # ------------------------------------------------------------------
+    #  Démarrage des capteurs
+    # ------------------------------------------------------------------
+    def _init_new_arch_drivers(self):
+        """Initialise (une seule fois) SensorDriver et MotorDriver."""
+        if self._sensor_driver is None:
+            self._sensor_driver = SensorDriver(self.vp, self.robot)
+            self._motor_driver = MotorDriver(self.robot)
+
+    def _init_robot_sensors(self):
+        """Initialise les capteurs du robot (MPU, IR, batterie)."""
+        self.robot.calibrate_sensors() # initialisation des capteurs (gyro, MPU, PID, etc.)
+        self.update_sensors() # lecture initiale pour remplir last_sensor_data
+
+    # ------------------------------------------------------------------
+    #  Mise à jours des capteurs
+    # ------------------------------------------------------------------
+    def update_sensors(self):
+        """Met à jour les données des capteurs du robot (MPU, IR, batterie).
+
+        Note: En mode manuel ou ML, la détection de ligne est désactivée pour
+        réduire l'overhead CPU. Ces contrôleurs n'utilisent pas cette information.
+        """
+        if self._sensor_driver is not None:
+            # Auto-détection: skip line detection en mode manuel ou ML pour économiser le CPU
+            is_manual_or_ml = isinstance(self._active_controller, (ManualController, MLController))
+            state = self._sensor_driver.read(Line_detection=not is_manual_or_ml)
+            with self._data_lock:
+                self.last_sensor_data = state
+    
+    def get_last_sensor_data(self):
+        with self._data_lock:
+            # On retourne la référence (update_sensors recrée un objet SensorState neuf à chaque tick)
+            return self.last_sensor_data
+    # ------------------------------------------------------------------
+    #  Réinitialisation des capteurs
+    # ------------------------------------------------------------------
+    def _reset_robot_drive_state(self):
+        """Réinitialise les capteurs du robot"""
+        self.robot.reset_drive_state()  # réinitialise les PID et le Gyro
 
     # ------------------------------------------------------------------
     #  Boucle de contrôle (démarre/s'arrête avec activate/deactivate)
@@ -151,11 +235,6 @@ class ControlManager:
             self._thread.join(timeout=3.0)
             self._thread = None
 
-    def stop(self):
-        """Arrête tout : boucle de contrôle + modes actifs."""
-        self.deactivate()
-        self._stop_loop()
-
     def _control_loop(self):
         """
         Boucle de contrôle.
@@ -166,37 +245,30 @@ class ControlManager:
         print("[ControlManager] Boucle de contrôle démarrée.")
         while self._running:
             try:
-                current_mode = self.mode
-
-                # Si on retombe en IDLE, la boucle n'a plus de raison de tourner
-                if current_mode == MODE_IDLE:
+                # sortie de la boucle si le contrôleur est désactivé (sortie pour l'onglet contrôle)
+                if self._active_controller is None:
                     break
 
-                # --- Lecture du buffer partagé (sans capturer la caméra) ---
-                # La capture est déjà faite par video_feed() qui alimente le buffer.
-                frame = self.vision_pipeline.get_last_frame()
-                if frame is None:
-                    time.sleep(0.03)
-                    continue
+                # Mise à jours des lectures capteurs
+                self.update_sensors()
 
-                # Pour MODE_PID : détecter la ligne depuis le buffer et stocker l'offset
-                line_val = None
-                if current_mode == MODE_PID:
-                    line_val = self._detect_line_from_frame(frame)
-                    with self._data_lock:
-                        self.last_line_offset = line_val
-                    # Rétro-compatibilité : le pid_loop du server_controller lit cet attribut
-                    self.vision_pipeline.last_line_offset = line_val
+                # Exécution d'un cycle du contrôleur actif
+                state, command = self._tick_controller()
 
-                # --- Dispatch du mode actif ---
-                if current_mode == MODE_PID:
-                    self._tick_pid(line_val)
+                # Exécution du callback de sampling (après step, avant execute)
+                if self._sampling_callback is not None and state is not None and command is not None:
+                    try:
+                        self._sampling_callback(state, command)
+                    except Exception as e:
+                        print("[ControlManager] Erreur dans le callback de sampling: {}".format(e))
 
-                elif current_mode == MODE_STATE_MACHINE:
-                    self._tick_state_machine()
-
-                elif current_mode == MODE_STEP_BY_STEP:
-                    self._tick_step_machine()
+                # Délai adaptatif selon le contrôleur actif:
+                # - Manuel: 33ms (30 Hz) - tick léger, peut aller plus vite pour une meilleure réactivité aux commandes web
+                # - ML/autres: 50ms (20 Hz) - marge pour inférence TFLite
+                if isinstance(self._active_controller, ManualController):
+                    time.sleep(0.033)
+                else:
+                    time.sleep(self._loop_delay)
 
             except Exception as e:
                 print("[ControlManager] Erreur dans la boucle de contrôle: {}".format(e))
@@ -211,186 +283,52 @@ class ControlManager:
     # ------------------------------------------------------------------
     #  Tick – exécution d'un cycle pour chaque mode
     # ------------------------------------------------------------------
+    def _tick_controller(self):
+        """
+        Un cycle du contrôleur ControllerBase actif (mode ``controller``).
 
-    def _tick_pid(self, line_offset):
-        """Un cycle de contrôle PID direct (mode ``pid``)."""
-        if self._pid_controller is None:
-            return
+        Returns:
+            tuple: (state, command) pour permettre le sampling synchronisé
+        """
+        if self._active_controller is None:
+            print("ERREUR CTRL MANAGER : aucun contrôleur actif la boucle tic quand même")
+            return None, None
+        elif self._sensor_driver is None:
+            print("ERREUR CTRL MANAGER : le driver des sensors n'a pas été initialisé et la boucle tic quand même")
+            return None, None
+        elif self._motor_driver is None:
+            print("ERREUR CTRL MANAGER : le driver des moteurs n'a pas été initialisé et la boucle tic quand même")
+            return None, None
 
-        if line_offset is None:
-            self.robot.stop()
-            return
+        state = self.get_last_sensor_data()
 
-        if self._pid_controller.rotation_mode:
-            # Mode rotation : calcule un angle et appelle turn()
-            angle = self._pid_controller.compute_rotation_angle(line_offset)
-            if angle is not None:
-                self.robot.turn(angle)
-                with self._data_lock:
-                    self.last_correction = angle
-                    self.last_left_speed = 0
-                    self.last_right_speed = 0
-            else:
-                self.robot.stop()
-                with self._data_lock:
-                    self.last_correction = 0
-                    self.last_left_speed = 0
-                    self.last_right_speed = 0
-            time.sleep(0.15)
-        else:
-            # Mode avance : calcule les vitesses gauche/droite
-            left, right = self._pid_controller.compute(line_offset)
-            self.robot.control_motors(left, right)
+        # Override manuel : si actif et non expiré, envoyer la commande override
+        # au lieu de celle du contrôleur. Le contrôleur reste actif (état PID préservé).
+        if self.manual_override_active:
+            command = self._override_command
+            self._motor_driver.execute(command)
             with self._data_lock:
-                hist = self._pid_controller.correction_history
-                self.last_correction = hist[-1] if hist else 0
-                self.last_left_speed = left
-                self.last_right_speed = right
-            time.sleep(0.05)
+                self.last_left_speed = command.left_speed
+                self.last_right_speed = command.right_speed
+                self.last_motor_command = command
+            return state, command
 
-    def _tick_state_machine(self):
-        """Un cycle de la machine à états de suivi de ligne."""
-        if self._state_machine is None or not self._state_machine.is_running():
-            return
+        # Si l'override vient d'expirer, nettoyer
+        if self._override_command is not None:
+            self._override_command = None
 
-        # Lire depuis le buffer partagé (peuplé par video_feed)
-        frame = self.vision_pipeline.get_last_frame()
-        if frame is None:
-            return
+        command = self._active_controller.step(state)
+        self._motor_driver.execute(command)
+        with self._data_lock: # récupération des commandes de vitesses aux roues
+            self.last_left_speed = command.left_speed
+            self.last_right_speed = command.right_speed
+            self.last_motor_command = command
 
-        state_info = self._state_machine.step(frame)
-        if state_info.get('state') == 'COMPLETED':
-            print("[ControlManager] Séquence LineFollowing terminée.")
-            with self._mode_lock:
-                self._mode = MODE_IDLE
-
-    def _tick_step_machine(self):
-        """Un cycle de la machine à états pas-à-pas."""
-        if self._step_machine is None or not self._step_machine.is_running():
-            return
-
-        # Lire depuis le buffer partagé (peuplé par video_feed)
-        frame = self.vision_pipeline.get_last_frame()
-        if frame is None:
-            return
-
-        result = self._step_machine.step(frame)
-
-        with self._data_lock:
-            self.last_line_offset = result.get('line_offset', self.last_line_offset)
-            self.last_left_speed = result.get('left_speed', 0)
-            self.last_right_speed = result.get('right_speed', 0)
-
-    def _detect_line_from_frame(self, frame):
-        """Extrait l'offset de ligne depuis une frame pré-capturée (sans appel caméra).
-        
-        Cherche le premier détecteur nommé 'line' dans le pipeline et appelle
-        process_frame() avec la frame fournie.
-        """
-        for i, det in enumerate(self.vision_pipeline.detectors):
-            if getattr(det, 'name', '') == 'line':
-                try:
-                    result = self.vision_pipeline.process_frame(frame.copy(), i)
-                    if result:
-                        return result.get('line_offset')
-                except Exception:
-                    pass
-        return None
-
-    # ------------------------------------------------------------------
-    #  Activation / désactivation des modes
-    # ------------------------------------------------------------------
-
-    def activate(self, mode):
-        """
-        Active un mode de contrôle.
-
-        Si un autre mode est déjà actif, il est d'abord désactivé proprement.
-
-        Args:
-            mode: Une des constantes MODE_* (str).
-
-        Raises:
-            ValueError: Si le mode demandé nécessite un contrôleur non enregistré.
-        """
-        if mode == self.mode:
-            return
-
-        # Vérifications
-        if mode == MODE_PID and self._pid_controller is None:
-            raise ValueError("Aucun PIDController enregistré.")
-        if mode == MODE_STATE_MACHINE and self._state_machine is None:
-            raise ValueError("Aucune LineFollowingStateMachine enregistrée.")
-        if mode == MODE_STEP_BY_STEP:
-            if self._step_machine is None:
-                self._create_step_machine()
-
-        # Désactiver le mode courant (arrête la boucle si elle tourne)
-        self.deactivate()
-
-        # Activer le nouveau mode
-        with self._mode_lock:
-            self._mode = mode
-
-        if mode == MODE_PID:
-            self._pid_controller.reset()
-            print("[ControlManager] Mode PID activé ({})".format(
-                "rotation" if self._pid_controller.rotation_mode else "avance"))
-
-        elif mode == MODE_STATE_MACHINE:
-            self._state_machine.start()
-            print("[ControlManager] Mode LineFollowingStateMachine activé.")
-
-        elif mode == MODE_STEP_BY_STEP:
-            self._step_machine.start()
-            print("[ControlManager] Mode StepByStep activé.")
-
-        # Lancer la boucle de contrôle (si pas déjà en cours)
-        self._start_loop()
-
-    def deactivate(self):
-        """Désactive le mode courant, arrête la boucle de contrôle et les moteurs."""
-        with self._mode_lock:
-            prev_mode = self._mode
-            self._mode = MODE_IDLE
-
-        if prev_mode == MODE_PID:
-            pass  # Pas d'état interne à nettoyer
-
-        elif prev_mode == MODE_STATE_MACHINE:
-            if self._state_machine and self._state_machine.is_running():
-                self._state_machine.stop()
-
-        elif prev_mode == MODE_STEP_BY_STEP:
-            if self._step_machine and self._step_machine.is_running():
-                self._step_machine.stop()
-
-        # Arrêter la boucle de contrôle (le thread se termine car mode == IDLE)
-        self._stop_loop()
-
-        self.robot.stop()
-
-        with self._data_lock:
-            self.last_correction = 0
-            self.last_left_speed = 0
-            self.last_right_speed = 0
-
-        if prev_mode != MODE_IDLE:
-            print("[ControlManager] Mode '{}' désactivé.".format(prev_mode))
+        return state, command
 
     # ------------------------------------------------------------------
     #  Helpers
     # ------------------------------------------------------------------
-
-    def _create_step_machine(self):
-        """Crée la StepByStepStateMachine à la demande."""
-        from core.control.line_following_state_machine import StepByStepStateMachine
-
-        self._step_machine = StepByStepStateMachine(
-            robot=self.robot,
-            vision_pipeline=self.vision_pipeline,
-            pid_controller=self._pid_controller,
-        )
 
     def get_status(self):
         """
@@ -400,27 +338,16 @@ class ControlManager:
         """
         with self._data_lock:
             data = {
-                'mode': self.mode,
                 'running': self._running,
-                'line_offset': self.last_line_offset,
-                'correction': self.last_correction,
+                'last_sensor_data': self.get_last_sensor_data(),
                 'left_speed': self.last_left_speed,
                 'right_speed': self.last_right_speed,
             }
 
-        # Infos spécifiques au mode actif
-        if self.mode == MODE_PID and self._pid_controller:
-            data['pid_params'] = self._pid_controller.get_params()
-            data['pid_debug'] = self._pid_controller.get_debug_info()
-
-        elif self.mode == MODE_STATE_MACHINE and self._state_machine:
-            data['state'] = self._state_machine.get_state().name
-            data['photos_taken'] = len(self._state_machine.photos_taken)
-            data['rotation_count'] = self._state_machine.rotation_count
-
-        elif self.mode == MODE_STEP_BY_STEP and self._step_machine:
-            data['state'] = self._step_machine.get_state().name
-            data['step_count'] = self._step_machine.step_count
-            data['waiting_approval'] = self._step_machine.is_waiting_approval()
+        # Infos spécifiques au contrôleur actif
+        if self._running and self._active_controller:
+            data['controller_name'] = self._active_controller.name
+            data['controller_debug'] = self._active_controller.get_debug_info()
+            data['controller_params'] = self._active_controller.get_params()
 
         return data
