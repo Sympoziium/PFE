@@ -29,6 +29,71 @@ DELTA_FEATURE_NAMES = [
 DELTA_STEPS = 3
 DELTA_WEIGHTS = [1.0, 0.5, 0.25]  # Plus recent = plus important
 
+# Indice du gyro_z (vitesse angulaire yaw en deg/s) dans le vecteur 27-dim
+GYRO_Z_INDEX = 18
+
+# Noms des categories d'actions
+ACTION_NAMES = ["Arret", "Tout droit", "Tourne G", "Tourne D", "Recule"]
+
+
+def classify_actions(captures, labels, gyro_z_index=GYRO_Z_INDEX,
+                     rotation_thresh=3.0, stop_thresh=0.02,
+                     boundary_thresh=150.0):
+    """Categorise les echantillons par action reelle via IMU.
+
+    Utilise le delta du gyroscope (gyro_z[t] - gyro_z[t-1]) pour detecter
+    les rotations plutot que les commandes moteur, car celles-ci sont
+    biaisees par la correction PID de cap.
+
+    Note: gyro_z (index 18) est l'angle yaw CUMULATIF integre du gyroscope
+    (en degres), pas une vitesse angulaire. Il s'accumule au sein d'une
+    sequence et est reinitialise entre les sequences. On calcule donc le
+    delta entre echantillons consecutifs pour obtenir la vitesse angulaire
+    par tick, en mettant a zero les frontieres de sequence (gros sauts).
+
+    Convention Zumi: gyro_z positif = rotation vers la gauche.
+
+    Args:
+        captures: array (N, D) avec gyro_z a l'index gyro_z_index
+        labels: array (N, 2) commandes moteur normalisees [-1, 1]
+        gyro_z_index: indice du gyro_z dans captures (18 pour raw 27-dim)
+        rotation_thresh: seuil delta gyro_z en deg/tick pour detecter une rotation
+        stop_thresh: seuil commande moteur pour detecter un arret
+        boundary_thresh: seuil de saut gyro_z pour detecter une frontiere de sequence
+
+    Returns:
+        categories: array int (N,) — 0=arret, 1=forward, 2=turn_left,
+                    3=turn_right, 4=reverse
+    """
+    gyro_z_raw = captures[:, gyro_z_index]
+
+    # Calculer le delta gyro_z (vitesse angulaire par tick)
+    gyro_z_delta = np.zeros_like(gyro_z_raw)
+    gyro_z_delta[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
+
+    # Mettre a zero les frontieres de sequence (gros sauts = reset gyro)
+    boundaries = np.abs(gyro_z_delta) > boundary_thresh
+    gyro_z_delta[boundaries] = 0.0
+
+    left = labels[:, 0]
+    right = labels[:, 1]
+    speed_avg = (left + right) / 2.0
+
+    is_stop = (np.abs(left) < stop_thresh) & (np.abs(right) < stop_thresh)
+    is_rotating_left = (gyro_z_delta > rotation_thresh) & ~is_stop
+    is_rotating_right = (gyro_z_delta < -rotation_thresh) & ~is_stop
+    is_reverse = (speed_avg < -stop_thresh) & ~is_stop & ~is_rotating_left & ~is_rotating_right
+    is_forward = ~is_stop & ~is_rotating_left & ~is_rotating_right & ~is_reverse
+
+    categories = np.zeros(len(labels), dtype=np.int64)
+    categories[is_stop] = 0
+    categories[is_forward] = 1
+    categories[is_rotating_left] = 2
+    categories[is_rotating_right] = 3
+    categories[is_reverse] = 4
+
+    return categories
+
 
 class ZumiControlDataset(Dataset):
     """Dataset pour l'apprentissage par imitation du contrôle Zumi.
@@ -106,24 +171,57 @@ class ZumiControlDataset(Dataset):
         command = torch.from_numpy(self.labels[idx])
         return state, command
 
-    def deduplicate(self, threshold: float = 1e-4):
+    def deduplicate(self, threshold: float = 1e-4, min_run_length: int = 5):
         """Retire les echantillons consecutifs quasi-identiques.
 
-        Ces doublons proviennent de moments ou le robot est immobile ou
-        le sampling est trop rapide. Ils biaisent le modele vers 'ne rien faire'.
+        Ne retire que les groupes de doublons d'au moins min_run_length
+        echantillons consecutifs, en gardant le premier de chaque groupe.
+        Les paires courtes (2-3 echantillons similaires) sont normales
+        a ~80ms de sampling et representent un signal valide (commande
+        maintenue, virage constant).
 
         Args:
             threshold: Distance L2 minimale entre deux echantillons consecutifs.
+            min_run_length: Nombre minimum d'echantillons consecutifs dans un
+                           groupe pour qu'il soit considere comme un vrai doublon.
+                           Les groupes plus courts sont conserves.
         """
         if len(self.captures) < 2:
             return
 
         diffs = np.linalg.norm(self.captures[1:] - self.captures[:-1], axis=1)
-        keep = np.concatenate([[True], diffs >= threshold])
-        n_removed = int(np.sum(~keep))
+        is_dup = diffs < threshold
+
+        # Identifier les runs de doublons consecutifs et ne retirer
+        # que ceux dont la longueur >= min_run_length
+        keep = np.ones(len(self.captures), dtype=bool)
+        run_start = None
+        n_removed = 0
+
+        for i in range(len(is_dup)):
+            if is_dup[i]:
+                if run_start is None:
+                    run_start = i  # i est le dernier "original", i+1 est le premier doublon
+            else:
+                if run_start is not None:
+                    run_length = (i + 1) - run_start  # nb echantillons dans le groupe
+                    if run_length >= min_run_length:
+                        # Garder le premier (run_start), retirer le reste
+                        keep[run_start + 1 : i + 1] = False
+                        n_removed += i - run_start
+                    run_start = None
+
+        # Fermer le dernier run s'il se termine a la fin du tableau
+        if run_start is not None:
+            run_length = len(self.captures) - run_start
+            if run_length >= min_run_length:
+                keep[run_start + 1 :] = False
+                n_removed += len(self.captures) - run_start - 1
+
         self.captures = self.captures[keep]
         self.labels = self.labels[keep]
-        print(f"[Dataset] Deduplication: {n_removed} doublons retires ({len(self)} restants)")
+        print(f"[Dataset] Deduplication: {n_removed} doublons retires "
+              f"(groupes >= {min_run_length} samples, {len(self)} restants)")
 
     def compute_line_features(self):
         """Ajoute des features engineered pour le suivi de ligne.
@@ -227,43 +325,21 @@ class ZumiControlDataset(Dataset):
     def compute_sample_weights(self) -> np.ndarray:
         """Calcule les poids par echantillon pour equilibrer les categories d'actions.
 
-        Utilise l'inverse de la frequence de chaque categorie pour que les
-        actions rares (virages, arrets) soient vues aussi souvent que 'tout droit'.
+        Utilise le gyroscope (gyro_z) pour categoriser les actions reelles
+        plutot que les commandes moteur (biaisees par le PID de cap).
 
         Returns:
             np.ndarray: Poids par echantillon (shape: [n_samples])
         """
-        left = self.labels[:, 0]
-        right = self.labels[:, 1]
-        speed_avg = (left + right) / 2.0
-        steering = left - right
-
-        # Seuils en vitesse absolue (independants de MOTOR_SPEED_MAX)
-        # On utilise les labels normalises, seuils relatifs
-        stop_thresh = 0.02     # vitesse ~1 sur 50
-        steer_thresh = 0.06    # differentiel ~3 sur 50
-
-        categories = np.zeros(len(self.labels), dtype=np.int64)
-        is_stop = (np.abs(left) < stop_thresh) & (np.abs(right) < stop_thresh)
-        is_reverse = (speed_avg < -stop_thresh) & ~is_stop
-        is_turn_left = (steering < -steer_thresh) & ~is_stop & ~is_reverse
-        is_turn_right = (steering > steer_thresh) & ~is_stop & ~is_reverse
-        is_forward = ~is_stop & ~is_reverse & ~is_turn_left & ~is_turn_right
-
-        categories[is_stop] = 0
-        categories[is_forward] = 1
-        categories[is_turn_left] = 2
-        categories[is_turn_right] = 3
-        categories[is_reverse] = 4
+        categories = classify_actions(self.captures, self.labels)
 
         class_counts = np.bincount(categories, minlength=5).astype(np.float64)
         class_counts[class_counts == 0] = 1.0  # eviter div par zero
         class_weights = 1.0 / class_counts
         sample_weights = class_weights[categories]
 
-        cat_names = ["Arret", "Tout droit", "Tourne G", "Tourne D", "Recule"]
-        print("[Dataset] Poids par categorie (echantillonnage equilibre):")
-        for i, name in enumerate(cat_names):
+        print("[Dataset] Poids par categorie (echantillonnage equilibre, IMU-based):")
+        for i, name in enumerate(ACTION_NAMES):
             count = int(class_counts[i])
             weight = class_weights[i]
             print(f"  {name:15s}: {count:5d} samples, poids {weight:.4f}")
@@ -306,6 +382,56 @@ class ZumiControlDataset(Dataset):
             "label_max": self.labels.max(axis=0).tolist(),
         }
         return stats
+
+    def compute_motor_efficiency(self) -> float:
+        """Estime l'efficacite du moteur gauche depuis le biais des labels.
+
+        Pendant la collecte, le PID de cap boostait le moteur gauche (plus
+        faible) pour maintenir le cap. Pour les echantillons "tout droit"
+        (delta gyro_z ~= 0), le ratio mean_right / mean_left donne
+        l'efficacite relative du moteur gauche.
+
+        Returns:
+            float: Efficacite du moteur gauche dans (0, 1]. 1.0 = pas d'asymetrie.
+        """
+        categories = classify_actions(self.captures, self.labels)
+        forward_mask = categories == 1  # forward
+
+        if forward_mask.sum() < 10:
+            print("[Dataset] Motor efficiency: pas assez d'echantillons forward")
+            return 1.0
+
+        # Parmi les forward, prendre ceux vraiment droits (delta gyro_z faible)
+        # gyro_z est cumulatif -> calculer le delta pour obtenir la vitesse angulaire
+        gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
+        gyro_z_delta = np.zeros_like(gyro_z_raw)
+        gyro_z_delta[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
+        # Zeroiser les frontieres de sequence
+        gyro_z_delta[np.abs(gyro_z_delta) > 150.0] = 0.0
+
+        fwd_delta = gyro_z_delta[forward_mask]
+        straight_mask = np.abs(fwd_delta) < 5.0  # < 5 deg/tick
+
+        fwd_labels = self.labels[forward_mask]
+        if straight_mask.sum() >= 10:
+            straight_labels = fwd_labels[straight_mask]
+        else:
+            straight_labels = fwd_labels
+
+        mean_l = straight_labels[:, 0].mean()
+        mean_r = straight_labels[:, 1].mean()
+
+        if mean_l < 1e-6:
+            return 1.0
+
+        efficiency = float(mean_r / mean_l)
+        efficiency = max(0.80, min(1.0, efficiency))
+
+        print(f"[Dataset] Motor efficiency: left={efficiency:.3f} "
+              f"(mean_L={mean_l:.4f}, mean_R={mean_r:.4f}, "
+              f"n_straight={int(straight_mask.sum()) if straight_mask.sum() >= 10 else len(straight_labels)})")
+
+        return efficiency
 
 
 def create_data_loaders(

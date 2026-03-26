@@ -8,7 +8,7 @@
 
 ## 1. Description du projet
 
-Ce projet s'inscrit dans la continuité d'un PFE multi-session dont l'objectif est de concevoir un véhicule autonome miniature à partir du robot éducatif **Zumi** (Robolink). Le robot doit être capable de naviguer de façon autonome dans un environnement contrôlé en exploitant des algorithmes de vision artificielle embarqués.
+Ce projet s'inscrit dans la continuité d'un PFE multi-session dont l'objectif est de concevoir un véhicule autonome miniature à partir du robot éducatif **Zumi** (Robolink). Nos pricipaux objectifs sont des contributions logicielles le but étant de s'affranchir de l'environnement de développement propriétaire de Robolink pour créer une plateforme logicielle flexible, modulaire et extensible, compatible avec les futures évolutions matérielles du robot. Nous souhaitons également explorer l'implantation de différents algorithmes d'apprentissage machine (ML) afin de comparer leur efficacité dans le contexte de la conduite autonome sur un robot à ressources limitées.
 
 ### Objectifs de la session courante
 

@@ -268,7 +268,7 @@ def main():
 
     # Chemins de sortie
     savedmodel_path = output_dir / "zumi_mlp_tf"
-    tflite_name = "zumi_mlp_quant.tflite" if args.quantize else "zumi_mlp.tflite"
+    tflite_name = "zumi_mlp.tflite"
     tflite_path = output_dir / tflite_name
 
     print("=" * 60)

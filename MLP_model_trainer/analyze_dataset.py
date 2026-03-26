@@ -21,6 +21,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 from pathlib import Path
 
+from dataset import classify_actions, ACTION_NAMES, GYRO_Z_INDEX
+
 
 def load_dataset(data_dir: Path):
     """Charge les fichiers captures.jsonl et labels.jsonl."""
@@ -224,22 +226,104 @@ def analyze_dataset(captures, labels, save_dir=None):
     print()
 
     # === DOUBLONS / QUASI-DOUBLONS ===
+    # Seuls les groupes >= min_run_length sont consideres comme de vrais doublons.
+    # Les paires courtes (2-3 echantillons similaires) sont normales a ~80ms de
+    # sampling: commande maintenue, virage constant, temps de reaction humain.
     print("[DUPLICATES] Detection de quasi-doublons consecutifs:")
     n_duplicates = 0
+    min_run_length = 5  # aligne avec dataset.deduplicate()
     if len(captures) > 1:
         diffs = np.linalg.norm(captures[1:] - captures[:-1], axis=1)
         dup_threshold = 1e-4
-        n_duplicates = np.sum(diffs < dup_threshold)
-        dup_pct = n_duplicates / (len(captures) - 1) * 100
-        print(f"  Paires quasi-identiques (||delta|| < {dup_threshold}): {n_duplicates} ({dup_pct:.1f}%)")
-        if n_duplicates > 0:
-            print(f"  Distance moyenne entre consecutifs: {diffs.mean():.6f}")
-            print(f"  Distance mediane: {np.median(diffs):.6f}")
-        if dup_pct > 10:
-            print(f"  [WARN] {dup_pct:.0f}% de doublons! Le robot etait probablement arrete")
-            print(f"         ou le sampling etait trop rapide. Dataset effectif reduit.")
+        is_dup = diffs < dup_threshold
+
+        # Identifier les groupes (runs) de doublons consecutifs
+        runs = []
+        run_start = None
+        for i in range(len(is_dup)):
+            if is_dup[i]:
+                if run_start is None:
+                    run_start = i  # i = dernier original, i+1 = premier doublon
+            else:
+                if run_start is not None:
+                    runs.append((run_start, i))  # run_start..i inclus
+                    run_start = None
+        if run_start is not None:
+            runs.append((run_start, len(captures) - 1))
+
+        run_lengths = [end - start + 1 for start, end in runs]
+        total_similar_pairs = int(np.sum(is_dup))
+
+        # Separer les groupes courts (normaux) des groupes longs (vrais doublons)
+        short_runs = [(l, s, e) for l, (s, e) in zip(run_lengths, runs) if l < min_run_length]
+        long_runs = [(l, s, e) for l, (s, e) in zip(run_lengths, runs) if l >= min_run_length]
+        n_short_samples = sum(l - 1 for l, _, _ in short_runs)  # samples qui seraient retires
+        n_long_samples = sum(l - 1 for l, _, _ in long_runs)
+        n_duplicates = n_long_samples  # seuls les longs groupes sont retires
+
+        print(f"  Paires consecutives similaires (||delta|| < {dup_threshold}): {total_similar_pairs}")
+        print(f"  Distance moyenne entre consecutifs: {diffs.mean():.6f}")
+        print(f"  Distance mediane: {np.median(diffs):.6f}")
+        print()
+
+        # Distribution par taille de groupe
+        print(f"  Distribution par taille de groupe:")
+        if run_lengths:
+            length_arr = np.array(run_lengths)
+            bins = [(2, 2, "2 (paire)"), (3, 4, "3-4"), (5, 9, "5-9"), (10, 99, "10+")]
+            for lo, hi, label in bins:
+                mask = (length_arr >= lo) & (length_arr <= hi)
+                count = int(np.sum(mask))
+                samples_in = int(np.sum(length_arr[mask] - 1))  # echantillons redondants
+                marker = " <- retires" if lo >= min_run_length else " <- conserves (signal valide)"
+                print(f"    Taille {label:10s}: {count:5d} groupes ({samples_in:5d} echantillons){marker}")
+        print()
+
+        # Details sur les groupes longs (ceux qui seront effectivement retires)
+        if long_runs:
+            print(f"  [DEDUP] Groupes retires a l'entrainement (>= {min_run_length} samples): "
+                  f"{len(long_runs)} groupes, {n_long_samples} echantillons")
+
+            # Breakdown par action (via IMU gyro_z)
+            # Classifier chaque echantillon du dataset, puis compter par groupe
+            all_categories = classify_actions(captures, labels)
+            long_run_cat_counts = {name: 0 for name in ACTION_NAMES}
+            for length, start, end in long_runs:
+                # Action dominante du groupe = mode des categories
+                grp_cats = all_categories[start:end+1]
+                dominant = int(np.bincount(grp_cats, minlength=5).argmax())
+                long_run_cat_counts[ACTION_NAMES[dominant]] += length - 1
+
+            print(f"  Repartition des doublons retires par action (IMU-based):")
+            for name, count in long_run_cat_counts.items():
+                pct = count / n_long_samples * 100 if n_long_samples > 0 else 0
+                bar = "#" * int(pct / 2)
+                print(f"    {name:18s}: {count:5d} ({pct:5.1f}%) {bar}")
+
+            # Top 5 plus grands groupes
+            top_long = sorted(long_runs, reverse=True)[:5]
+            print(f"\n  Top 5 plus grands groupes:")
+            for length, start, end in top_long:
+                grp_left = labels[start:end+1, 0].mean()
+                grp_right = labels[start:end+1, 1].mean()
+                grp_gyro_z = captures[start:end+1, GYRO_Z_INDEX].mean()
+                dominant = int(np.bincount(all_categories[start:end+1], minlength=5).argmax())
+                action = ACTION_NAMES[dominant]
+                print(f"      idx [{start:5d}-{end:5d}] ({length:4d} samples) "
+                      f"action={action:10s} V_left={grp_left:+.4f} V_right={grp_right:+.4f} "
+                      f"gyro_z={grp_gyro_z:+.1f} deg/s")
         else:
-            print(f"  [OK] Peu de doublons.")
+            print(f"  [OK] Aucun groupe de >= {min_run_length} echantillons identiques consecutifs.")
+            print(f"       Toutes les similarites sont des commandes maintenues (signal valide).")
+            n_duplicates = 0
+
+        print()
+        if n_duplicates > 0:
+            dup_pct = n_duplicates / len(captures) * 100
+            print(f"  [INFO] {n_duplicates} echantillons a retirer ({dup_pct:.1f}% du dataset)")
+            print(f"         {n_short_samples} echantillons similaires conserves (groupes < {min_run_length})")
+        else:
+            print(f"  [OK] Pas de stagnation significative detectee.")
     print()
 
     # === SAUTS BRUSQUES DANS LES LABELS ===
@@ -265,32 +349,13 @@ def analyze_dataset(captures, labels, save_dir=None):
     print()
 
     # === CATEGORISATION FINE DES ACTIONS ===
-    # Logique basee sur le controleur manuel (manual_controller.py):
-    #   - Rotation pure (A/D): turn_speed=1 -> ~0.01 normalise
-    #   - Arc (W+A/W+D): roue interieure ~0.02, exterieure ~0.38
-    #   - Tout droit (W/S): ~0.20 par roue
-    # Un virage = la roue la plus lente est sous turn_threshold
-    print("[ACTIONS] Categorisation fine des commandes:")
-    turn_threshold = 0.05   # seuil vitesse roue interieure pour detecter un virage
-    stop_threshold = 0 # lorsque le robot est a l'arret les roues sont a 0.
-    left = labels[:, 0]
-    right = labels[:, 1]
-    min_wheel = np.minimum(np.abs(left), np.abs(right))
-
-    is_stop = (np.abs(left) == stop_threshold) & (np.abs(right) == stop_threshold)
-    is_turning = (min_wheel < turn_threshold) & ~is_stop
-    is_turn_left = is_turning & (left < right)
-    is_turn_right = is_turning & (right < left)
-    is_reverse = ~is_stop & ~is_turning & (left < 0) & (right < 0)
-    is_forward = ~is_stop & ~is_turning & ~is_reverse
-
-    categories = {
-        "Arret":          np.sum(is_stop),
-        "Tout droit":     np.sum(is_forward),
-        "Tourne gauche":  np.sum(is_turn_left),
-        "Tourne droite":  np.sum(is_turn_right),
-        "Recule":         np.sum(is_reverse),
-    }
+    # Utilise le gyroscope (gyro_z) pour detecter les rotations reelles
+    # plutot que les commandes moteur (biaisees par le PID de cap).
+    print("[ACTIONS] Categorisation fine des actions (IMU-based, gyro_z):")
+    action_categories = classify_actions(captures, labels)
+    categories = {}
+    for i, name in enumerate(ACTION_NAMES):
+        categories[name] = int(np.sum(action_categories == i))
 
     for name, count in categories.items():
         pct = count / len(labels) * 100
@@ -355,6 +420,8 @@ def analyze_dataset(captures, labels, save_dir=None):
     ir_bot_right = captures[:, 1]  # IR_bottom_right
     ir_bot_left  = captures[:, 3]  # IR_bottom_left
     ir_diff = ir_bot_left - ir_bot_right  # positif = ligne a droite -> tourner a droite
+    left = labels[:, 0]
+    right = labels[:, 1]
     steering_cmd = left - right            # positif = tourne a droite
 
     corr_diff_steering = np.corrcoef(ir_diff, steering_cmd)[0, 1]
@@ -442,9 +509,9 @@ def analyze_dataset(captures, labels, save_dir=None):
         print("  * Dataset bien equilibre")
 
     if dead_features:
-        print(f"  * {len(dead_features)} features mortes retirees automatiquement (masque)")
-    if n_duplicates > len(captures) * 0.1:
-        print(f"  * {n_duplicates} doublons retires automatiquement (deduplication)")
+        print(f"  * {len(dead_features)} features mortes (retirees par le pipeline via feature_mask)")
+    if n_duplicates > 0:
+        print(f"  * {n_duplicates} doublons detectes (retires par dataset.deduplicate() a l'entrainement)")
     print(f"  * Dataset effectif apres dedup: ~{len(captures) - n_duplicates} echantillons")
 
     print()
@@ -601,23 +668,10 @@ def plot_analysis(captures, labels, save_dir=None):
         print(f"[OK] Graphique sauvegarde: correlation_per_label.png")
     plt.close()
 
-    # === Figure 5: Distribution des categories d'actions ===
-    diff_threshold = 0.05
-    stop_threshold = 0.02
-    left = labels[:, 0]
-    right = labels[:, 1]
-    speed_avg = (left + right) / 2.0
-    steering = left - right
-
-    is_stop = (np.abs(left) < stop_threshold) & (np.abs(right) < stop_threshold)
-    is_reverse = (speed_avg < -stop_threshold) & ~is_stop
-    is_turn_left = (steering < -diff_threshold) & ~is_stop & ~is_reverse
-    is_turn_right = (steering > diff_threshold) & ~is_stop & ~is_reverse
-    is_forward = ~is_stop & ~is_reverse & ~is_turn_left & ~is_turn_right
-
-    cat_names = ["Arret", "Tout droit", "Tourne G", "Tourne D", "Recule"]
-    cat_counts = [np.sum(is_stop), np.sum(is_forward), np.sum(is_turn_left),
-                  np.sum(is_turn_right), np.sum(is_reverse)]
+    # === Figure 5: Distribution des categories d'actions (IMU-based) ===
+    action_cats = classify_actions(captures, labels)
+    cat_names = list(ACTION_NAMES)
+    cat_counts = [int(np.sum(action_cats == i)) for i in range(5)]
     colors = ['#e74c3c', '#2ecc71', '#3498db', '#f39c12', '#9b59b6']
 
     fig, ax = plt.subplots(figsize=(8, 5))

@@ -400,6 +400,7 @@ class Trainer:
                     checkpoint_data['feature_std'] = self.norm_stats['feature_std']
                     checkpoint_data['feature_mask'] = self.norm_stats.get('feature_mask')
                     checkpoint_data['motor_speed_max'] = self.norm_stats.get('motor_speed_max', 50.0)
+                    checkpoint_data['motor_efficiency_left'] = self.norm_stats.get('motor_efficiency_left', 1.0)
                 torch.save(checkpoint_data, best_model_path)
             else:
                 no_improve_count += 1
@@ -992,6 +993,9 @@ def run_training(script_dir: Path, state: dict):
     print("\n  Chargement du dataset pour analyse...")
     preview_dataset = ZumiControlDataset(str(data_dir))
 
+    # Estimer l'efficacite du moteur gauche (avant toute transformation)
+    motor_efficiency_left = preview_dataset.compute_motor_efficiency()
+
     # Choisir le profil (adaptatif base sur le dataset)
     config = choose_training_profile(dataset=preview_dataset)
 
@@ -1057,6 +1061,7 @@ def run_training(script_dir: Path, state: dict):
             'feature_std': dataset.feature_std.tolist(),
             'feature_mask': dataset.feature_mask,
             'motor_speed_max': 50.0,
+            'motor_efficiency_left': motor_efficiency_left,
         }
 
     # Entraînement

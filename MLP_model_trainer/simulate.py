@@ -52,6 +52,7 @@ def load_model_and_stats(checkpoints_dir: Path):
         'output_dim': checkpoint['output_dim'],
         'hidden_dims': checkpoint['hidden_dims'],
         'val_loss': checkpoint.get('val_loss', 0),
+        'motor_efficiency_left': checkpoint.get('motor_efficiency_left', 0.927),
     }
     return model, stats
 

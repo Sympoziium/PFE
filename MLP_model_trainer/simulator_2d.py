@@ -58,11 +58,13 @@ IR_LATERAL_OFFSET = 0.6  # 0.6 cm de chaque cote
 # Simulation
 SIM_DT = 1.0 / 20.0     # 20 Hz
 MOTOR_SPEED_TO_CMS = 0.5  # 1 unite moteur ≈ 0.5 cm/s (estimation)
-# Correction du biais appris: le modele predit systematiquement L > R parce que
-# le PID reel compensait un moteur droit plus faible. En simulation avec des
-# moteurs parfaits, ce biais fait tourner a gauche. On booste le moteur droit
-# pour annuler l'asymetrie apprise. Facteur = mean_left / mean_right du dataset.
-MOTOR_BIAS_RIGHT = 1.09  # boost roue droite pour compenser le biais appris
+# Efficacite du moteur gauche: fraction de la vitesse commandee reellement
+# produite. Le moteur gauche du robot est plus faible; le PID de cap
+# compensait en boostant les commandes gauches. Le modele a appris ce biais.
+# En simulant la faiblesse du moteur gauche, les predictions du modele
+# (qui incluent la compensation PID) produisent un mouvement correct.
+# Valeur par defaut estimee depuis le dataset: mean_right / mean_left.
+MOTOR_EFFICIENCY_LEFT_DEFAULT = 0.927
 
 # Rendu
 SCALE = 7  # 1 cm = 7 px
@@ -424,10 +426,11 @@ class Track:
 # ============================================================
 
 class SimRobot:
-    def __init__(self, x, y, theta):
+    def __init__(self, x, y, theta, motor_efficiency_left=MOTOR_EFFICIENCY_LEFT_DEFAULT):
         self.x = x
         self.y = y
         self.theta = theta
+        self.motor_efficiency_left = motor_efficiency_left
         self.v_left = 0.0
         self.v_right = 0.0
         self.speed = 0.0
@@ -442,9 +445,11 @@ class SimRobot:
         self.v_left = v_left
         self.v_right = v_right
 
-        # Conversion unites moteur -> cm/s avec correction du biais appris
-        vl = v_left * MOTOR_SPEED_TO_CMS
-        vr = v_right * MOTOR_SPEED_TO_CMS * MOTOR_BIAS_RIGHT
+        # Conversion unites moteur -> cm/s avec asymetrie moteur simulee
+        # Le moteur gauche est plus faible: il produit motor_efficiency_left
+        # de la vitesse commandee. Le modele a appris a compenser via le PID.
+        vl = v_left * MOTOR_SPEED_TO_CMS * self.motor_efficiency_left
+        vr = v_right * MOTOR_SPEED_TO_CMS
 
         self.prev_speed = self.speed
         self.speed = (vl + vr) / 2
@@ -825,56 +830,57 @@ def cm_to_px(x, y):
     return int(MARGIN_X + x * SCALE), int(MARGIN_Y + (MAT_HEIGHT - y) * SCALE)
 
 
-def _build_offset_polyline(track, offset):
+def _build_offset_polyline(track, offset, use_miter=True):
     """Construit une polyligne decalee de 'offset' cm par rapport a la centerline.
 
-    Offset positif = cote gauche (selon la direction), negatif = cote droit.
-    Utilise le miter join: la bisectrice est allongee pour maintenir la largeur
-    constante dans les virages (comme le bevel d'un stylo epais).
+    Args:
+        track: Track object
+        offset: distance de decalage (positif = gauche, negatif = droite)
+        use_miter: True = miter join (comble les coins, bon pour les parcours
+                   avec peu de points). False = normale simple (pas de spikes,
+                   bon pour les circuits denses en points comme l'oval).
     """
     pts = track.points
     n = len(pts)
     normals = []
 
-    # Calculer la normale unitaire de chaque segment
     for i in range(len(track.segments)):
         _, _, seg, seg_len = track.segments[i]
         dx, dy = seg[0] / seg_len, seg[1] / seg_len
-        normals.append((-dy, dx))  # normale gauche
+        normals.append((-dy, dx))
 
     result = []
     for i in range(n):
         if i == 0:
             nx, ny = normals[0]
-            result.append((pts[i][0] + nx * offset, pts[i][1] + ny * offset))
         elif i == n - 1 and not track.is_loop:
             nx, ny = normals[-1]
-            result.append((pts[i][0] + nx * offset, pts[i][1] + ny * offset))
         else:
             idx_prev = (i - 1) % len(normals)
             idx_cur = i % len(normals)
             n1x, n1y = normals[idx_prev]
             n2x, n2y = normals[idx_cur]
 
-            # Bisectrice (moyenne des normales)
             bx = n1x + n2x
             by = n1y + n2y
             b_len = math.sqrt(bx*bx + by*by)
 
             if b_len < 0.01:
-                # Normales quasi-opposees (virage 180°): utiliser la normale du segment
                 nx, ny = n2x, n2y
-                result.append((pts[i][0] + nx * offset, pts[i][1] + ny * offset))
+            elif not use_miter:
+                # Normale simple: moyenne normalisee, pas de miter
+                nx, ny = bx / b_len, by / b_len
             else:
+                # Miter join: allonger la bisectrice pour combler les coins
                 bx /= b_len
                 by /= b_len
-                # Miter length: offset / cos(half_angle) pour maintenir la largeur
                 dot = n1x * bx + n1y * by
-                # Clamper: le miter ne doit jamais depasser 1.5x l'offset
-                # pour eviter les spikes aux angles serres
-                dot = max(dot, 0.67)  # 1/0.67 = 1.49x max
-                miter_offset = offset / dot
-                result.append((pts[i][0] + bx * miter_offset, pts[i][1] + by * miter_offset))
+                dot = max(dot, 0.67)
+                miter_len = offset / dot
+                result.append((pts[i][0] + bx * miter_len, pts[i][1] + by * miter_len))
+                continue
+
+        result.append((pts[i][0] + nx * offset, pts[i][1] + ny * offset))
 
     return result
 
@@ -883,8 +889,11 @@ def draw_track(screen, track):
     """Dessine le circuit avec des polygones continus pour des courbes propres."""
 
     # Construire les contours gauche et droit de la route
-    left_edge = _build_offset_polyline(track, ROAD_HALF)
-    right_edge = _build_offset_polyline(track, -ROAD_HALF)
+    # Circuit oval (boucle) = beaucoup de points, pas besoin de miter
+    # Parcours procedural = moins de points, miter pour combler les coins
+    use_miter = not track.is_loop
+    left_edge = _build_offset_polyline(track, ROAD_HALF, use_miter=use_miter)
+    right_edge = _build_offset_polyline(track, -ROAD_HALF, use_miter=use_miter)
 
     # Route: polygone continu (contour gauche + contour droit inverse)
     road_polygon = [cm_to_px(x, y) for x, y in left_edge]
@@ -966,7 +975,7 @@ def draw_overlay(screen, robot, ir_data, metrics, fps, paused, sim_speed):
         f"L:{robot.v_left:+6.1f}  R:{robot.v_right:+6.1f}  Steer:{steering:+5.1f}",
         f"IR_diff:{ir_data['diff']:+6.0f}  IR_sum:{ir_data['sum']:5.0f}",
         f"On road: {'YES' if ir_data['sum'] > 100 else 'NO'}  Score: {metrics.time_on_road}/{metrics.ticks}",
-        f"FPS:{fps:3.0f}  Speed:{sim_speed:.1f}x  {'PAUSED' if paused else ''}",
+        f"FPS:{fps:3.0f}  Speed:{sim_speed:.1f}x  Eff_L:{robot.motor_efficiency_left:.3f}  {'PAUSED' if paused else ''}",
     ]
 
     for text in texts:
@@ -997,6 +1006,8 @@ def run_simulator(script_dir, state, track_mode='loop'):
     mean = stats['feature_mean']
     std = stats['feature_std'].copy()
     std[std < 1e-6] = 1.0
+    motor_efficiency_left = stats.get('motor_efficiency_left', MOTOR_EFFICIENCY_LEFT_DEFAULT)
+    print(f"  Motor efficiency (left): {motor_efficiency_left:.3f}")
 
     # Creer le circuit
     if track_mode == 'loop':
@@ -1009,7 +1020,8 @@ def run_simulator(script_dir, state, track_mode='loop'):
 
     # Initialiser le robot
     start_pos, start_heading = track.get_start_pos_and_heading()
-    robot = SimRobot(start_pos[0], start_pos[1], start_heading)
+    robot = SimRobot(start_pos[0], start_pos[1], start_heading,
+                     motor_efficiency_left=motor_efficiency_left)
 
     # Buffer pour deltas
     prev_vectors = collections.deque(maxlen=DELTA_STEPS)
@@ -1030,7 +1042,9 @@ def run_simulator(script_dir, state, track_mode='loop'):
     fps = 20.0
     ir_data = sensor_model.read_all(robot)
 
-    print(f"\n  Simulateur lance ({track_mode}). Controles: SPACE=pause, R=reset, ESC=quitter, 1/2/3=vitesse")
+    print(f"\n  Simulateur lance ({track_mode}). Controles:")
+    print(f"    SPACE=pause, R=reset, ESC=quitter, 1/2/3=vitesse")
+    print(f"    +/-=ajuster motor efficiency gauche ({motor_efficiency_left:.3f})")
 
     while running:
         for event in pygame.event.get():
@@ -1042,7 +1056,8 @@ def run_simulator(script_dir, state, track_mode='loop'):
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key == pygame.K_r:
-                    robot = SimRobot(start_pos[0], start_pos[1], start_heading)
+                    robot = SimRobot(start_pos[0], start_pos[1], start_heading,
+                                     motor_efficiency_left=robot.motor_efficiency_left)
                     prev_vectors.clear()
                     metrics = SimMetrics()
                 elif event.key == pygame.K_1:
@@ -1051,6 +1066,12 @@ def run_simulator(script_dir, state, track_mode='loop'):
                     sim_speed = 1.0
                 elif event.key == pygame.K_3:
                     sim_speed = 2.0
+                elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                    robot.motor_efficiency_left = min(1.0, robot.motor_efficiency_left + 0.01)
+                    print(f"  Motor efficiency left: {robot.motor_efficiency_left:.3f}")
+                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    robot.motor_efficiency_left = max(0.80, robot.motor_efficiency_left - 0.01)
+                    print(f"  Motor efficiency left: {robot.motor_efficiency_left:.3f}")
 
         if not paused:
             # Nombre de ticks de simulation par frame
