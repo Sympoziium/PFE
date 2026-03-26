@@ -5,6 +5,31 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publié] — Feature engineering PID-inspired et vecteur 95-dim (2026-03-26)
+
+### Added
+- Systeme de calibration IR: mesure les baselines et offsets des 6 capteurs IR (mode light N=50 auto, heavy N=200 manuel)
+- 8 features PID-inspired remplacent les 2 anciennes (line_position, line_confidence):
+  - calibrated_error, line_visible, cal_error_norm, approaching_line, on_road, grass_detect, gyro_z_rate, heading_drift
+- Deltas temporels etendus: 12 features x 5 pas (60 colonnes, vs 7x3=21 avant)
+- Vecteur d'entree total: 95-dim (27 raw + 8 engineered + 60 deltas)
+- Modele cible plus gros: [128, 64, 32] ~14K params, ~50-60KB TFLite
+- Section [PID-FEATURES] dans analyze_dataset.py pour evaluer les nouvelles features
+- Auto-deploy des fichiers TFLite vers core/control/controlers/models/
+
+### Changed
+- Categorisation des actions basee sur l'IMU (delta gyro_z) au lieu des commandes moteur
+- Deduplication intelligente: seuls les groupes >= 5 echantillons consecutifs identiques sont retires
+- Simulation moteur: asymetrie du moteur gauche (efficiency=0.928) au lieu du biais droit
+- Calibration IR automatique (light) avant chaque activation de controleur
+- Constantes de feature engineering synchronisees via normalization_stats.json
+
+### Fixed
+- WeightedRandomSampler desactive (causait une regression du suivi de ligne)
+- Nom du fichier TFLite toujours zumi_mlp.tflite (plus de _quant)
+
+---
+
 ## [Non publié] — Optimisation pipeline MLP : normalisation z-score, profil adaptatif et feature engineering (2026-03-21)
 
 ### Objectif

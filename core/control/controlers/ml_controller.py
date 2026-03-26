@@ -26,11 +26,17 @@ class MLController(ControllerBase):
     MOTOR_SPEED_MAX = 50.0
 
     # Indices des features pour le calcul des deltas temporels
-    # Doit correspondre à DELTA_FEATURE_INDICES dans dataset.py
-    # Note: indices 27-28 sont line_position et line_confidence (ajoutees dynamiquement)
-    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 27, 28]
-    DELTA_STEPS = 3
-    DELTA_WEIGHTS = [1.0, 0.5, 0.25]
+    # Doit correspondre a DELTA_FEATURE_INDICES dans dataset.py
+    # Note: indices 27-34 sont les 8 features engineered PID-inspired
+    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 19, 20, 27, 29, 30, 33, 34]
+    DELTA_STEPS = 5
+    DELTA_WEIGHTS = [1.0, 0.7, 0.5, 0.3, 0.15]
+
+    # Constantes de feature engineering (defauts, ecrasees par normalization_stats.json)
+    IR_OFFSET_BOTTOM = -17.0
+    GAP_THRESHOLD = 195.0
+    OFF_ROAD_THRESHOLD = 120.0
+    GRASS_THRESHOLD = 140.0
 
     def __init__(self, vision_adapter, model_path=None):
         """
@@ -50,6 +56,7 @@ class MLController(ControllerBase):
         self._feature_mean = None
         self._feature_std = None
         self._feature_mask = None
+        self._feature_version = 1  # 1=ancien (2 features), 2=PID-inspired (8 features)
 
         # Buffer circulaire pour calcul des deltas temporels multi-pas
         self._prev_vectors = collections.deque(maxlen=self.DELTA_STEPS)
@@ -167,7 +174,18 @@ class MLController(ControllerBase):
             else:
                 print("[MLController] PAS DE MASQUE (toutes les features utilisées)")
 
-            print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features")
+            # Charger les constantes de feature engineering
+            self._feature_version = stats.get('feature_version', 1)
+            if self._feature_version >= 2:
+                self.IR_OFFSET_BOTTOM = stats.get('ir_offset_bottom', -17.0)
+                self.GAP_THRESHOLD = stats.get('gap_threshold', 195.0)
+                self.OFF_ROAD_THRESHOLD = stats.get('off_road_threshold', 120.0)
+                self.GRASS_THRESHOLD = stats.get('grass_threshold', 140.0)
+                print(f"[MLController] Feature v2: ir_offset={self.IR_OFFSET_BOTTOM:.1f}, "
+                      f"gap={self.GAP_THRESHOLD}, off_road={self.OFF_ROAD_THRESHOLD}")
+
+            print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features "
+                  f"(version={self._feature_version})")
 
         except Exception as e:
             print(f"[MLController] Erreur chargement normalization_stats: {e}")
@@ -189,21 +207,19 @@ class MLController(ControllerBase):
         return (vector - self._feature_mean) / self._feature_std
 
     def _build_state_vector(self, state) -> np.ndarray:
-        """Construit le vecteur d'état à partir du SensorState.
+        """Construit le vecteur d'etat a partir du SensorState.
 
-        Pipeline: VisionAdapter (27-dim) → deltas (32-dim) → masque (N-dim) → z-score
+        Pipeline v2: VisionAdapter (27-dim) -> engineered (35-dim) -> deltas (95-dim)
+                     -> masque (N-dim) -> z-score
 
         Args:
-            state: SensorState contenant les données des capteurs.
+            state: SensorState contenant les donnees des capteurs.
 
         Returns:
-            np.ndarray: Vecteur d'état normalisé prêt pour l'inférence.
+            np.ndarray: Vecteur d'etat normalise pret pour l'inference.
         """
         vision_result = {"detections": state.detections or []}
 
-        # Construire le dict IMU complet à partir de gyro_angles (11 valeurs)
-        # zumi.update_angles() → [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y,
-        #                          Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt_state]
         imu_data = {}
         if state.gyro_angles and len(state.gyro_angles) >= 11:
             a = state.gyro_angles
@@ -222,16 +238,56 @@ class MLController(ControllerBase):
             }
 
         ir_data = state.ir_sensors if state.ir_sensors else [0] * 6
-
         raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
 
-        # Features engineered: line_position et line_confidence
-        ir_bot_r = raw_vector[1]  # IR_bottom_right
-        ir_bot_l = raw_vector[3]  # IR_bottom_left
-        line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
-        line_conf = abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
-        raw_vector = np.concatenate([raw_vector, np.array([line_pos, line_conf], dtype=np.float32)])
-        # raw_vector est maintenant 29-dim
+        # Features engineered PID-inspired (8 features, indices 27-34)
+        ir_bot_r = raw_vector[1]   # IR_bottom_right
+        ir_bot_l = raw_vector[3]   # IR_bottom_left
+        ir_front_r = raw_vector[0] # IR_front_right
+        ir_front_l = raw_vector[5] # IR_front_left
+        ir_sum = (ir_bot_l + ir_bot_r) / 2.0
+        gyro_z = raw_vector[18]    # gyro_z cumulatif
+
+        # 27: calibrated_error
+        calibrated_error = (ir_bot_r - ir_bot_l) - (-self.IR_OFFSET_BOTTOM)
+
+        # 28: line_visible
+        line_visible = 1.0 if ir_sum < self.GAP_THRESHOLD else 0.0
+
+        # 29: cal_error_norm
+        cal_error_norm = calibrated_error / (ir_sum + 1e-6)
+
+        # 30: approaching_line (besoin du vecteur precedent)
+        approaching = 0.0
+        if len(self._prev_vectors) > 0:
+            prev = self._prev_vectors[-1]
+            prev_cal_error = (prev[1] - prev[3]) - (-self.IR_OFFSET_BOTTOM)
+            approaching = 1.0 if abs(calibrated_error) < abs(prev_cal_error) else -1.0
+
+        # 31: on_road
+        on_road = 1.0 if ir_sum > self.OFF_ROAD_THRESHOLD else 0.0
+
+        # 32: grass_detect
+        grass_detect = 1.0 if min(ir_front_l, ir_front_r) < self.GRASS_THRESHOLD else 0.0
+
+        # 33: gyro_z_rate (delta gyro_z cumulatif)
+        gyro_z_rate = 0.0
+        if len(self._prev_vectors) > 0:
+            prev_gyro_z = self._prev_vectors[-1][18]
+            rate = gyro_z - prev_gyro_z
+            if abs(rate) < 150.0:  # pas une frontiere de sequence
+                gyro_z_rate = rate
+
+        # 34: heading_drift
+        heading_drift = gyro_z_rate * (1.0 - line_visible)
+
+        engineered = np.array([
+            calibrated_error, line_visible, cal_error_norm, approaching,
+            on_road, grass_detect, gyro_z_rate, heading_drift
+        ], dtype=np.float32)
+
+        raw_vector = np.concatenate([raw_vector, engineered])
+        # raw_vector est maintenant 35-dim
 
         # Calculer les deltas temporels multi-pas
         all_deltas = []
@@ -243,7 +299,7 @@ class MLController(ControllerBase):
             all_deltas.append(d)
         self._prev_vectors.append(raw_vector.copy())
 
-        # Concaténer: 29-dim + 7*3 deltas = 50-dim
+        # Concatener: 35-dim + 12*5 deltas = 95-dim
         full_vector = np.concatenate([raw_vector] + all_deltas)
 
         # Appliquer le masque (retirer les features mortes)

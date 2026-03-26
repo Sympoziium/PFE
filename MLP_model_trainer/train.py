@@ -342,7 +342,7 @@ class Trainer:
         self,
         epochs: int,
         save_dir: Path,
-        early_stopping_patience: int = 20
+        early_stopping_patience: int = 35
     ) -> dict:
         """Boucle d'entraînement principale.
 
@@ -396,11 +396,8 @@ class Trainer:
                     'hidden_dims': self.model.hidden_dims,
                 }
                 if self.norm_stats:
-                    checkpoint_data['feature_mean'] = self.norm_stats['feature_mean']
-                    checkpoint_data['feature_std'] = self.norm_stats['feature_std']
-                    checkpoint_data['feature_mask'] = self.norm_stats.get('feature_mask')
-                    checkpoint_data['motor_speed_max'] = self.norm_stats.get('motor_speed_max', 50.0)
-                    checkpoint_data['motor_efficiency_left'] = self.norm_stats.get('motor_efficiency_left', 1.0)
+                    for key in self.norm_stats:
+                        checkpoint_data[key] = self.norm_stats[key]
                 torch.save(checkpoint_data, best_model_path)
             else:
                 no_improve_count += 1
@@ -662,8 +659,10 @@ def suggest_training_profile(dataset) -> dict:
     n_deltas = len(DELTA_FEATURE_INDICES) * DELTA_STEPS
     effective_dim = (n_active if feature_mask else raw_dim) + n_engineered + n_deltas
 
-    # Budget de parametres: viser ratio 1:5 a 1:10
-    target_ratio = 7  # milieu de la fourchette
+    # Budget de parametres: viser ratio 1:3 a 1:7
+    # Avec 85K+ samples et un vecteur 87-dim, on peut se permettre des modeles
+    # plus gros (cible ~50-60KB TFLite, bien en dessous des 90KB des modeles Haar)
+    target_ratio = 3
     param_budget = n_samples // target_ratio
 
     # Chercher les hidden_dims qui respectent le budget (avec effective_dim)
@@ -706,11 +705,11 @@ def suggest_training_profile(dataset) -> dict:
 
     # Adapter les hyperparametres selon la taille du dataset
     if n_samples < 5000:
-        epochs, batch_size, lr, wd = 150, 32, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 400, 32, 1e-3, 1e-4
     elif n_samples < 20000:
-        epochs, batch_size, lr, wd = 100, 64, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 300, 64, 1e-3, 1e-4
     else:
-        epochs, batch_size, lr, wd = 80, 128, 5e-4, 1e-4
+        epochs, batch_size, lr, wd = 250, 64, 1e-3, 1e-4
 
     profile = {
         'name': 'Adaptatif',
@@ -996,7 +995,7 @@ def run_training(script_dir: Path, state: dict):
 
     print(f"\n  Profil selectionne: {config.get('name', 'Custom')}")
     print(f"  Hidden dims: {config.get('hidden_dims', [64, 32])}")
-    print(f"  Epochs: {config.get('epochs', 100)}")
+    print(f"  Epochs: {config.get('epochs', 300)}")
     print(f"  Batch size: {config.get('batch_size', 32)}")
     print(f"  Learning rate: {config.get('lr', 1e-3)}")
     print(f"  Weight decay: {config.get('weight_decay', 1e-4)}")
@@ -1051,12 +1050,20 @@ def run_training(script_dir: Path, state: dict):
     # Stats de normalisation (calculees par create_data_loaders sur le train set)
     norm_stats = {}
     if hasattr(dataset, 'feature_mean'):
+        from dataset import (IR_OFFSET_DEFAULT, GAP_THRESHOLD,
+                             OFF_ROAD_THRESHOLD, GRASS_THRESHOLD)
         norm_stats = {
             'feature_mean': dataset.feature_mean.tolist(),
             'feature_std': dataset.feature_std.tolist(),
             'feature_mask': dataset.feature_mask,
             'motor_speed_max': 50.0,
             'motor_efficiency_left': motor_efficiency_left,
+            # Constantes de feature engineering (pour ml_controller.py)
+            'ir_offset_bottom': getattr(dataset, '_ir_offset', IR_OFFSET_DEFAULT),
+            'gap_threshold': GAP_THRESHOLD,
+            'off_road_threshold': OFF_ROAD_THRESHOLD,
+            'grass_threshold': GRASS_THRESHOLD,
+            'feature_version': 2,
         }
 
     # Entraînement

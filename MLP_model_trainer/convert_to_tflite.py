@@ -229,6 +229,12 @@ def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
         "input_dim": checkpoint['input_dim'],
         "feature_mask": checkpoint.get('feature_mask'),
         "motor_speed_max": checkpoint.get('motor_speed_max', 50.0),
+        # Constantes de feature engineering (pour ml_controller.py)
+        "ir_offset_bottom": checkpoint.get('ir_offset_bottom', -17.0),
+        "gap_threshold": checkpoint.get('gap_threshold', 195.0),
+        "off_road_threshold": checkpoint.get('off_road_threshold', 120.0),
+        "grass_threshold": checkpoint.get('grass_threshold', 140.0),
+        "feature_version": checkpoint.get('feature_version', 1),
     }
 
     stats_path = output_dir / "normalization_stats.json"

@@ -1185,10 +1185,12 @@ class controller:
     # ------------------------------------------------------------------
 
     def robot_calibrate(self):
-        """Calibration complète: gyro + MPU (~1-2s bloquant)."""
+        """Calibration complete: gyro + MPU + IR heavy (~3-5s bloquant)."""
         try:
             self.robot.calibrate_sensors()
-            return jsonify({'status': 'ok', 'message': 'Calibration complete'})
+            # Heavy IR calibration en plus (calibrate_sensors fait light=50)
+            self.robot.calibrate_ir(n_samples=200)
+            return jsonify({'status': 'ok', 'message': 'Calibration complete (MPU + IR)'})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
@@ -1217,15 +1219,16 @@ class controller:
             return jsonify({'error': str(e)}), 500
 
     def calibrate_ir(self):
-        """Relance l'auto-calibration IR du contrôleur PID IR actif."""
+        """Calibration IR complete (mode heavy, N=200). Mesure les baselines
+        et offsets de tous les capteurs IR. Le robot doit etre immobile
+        sur la route noire (sans ligne)."""
         try:
-            active = self.control_manager._active_controller
-            if active is None:
-                return jsonify({'error': 'Aucun contrôleur actif'}), 400
-            if not hasattr(active, 'trigger_calibration'):
-                return jsonify({'error': 'Le contrôleur actif ne supporte pas la calibration IR'}), 400
-            active.trigger_calibration()
-            return jsonify({'status': 'ok', 'message': 'Calibration IR relancée'})
+            if self.robot is None:
+                return jsonify({'error': 'Robot non initialisé'}), 400
+            result = self.robot.calibrate_ir(n_samples=200)
+            if result is None:
+                return jsonify({'error': 'Calibration IR echouee'}), 500
+            return jsonify({'status': 'ok', 'message': 'Calibration IR terminee', 'calibration': result})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
@@ -1403,6 +1406,10 @@ class controller:
 
             # Auto-switch: appliquer le profil caméra 'passive' (320x240) pour économiser le CPU
             self._apply_camera_profile('passive')
+
+            # Auto-calibration IR light avant activation (robot doit etre immobile)
+            if self.robot is not None and hasattr(self.robot, 'calibrate_ir'):
+                self.robot.calibrate_ir(n_samples=50)
 
             self.control_manager.activate_controller(controller_name)
             return jsonify({'status': 'started', 'controller': controller_name})

@@ -21,7 +21,9 @@ import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 from pathlib import Path
 
-from dataset import classify_actions, ACTION_NAMES, GYRO_Z_INDEX
+from dataset import (classify_actions, ACTION_NAMES, GYRO_Z_INDEX,
+                     IR_OFFSET_DEFAULT, GAP_THRESHOLD, OFF_ROAD_THRESHOLD,
+                     GRASS_THRESHOLD)
 
 
 def load_dataset(data_dir: Path):
@@ -94,6 +96,7 @@ def analyze_dataset(captures, labels, save_dir=None):
     # === ANALYSE DES CAPTURES (FEATURES ENTREE) ===
     n_features = captures.shape[1]
     print(f"[STATS] Features d'entree (Captures) - {n_features} dimensions:")
+    # 27 raw features (indices 0-26)
     feature_names = [
         "IR_front_right",       # 0
         "IR_bottom_right",      # 1
@@ -122,12 +125,24 @@ def analyze_dataset(captures, labels, save_dir=None):
         "imu_rot_y",            # 24
         "imu_rot_z",            # 25
         "imu_tilt_state",       # 26
-        "IR_bot_R_delta",       # 27 (delta temporel)
-        "IR_bot_L_delta",       # 28 (delta temporel)
-        "IR_diff_delta",        # 29 (delta temporel)
-        "IR_sum_delta",         # 30 (delta temporel)
-        "gyro_z_delta",         # 31 (delta temporel = vitesse angulaire)
+        # 8 engineered features (indices 27-34)
+        "calibrated_error",     # 27
+        "line_visible",         # 28
+        "cal_error_norm",       # 29
+        "approaching_line",     # 30
+        "on_road",              # 31
+        "grass_detect",         # 32
+        "gyro_z_rate",          # 33
+        "heading_drift",        # 34
     ]
+    # 60 delta features (indices 35-94): 12 features x 5 steps
+    _delta_source_names = [
+        "IR_bot_R", "IR_bot_L", "IR_diff", "IR_sum", "gyro_z", "acc_x", "acc_y",
+        "cal_error", "cal_err_norm", "approaching", "gyro_z_rate", "heading_drift",
+    ]
+    for _step in range(1, 6):
+        for _src in _delta_source_names:
+            feature_names.append(f"d{_step}_{_src}")  # 35..94
 
     # Support des anciens datasets 27-dim (sans deltas)
     for i in range(captures.shape[1]):
@@ -469,6 +484,119 @@ def analyze_dataset(captures, labels, save_dir=None):
     else:
         print(f"  [INFO] line_position n'ameliore pas la correlation lineaire vs IR_diff brut")
     print()
+
+    # === PID-FEATURES: Analyse des 8 features engineered du pipeline ===
+    print("[PID-FEATURES] Analyse des features PID-inspired (pipeline 95-dim):")
+    ir_bot_r_raw = captures[:, 1]
+    ir_bot_l_raw = captures[:, 3]
+    ir_front_r_raw = captures[:, 0]
+    ir_front_l_raw = captures[:, 5]
+    ir_sum_raw = (ir_bot_l_raw + ir_bot_r_raw) / 2.0
+    gyro_z_raw = captures[:, GYRO_Z_INDEX]
+
+    # 27: calibrated_error
+    pid_cal_error = (ir_bot_r_raw - ir_bot_l_raw) - (-IR_OFFSET_DEFAULT)
+
+    # 28: line_visible
+    pid_line_visible = (ir_sum_raw < GAP_THRESHOLD).astype(np.float32)
+
+    # 29: cal_error_norm
+    pid_cal_error_norm = pid_cal_error / (ir_sum_raw + 1e-6)
+
+    # 30: approaching_line (with boundary detection)
+    pid_abs_error = np.abs(pid_cal_error)
+    pid_abs_error_prev = np.zeros_like(pid_abs_error)
+    pid_abs_error_prev[1:] = pid_abs_error[:-1]
+    pid_approaching = np.where(pid_abs_error < pid_abs_error_prev, 1.0, -1.0).astype(np.float32)
+    pid_error_jumps = np.abs(pid_cal_error[1:] - pid_cal_error[:-1])
+    pid_boundaries = np.zeros(len(captures), dtype=bool)
+    pid_boundaries[0] = True
+    pid_boundaries[1:] = pid_error_jumps > 100.0
+    pid_approaching[pid_boundaries] = 0.0
+
+    # 31: on_road
+    pid_on_road = (ir_sum_raw > OFF_ROAD_THRESHOLD).astype(np.float32)
+
+    # 32: grass_detect
+    pid_grass_detect = (np.minimum(ir_front_l_raw, ir_front_r_raw) < GRASS_THRESHOLD).astype(np.float32)
+
+    # 33: gyro_z_rate (with boundary detection)
+    pid_gyro_z_rate = np.zeros(len(captures), dtype=np.float32)
+    pid_gyro_z_rate[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
+    pid_gyro_boundaries = np.abs(pid_gyro_z_rate) > 150.0
+    pid_gyro_z_rate[pid_gyro_boundaries] = 0.0
+
+    # 34: heading_drift
+    pid_heading_drift = pid_gyro_z_rate * (1.0 - pid_line_visible)
+
+    pid_features = {
+        "calibrated_error": pid_cal_error,
+        "line_visible": pid_line_visible,
+        "cal_error_norm": pid_cal_error_norm,
+        "approaching_line": pid_approaching,
+        "on_road": pid_on_road,
+        "grass_detect": pid_grass_detect,
+        "gyro_z_rate": pid_gyro_z_rate,
+        "heading_drift": pid_heading_drift,
+    }
+
+    print(f"  {'Feature':22s} {'mean':>8s} {'std':>8s} {'Pearson':>8s} {'Spearman':>9s}")
+    print(f"  {'-'*22} {'-'*8} {'-'*8} {'-'*8} {'-'*9}")
+    for fname, fdata in pid_features.items():
+        pearson_r = np.corrcoef(fdata, steering_cmd)[0, 1]
+        spearman_r, _ = spearmanr(fdata, steering_cmd)
+        print(f"  {fname:22s} {fdata.mean():+8.4f} {fdata.std():8.4f} {pearson_r:+8.4f} {spearman_r:+9.4f}")
+    print()
+
+    # Comparison: calibrated_error vs raw ir_diff (index 6)
+    raw_ir_diff = captures[:, 6]
+    pearson_raw_ir_diff = np.corrcoef(raw_ir_diff, steering_cmd)[0, 1]
+    spearman_raw_ir_diff, _ = spearmanr(raw_ir_diff, steering_cmd)
+    pearson_cal_error = np.corrcoef(pid_cal_error, steering_cmd)[0, 1]
+    spearman_cal_error, _ = spearmanr(pid_cal_error, steering_cmd)
+
+    print(f"  Comparaison calibrated_error vs ir_diff brut (index 6):")
+    print(f"    {'':22s} {'Pearson':>8s} {'Spearman':>9s}")
+    print(f"    {'ir_diff (raw)':22s} {pearson_raw_ir_diff:+8.4f} {spearman_raw_ir_diff:+9.4f}")
+    print(f"    {'calibrated_error':22s} {pearson_cal_error:+8.4f} {spearman_cal_error:+9.4f}")
+    pearson_improvement = abs(pearson_cal_error) - abs(pearson_raw_ir_diff)
+    spearman_improvement = abs(spearman_cal_error) - abs(spearman_raw_ir_diff)
+    print(f"    Amelioration Pearson:  {pearson_improvement:+.4f}")
+    print(f"    Amelioration Spearman: {spearman_improvement:+.4f}")
+    if pearson_improvement > 0:
+        print(f"    [OK] calibrated_error ameliore la correlation Pearson vs ir_diff brut")
+    else:
+        print(f"    [INFO] calibrated_error n'ameliore pas la correlation Pearson vs ir_diff brut")
+    print()
+
+    # Mode-conditional analysis: line_visible == 1 vs line_visible == 0
+    mask_line = pid_line_visible == 1.0
+    mask_gap = pid_line_visible == 0.0
+    n_line = int(mask_line.sum())
+    n_gap = int(mask_gap.sum())
+
+    print(f"  Analyse conditionnelle par mode:")
+    print(f"    line_visible=1 (ligne presente): {n_line} echantillons ({n_line/len(captures)*100:.1f}%)")
+    print(f"    line_visible=0 (gap/pas de ligne): {n_gap} echantillons ({n_gap/len(captures)*100:.1f}%)")
+    print()
+
+    for mode_name, mask in [("line_visible=1", mask_line), ("line_visible=0", mask_gap)]:
+        if mask.sum() < 10:
+            print(f"    [{mode_name}] Pas assez d'echantillons pour l'analyse.")
+            continue
+        print(f"    [{mode_name}] Correlations vs steering_cmd:")
+        print(f"      {'Feature':22s} {'Pearson':>8s} {'Spearman':>9s}")
+        print(f"      {'-'*22} {'-'*8} {'-'*9}")
+        steering_sub = steering_cmd[mask]
+        for fname, fdata in pid_features.items():
+            fdata_sub = fdata[mask]
+            if fdata_sub.std() < 1e-8:
+                print(f"      {fname:22s} {'N/A':>8s} {'N/A':>9s}  (variance nulle)")
+                continue
+            p_r = np.corrcoef(fdata_sub, steering_sub)[0, 1]
+            s_r, _ = spearmanr(fdata_sub, steering_sub)
+            print(f"      {fname:22s} {p_r:+8.4f} {s_r:+9.4f}")
+        print()
 
     # === TEST D'IMPACT DES FEATURES ===
     print("[FEATURE-IMPACT] Evaluation rapide de l'apport des features engineered:")

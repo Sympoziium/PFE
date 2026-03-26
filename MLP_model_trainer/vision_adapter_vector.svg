@@ -1,0 +1,377 @@
+<svg width="800" viewBox="0 0 800 1200" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+
+  <!-- Background -->
+  <rect width="800" height="1200" rx="12" fill="#1a1a2e"/>
+
+  <!-- Title -->
+  <text x="400" y="40" text-anchor="middle" fill="#e0e0e0" font-size="20" font-weight="700">Vecteur d'entree MLP (95-dim)</text>
+  <text x="400" y="62" text-anchor="middle" fill="#888" font-size="13">27 raw + 8 engineered + 60 deltas temporels</text>
+
+  <!-- ============================================ -->
+  <!-- GROUP 1: IR Sensors (0-7) — Blue -->
+  <!-- ============================================ -->
+  <text x="30" y="100" fill="#6ea8fe" font-size="14" font-weight="700">IR Sensors [0-7]</text>
+  <text x="770" y="100" text-anchor="end" fill="#6ea8fe" font-size="12">8 dim</text>
+
+  <g fill="#162a4a" stroke="#4a90d9" stroke-width="1">
+    <rect x="30" y="110" width="88" height="36" rx="6"/>
+    <rect x="123" y="110" width="88" height="36" rx="6"/>
+    <rect x="216" y="110" width="88" height="36" rx="6"/>
+    <rect x="309" y="110" width="88" height="36" rx="6"/>
+    <rect x="402" y="110" width="88" height="36" rx="6"/>
+    <rect x="495" y="110" width="88" height="36" rx="6"/>
+    <rect x="588" y="110" width="88" height="36" rx="6"/>
+    <rect x="681" y="110" width="88" height="36" rx="6"/>
+  </g>
+  <g fill="#a0c4f0" font-size="11" text-anchor="middle" dominant-baseline="central">
+    <text x="74" y="122">0: IR_front_R</text>
+    <text x="167" y="122">1: IR_bot_R</text>
+    <text x="260" y="122">2: IR_back_R</text>
+    <text x="353" y="122">3: IR_bot_L</text>
+    <text x="446" y="122">4: IR_back_L</text>
+    <text x="539" y="122">5: IR_front_L</text>
+    <text x="632" y="122">6: IR_diff</text>
+    <text x="725" y="122">7: IR_sum</text>
+  </g>
+  <g fill="#6ea8fe" font-size="9" text-anchor="middle">
+    <text x="74" y="140">0-255</text>
+    <text x="167" y="140">0-255</text>
+    <text x="260" y="140">0-255</text>
+    <text x="353" y="140">0-255</text>
+    <text x="446" y="140">0-255</text>
+    <text x="539" y="140">0-255</text>
+    <text x="632" y="140">-255..255</text>
+    <text x="725" y="140">0-255</text>
+  </g>
+
+  <!-- ============================================ -->
+  <!-- GROUP 2: Detection (8-15) — Gray (dead) -->
+  <!-- ============================================ -->
+  <text x="30" y="178" fill="#999" font-size="14" font-weight="700">Detection [8-15]</text>
+  <text x="770" y="178" text-anchor="end" fill="#666" font-size="12">8 dim (dead features)</text>
+
+  <g fill="#2a2a2a" stroke="#555" stroke-width="1" stroke-dasharray="4,3">
+    <rect x="30" y="188" width="88" height="36" rx="6"/>
+    <rect x="123" y="188" width="88" height="36" rx="6"/>
+    <rect x="216" y="188" width="88" height="36" rx="6"/>
+    <rect x="309" y="188" width="88" height="36" rx="6"/>
+    <rect x="402" y="188" width="88" height="36" rx="6"/>
+    <rect x="495" y="188" width="88" height="36" rx="6"/>
+    <rect x="588" y="188" width="88" height="36" rx="6"/>
+    <rect x="681" y="188" width="88" height="36" rx="6"/>
+  </g>
+  <g fill="#888" font-size="11" text-anchor="middle" dominant-baseline="central">
+    <text x="74" y="200">8: detect_flag</text>
+    <text x="167" y="200">9: class_0</text>
+    <text x="260" y="200">10: class_1</text>
+    <text x="353" y="200">11: class_2</text>
+    <text x="446" y="200">12: bbox_cx</text>
+    <text x="539" y="200">13: bbox_cy</text>
+    <text x="632" y="200">14: bbox_w</text>
+    <text x="725" y="200">15: bbox_h</text>
+  </g>
+  <g fill="#666" font-size="9" text-anchor="middle">
+    <text x="74" y="218">{0,1}</text>
+    <text x="167" y="218">one-hot</text>
+    <text x="260" y="218">one-hot</text>
+    <text x="353" y="218">one-hot</text>
+    <text x="446" y="218">[0,1]</text>
+    <text x="539" y="218">[0,1]</text>
+    <text x="632" y="218">[0,1]</text>
+    <text x="725" y="218">[0,1]</text>
+  </g>
+
+  <!-- ============================================ -->
+  <!-- GROUP 3: IMU (16-26) — Green -->
+  <!-- ============================================ -->
+  <text x="30" y="256" fill="#7ec88b" font-size="14" font-weight="700">IMU [16-26]</text>
+  <text x="770" y="256" text-anchor="end" fill="#7ec88b" font-size="12">11 dim</text>
+
+  <!-- Row 1: indices 16-22 -->
+  <g fill="#1a3a20" stroke="#4a9e5a" stroke-width="1">
+    <rect x="30" y="266" width="100" height="36" rx="6"/>
+    <rect x="135" y="266" width="100" height="36" rx="6"/>
+    <rect x="240" y="266" width="100" height="36" rx="6"/>
+    <rect x="345" y="266" width="100" height="36" rx="6"/>
+    <rect x="450" y="266" width="100" height="36" rx="6"/>
+    <rect x="555" y="266" width="100" height="36" rx="6"/>
+    <rect x="660" y="266" width="108" height="36" rx="6"/>
+  </g>
+  <g fill="#b0ddb8" font-size="11" text-anchor="middle" dominant-baseline="central">
+    <text x="80" y="278">16: gyro_x</text>
+    <text x="185" y="278">17: gyro_y</text>
+    <text x="290" y="278">18: gyro_z</text>
+    <text x="395" y="278">19: acc_x</text>
+    <text x="500" y="278">20: acc_y</text>
+    <text x="605" y="278">21: comp_x</text>
+    <text x="714" y="278">22: comp_y</text>
+  </g>
+  <g fill="#7ec88b" font-size="9" text-anchor="middle">
+    <text x="80" y="296">deg/s</text>
+    <text x="185" y="296">deg/s</text>
+    <text x="290" y="296">deg/s</text>
+    <text x="395" y="296">g</text>
+    <text x="500" y="296">g</text>
+    <text x="605" y="296">deg</text>
+    <text x="714" y="296">deg</text>
+  </g>
+
+  <!-- Row 2: indices 23-26 -->
+  <g fill="#1a3a20" stroke="#4a9e5a" stroke-width="1">
+    <rect x="30" y="308" width="100" height="36" rx="6"/>
+    <rect x="135" y="308" width="100" height="36" rx="6"/>
+    <rect x="240" y="308" width="100" height="36" rx="6"/>
+    <rect x="345" y="308" width="100" height="36" rx="6"/>
+  </g>
+  <g fill="#b0ddb8" font-size="11" text-anchor="middle" dominant-baseline="central">
+    <text x="80" y="320">23: rot_x</text>
+    <text x="185" y="320">24: rot_y</text>
+    <text x="290" y="320">25: rot_z</text>
+    <text x="395" y="320">26: tilt</text>
+  </g>
+  <g fill="#7ec88b" font-size="9" text-anchor="middle">
+    <text x="80" y="338">deg</text>
+    <text x="185" y="338">deg</text>
+    <text x="290" y="338">deg</text>
+    <text x="395" y="338">0-7</text>
+  </g>
+
+  <!-- Separator -->
+  <line x1="30" y1="365" x2="770" y2="365" stroke="#444" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="400" y="383" text-anchor="middle" fill="#aaa" font-size="12" font-style="italic">Features engineered (calculees a partir des 27 raw)</text>
+
+  <!-- ============================================ -->
+  <!-- GROUP 4: Engineered PID-inspired (27-34) — Orange -->
+  <!-- ============================================ -->
+  <text x="30" y="412" fill="#f0a050" font-size="14" font-weight="700">Engineered PID-inspired [27-34]</text>
+  <text x="770" y="412" text-anchor="end" fill="#f0a050" font-size="12">8 dim</text>
+
+  <!-- Row 1: 27-30 -->
+  <g fill="#3a2510" stroke="#d08030" stroke-width="1">
+    <rect x="30" y="422" width="175" height="50" rx="6"/>
+    <rect x="210" y="422" width="175" height="50" rx="6"/>
+    <rect x="390" y="422" width="175" height="50" rx="6"/>
+    <rect x="570" y="422" width="198" height="50" rx="6"/>
+  </g>
+  <g fill="#f0c080" font-size="11" text-anchor="middle" dominant-baseline="central">
+    <text x="117" y="438">27: calibrated_error</text>
+    <text x="297" y="438">28: line_visible</text>
+    <text x="477" y="438">29: cal_error_norm</text>
+    <text x="669" y="438">30: approaching_line</text>
+  </g>
+  <g fill="#d08030" font-size="9" text-anchor="middle">
+    <text x="117" y="462">erreur laterale calibree</text>
+    <text x="297" y="462">flag ligne detectee</text>
+    <text x="477" y="462">erreur norm. [-1,1]</text>
+    <text x="669" y="462">derivee erreur</text>
+  </g>
+
+  <!-- Row 2: 31-34 -->
+  <g fill="#3a2510" stroke="#d08030" stroke-width="1">
+    <rect x="30" y="478" width="175" height="50" rx="6"/>
+    <rect x="210" y="478" width="175" height="50" rx="6"/>
+    <rect x="390" y="478" width="175" height="50" rx="6"/>
+    <rect x="570" y="478" width="198" height="50" rx="6"/>
+  </g>
+  <g fill="#f0c080" font-size="11" text-anchor="middle" dominant-baseline="central">
+    <text x="117" y="494">31: on_road</text>
+    <text x="297" y="494">32: grass_detect</text>
+    <text x="477" y="494">33: gyro_z_rate</text>
+    <text x="669" y="494">34: heading_drift</text>
+  </g>
+  <g fill="#d08030" font-size="9" text-anchor="middle">
+    <text x="117" y="518">flag sur la route</text>
+    <text x="297" y="518">detection gazon</text>
+    <text x="477" y="518">vitesse lacet (gyro Z)</text>
+    <text x="669" y="518">derive heading cumul.</text>
+  </g>
+
+  <!-- Separator -->
+  <line x1="30" y1="548" x2="770" y2="548" stroke="#444" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="400" y="566" text-anchor="middle" fill="#aaa" font-size="12" font-style="italic">Deltas temporels (historique des 5 derniers pas)</text>
+
+  <!-- ============================================ -->
+  <!-- GROUP 5: Temporal Deltas (35-94) — Purple -->
+  <!-- ============================================ -->
+  <text x="30" y="595" fill="#b8a0e0" font-size="14" font-weight="700">Temporal Deltas [35-94]</text>
+  <text x="770" y="595" text-anchor="end" fill="#b8a0e0" font-size="12">60 dim (12 x 5)</text>
+
+  <!-- Grid header: step labels -->
+  <g fill="#b8a0e0" font-size="12" font-weight="600" text-anchor="middle">
+    <text x="300" y="618">t-1</text>
+    <text x="400" y="618">t-2</text>
+    <text x="500" y="618">t-3</text>
+    <text x="600" y="618">t-4</text>
+    <text x="700" y="618">t-5</text>
+  </g>
+
+  <!-- Grid: 12 features x 5 steps -->
+  <!-- Feature labels (left column) -->
+  <g fill="#c8b8e8" font-size="10" text-anchor="end" dominant-baseline="central">
+    <text x="240" y="642">IR_front_R</text>
+    <text x="240" y="664">IR_bot_R</text>
+    <text x="240" y="686">IR_bot_L</text>
+    <text x="240" y="708">IR_diff</text>
+    <text x="240" y="730">IR_sum</text>
+    <text x="240" y="752">gyro_z</text>
+    <text x="240" y="774">acc_x</text>
+    <text x="240" y="796">acc_y</text>
+    <text x="240" y="818">cal_error</text>
+    <text x="240" y="840">cal_err_norm</text>
+    <text x="240" y="862">gyro_z_rate</text>
+    <text x="240" y="884">heading_drift</text>
+  </g>
+
+  <!-- Grid cells -->
+  <g fill="#251a3a" stroke="#6a50a0" stroke-width="0.5">
+    <!-- Row 0: IR_front_R -->
+    <rect x="255" y="630" width="90" height="20" rx="3"/>
+    <rect x="355" y="630" width="90" height="20" rx="3"/>
+    <rect x="455" y="630" width="90" height="20" rx="3"/>
+    <rect x="555" y="630" width="90" height="20" rx="3"/>
+    <rect x="655" y="630" width="90" height="20" rx="3"/>
+    <!-- Row 1: IR_bot_R -->
+    <rect x="255" y="652" width="90" height="20" rx="3"/>
+    <rect x="355" y="652" width="90" height="20" rx="3"/>
+    <rect x="455" y="652" width="90" height="20" rx="3"/>
+    <rect x="555" y="652" width="90" height="20" rx="3"/>
+    <rect x="655" y="652" width="90" height="20" rx="3"/>
+    <!-- Row 2: IR_bot_L -->
+    <rect x="255" y="674" width="90" height="20" rx="3"/>
+    <rect x="355" y="674" width="90" height="20" rx="3"/>
+    <rect x="455" y="674" width="90" height="20" rx="3"/>
+    <rect x="555" y="674" width="90" height="20" rx="3"/>
+    <rect x="655" y="674" width="90" height="20" rx="3"/>
+    <!-- Row 3: IR_diff -->
+    <rect x="255" y="696" width="90" height="20" rx="3"/>
+    <rect x="355" y="696" width="90" height="20" rx="3"/>
+    <rect x="455" y="696" width="90" height="20" rx="3"/>
+    <rect x="555" y="696" width="90" height="20" rx="3"/>
+    <rect x="655" y="696" width="90" height="20" rx="3"/>
+    <!-- Row 4: IR_sum -->
+    <rect x="255" y="718" width="90" height="20" rx="3"/>
+    <rect x="355" y="718" width="90" height="20" rx="3"/>
+    <rect x="455" y="718" width="90" height="20" rx="3"/>
+    <rect x="555" y="718" width="90" height="20" rx="3"/>
+    <rect x="655" y="718" width="90" height="20" rx="3"/>
+    <!-- Row 5: gyro_z -->
+    <rect x="255" y="740" width="90" height="20" rx="3"/>
+    <rect x="355" y="740" width="90" height="20" rx="3"/>
+    <rect x="455" y="740" width="90" height="20" rx="3"/>
+    <rect x="555" y="740" width="90" height="20" rx="3"/>
+    <rect x="655" y="740" width="90" height="20" rx="3"/>
+    <!-- Row 6: acc_x -->
+    <rect x="255" y="762" width="90" height="20" rx="3"/>
+    <rect x="355" y="762" width="90" height="20" rx="3"/>
+    <rect x="455" y="762" width="90" height="20" rx="3"/>
+    <rect x="555" y="762" width="90" height="20" rx="3"/>
+    <rect x="655" y="762" width="90" height="20" rx="3"/>
+    <!-- Row 7: acc_y -->
+    <rect x="255" y="784" width="90" height="20" rx="3"/>
+    <rect x="355" y="784" width="90" height="20" rx="3"/>
+    <rect x="455" y="784" width="90" height="20" rx="3"/>
+    <rect x="555" y="784" width="90" height="20" rx="3"/>
+    <rect x="655" y="784" width="90" height="20" rx="3"/>
+    <!-- Row 8: cal_error -->
+    <rect x="255" y="806" width="90" height="20" rx="3"/>
+    <rect x="355" y="806" width="90" height="20" rx="3"/>
+    <rect x="455" y="806" width="90" height="20" rx="3"/>
+    <rect x="555" y="806" width="90" height="20" rx="3"/>
+    <rect x="655" y="806" width="90" height="20" rx="3"/>
+    <!-- Row 9: cal_err_norm -->
+    <rect x="255" y="828" width="90" height="20" rx="3"/>
+    <rect x="355" y="828" width="90" height="20" rx="3"/>
+    <rect x="455" y="828" width="90" height="20" rx="3"/>
+    <rect x="555" y="828" width="90" height="20" rx="3"/>
+    <rect x="655" y="828" width="90" height="20" rx="3"/>
+    <!-- Row 10: gyro_z_rate -->
+    <rect x="255" y="850" width="90" height="20" rx="3"/>
+    <rect x="355" y="850" width="90" height="20" rx="3"/>
+    <rect x="455" y="850" width="90" height="20" rx="3"/>
+    <rect x="555" y="850" width="90" height="20" rx="3"/>
+    <rect x="655" y="850" width="90" height="20" rx="3"/>
+    <!-- Row 11: heading_drift -->
+    <rect x="255" y="872" width="90" height="20" rx="3"/>
+    <rect x="355" y="872" width="90" height="20" rx="3"/>
+    <rect x="455" y="872" width="90" height="20" rx="3"/>
+    <rect x="555" y="872" width="90" height="20" rx="3"/>
+    <rect x="655" y="872" width="90" height="20" rx="3"/>
+  </g>
+
+  <!-- Grid index labels (inside cells, first and last columns only) -->
+  <g fill="#9080c0" font-size="8" text-anchor="middle" dominant-baseline="central">
+    <text x="300" y="642">35</text>
+    <text x="700" y="642">39</text>
+    <text x="300" y="664">40</text>
+    <text x="700" y="664">44</text>
+    <text x="300" y="686">45</text>
+    <text x="700" y="686">49</text>
+    <text x="300" y="708">50</text>
+    <text x="700" y="708">54</text>
+    <text x="300" y="730">55</text>
+    <text x="700" y="730">59</text>
+    <text x="300" y="752">60</text>
+    <text x="700" y="752">64</text>
+    <text x="300" y="774">65</text>
+    <text x="700" y="774">69</text>
+    <text x="300" y="796">70</text>
+    <text x="700" y="796">74</text>
+    <text x="300" y="818">75</text>
+    <text x="700" y="818">79</text>
+    <text x="300" y="840">80</text>
+    <text x="700" y="840">84</text>
+    <text x="300" y="862">85</text>
+    <text x="700" y="862">89</text>
+    <text x="300" y="884">90</text>
+    <text x="700" y="884">94</text>
+  </g>
+
+  <!-- ============================================ -->
+  <!-- Summary -->
+  <!-- ============================================ -->
+  <line x1="30" y1="910" x2="770" y2="910" stroke="#444" stroke-width="1"/>
+
+  <text x="400" y="940" text-anchor="middle" fill="#ccc" font-size="14" font-weight="600">Resume du vecteur</text>
+
+  <!-- Summary boxes -->
+  <g font-size="12" text-anchor="middle">
+    <rect x="40" y="955" width="155" height="40" rx="6" fill="#162a4a" stroke="#4a90d9" stroke-width="1"/>
+    <text x="117" y="972" fill="#a0c4f0" dominant-baseline="central" font-weight="600">IR Sensors</text>
+    <text x="117" y="988" fill="#6ea8fe" font-size="10" dominant-baseline="central">[0-7] 8 dim</text>
+
+    <rect x="205" y="955" width="155" height="40" rx="6" fill="#2a2a2a" stroke="#555" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="282" y="972" fill="#888" dominant-baseline="central" font-weight="600">Detection</text>
+    <text x="282" y="988" fill="#666" font-size="10" dominant-baseline="central">[8-15] 8 dim (dead)</text>
+
+    <rect x="370" y="955" width="155" height="40" rx="6" fill="#1a3a20" stroke="#4a9e5a" stroke-width="1"/>
+    <text x="447" y="972" fill="#b0ddb8" dominant-baseline="central" font-weight="600">IMU</text>
+    <text x="447" y="988" fill="#7ec88b" font-size="10" dominant-baseline="central">[16-26] 11 dim</text>
+
+    <rect x="535" y="955" width="115" height="40" rx="6" fill="#3a2510" stroke="#d08030" stroke-width="1"/>
+    <text x="592" y="972" fill="#f0c080" dominant-baseline="central" font-weight="600">PID</text>
+    <text x="592" y="988" fill="#d08030" font-size="10" dominant-baseline="central">[27-34] 8 dim</text>
+
+    <rect x="660" y="955" width="108" height="40" rx="6" fill="#251a3a" stroke="#6a50a0" stroke-width="1"/>
+    <text x="714" y="972" fill="#c8b8e8" dominant-baseline="central" font-weight="600">Deltas</text>
+    <text x="714" y="988" fill="#b8a0e0" font-size="10" dominant-baseline="central">[35-94] 60 dim</text>
+  </g>
+
+  <!-- Architecture target -->
+  <text x="400" y="1025" text-anchor="middle" fill="#888" font-size="12">Architecture cible: [128, 64, 32] — ~14K params — ~50-60KB TFLite</text>
+
+  <!-- Labels output -->
+  <line x1="30" y1="1045" x2="770" y2="1045" stroke="#444" stroke-width="0.5" stroke-dasharray="6,4"/>
+  <text x="400" y="1065" text-anchor="middle" fill="#999" font-size="12" font-style="italic">Sortie du modele (labels)</text>
+
+  <g font-size="12" text-anchor="middle">
+    <rect x="250" y="1078" width="140" height="36" rx="6" fill="#1a3a20" stroke="#4a9e5a" stroke-width="1"/>
+    <text x="320" y="1098" fill="#b0ddb8" dominant-baseline="central" font-weight="500">Vit. gauche [-1, 1]</text>
+
+    <rect x="410" y="1078" width="140" height="36" rx="6" fill="#1a3a20" stroke="#4a9e5a" stroke-width="1"/>
+    <text x="480" y="1098" fill="#b0ddb8" dominant-baseline="central" font-weight="500">Vit. droite [-1, 1]</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="400" y="1145" text-anchor="middle" fill="#555" font-size="10">Projet PFE GPA 793 — Zumi MLP Line Follower — 2026-03-26</text>
+
+</svg>

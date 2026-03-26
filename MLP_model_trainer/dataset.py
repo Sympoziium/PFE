@@ -13,21 +13,56 @@ import torch
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 from pathlib import Path
 
-# Features engineered ajoutees au vecteur de base (27-dim -> 29-dim)
-ENGINEERED_FEATURE_NAMES = ['line_position', 'line_confidence']
+# ============================================================
+# Constantes de feature engineering (source de verite)
+# Synchronisees vers ml_controller.py via normalization_stats.json
+# ============================================================
 
-# Indices des features pour lesquelles calculer des deltas temporels
-# Note: indices 27-28 sont les features engineered (line_position, line_confidence)
-# ajoutees par compute_line_features() avant l'appel a compute_deltas()
-DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 27, 28]
-DELTA_FEATURE_NAMES = [
-    'IR_bot_R_delta', 'IR_bot_L_delta', 'IR_diff_delta', 'IR_sum_delta', 'gyro_z_delta',
-    'line_pos_delta', 'line_conf_delta',
+# Seuils IR pour la detection de ligne et de surface
+IR_OFFSET_DEFAULT = -17.0    # Offset bot_left - bot_right (defaut, remplace par calibration)
+GAP_THRESHOLD = 195.0        # ir_sum sous lequel la ligne blanche est visible
+OFF_ROAD_THRESHOLD = 120.0   # ir_sum sous lequel on est hors piste (gazon)
+GRASS_THRESHOLD = 140.0      # capteurs front sous ce seuil = gazon devant
+
+# Features engineered ajoutees au vecteur de base (27-dim -> 35-dim)
+ENGINEERED_FEATURE_NAMES = [
+    'calibrated_error',   # 27: (ir_bot_r - ir_bot_l) - ir_offset
+    'line_visible',       # 28: 1.0 si ir_sum < GAP_THRESHOLD
+    'cal_error_norm',     # 29: calibrated_error / (ir_sum + eps)
+    'approaching_line',   # 30: +1 si |cal_error| diminue, -1 sinon
+    'on_road',            # 31: 1.0 si ir_sum > OFF_ROAD_THRESHOLD
+    'grass_detect',       # 32: 1.0 si min(ir_front_l, ir_front_r) < GRASS_THRESHOLD
+    'gyro_z_rate',        # 33: delta gyro_z (vitesse angulaire par tick)
+    'heading_drift',      # 34: gyro_z_rate * (1 - line_visible)
 ]
 
-# Deltas multi-pas: 3 pas d'historique avec ponderation exponentielle
-DELTA_STEPS = 3
-DELTA_WEIGHTS = [1.0, 0.5, 0.25]  # Plus recent = plus important
+# Indices des features pour lesquelles calculer des deltas temporels
+# Note: indices 27-34 sont les features engineered ajoutees par
+# compute_engineered_features() avant l'appel a compute_deltas()
+DELTA_FEATURE_INDICES = [
+    1,   # IR_bot_R
+    3,   # IR_bot_L
+    6,   # IR_diff
+    7,   # IR_sum
+    18,  # gyro_z (heading cumulatif)
+    19,  # acc_x
+    20,  # acc_y
+    27,  # calibrated_error
+    29,  # cal_error_norm
+    30,  # approaching_line
+    33,  # gyro_z_rate
+    34,  # heading_drift
+]
+DELTA_FEATURE_NAMES = [
+    'IR_bot_R_delta', 'IR_bot_L_delta', 'IR_diff_delta', 'IR_sum_delta',
+    'gyro_z_delta', 'acc_x_delta', 'acc_y_delta',
+    'cal_error_delta', 'cal_error_norm_delta', 'approaching_delta',
+    'gyro_z_rate_delta', 'heading_drift_delta',
+]
+
+# Deltas multi-pas: 5 pas d'historique avec ponderation exponentielle
+DELTA_STEPS = 5
+DELTA_WEIGHTS = [1.0, 0.7, 0.5, 0.3, 0.15]
 
 # Indice du gyro_z (vitesse angulaire yaw en deg/s) dans le vecteur 27-dim
 GYRO_Z_INDEX = 18
@@ -223,34 +258,119 @@ class ZumiControlDataset(Dataset):
         print(f"[Dataset] Deduplication: {n_removed} doublons retires "
               f"(groupes >= {min_run_length} samples, {len(self)} restants)")
 
-    def compute_line_features(self):
-        """Ajoute des features engineered pour le suivi de ligne.
+    def compute_ir_offset(self) -> float:
+        """Estime l'offset IR bottom depuis le dataset (echantillons forward+straight).
 
-        Calcule a partir des capteurs IR bottom (indices 1 et 3 du vecteur 27-dim):
-        - line_position: position laterale normalisee [-1, 1], robuste aux variations
-          de luminosite. Positif = ligne a gauche, negatif = ligne a droite.
-        - line_confidence: intensite de la detection de ligne. Fort quand la ligne
-          est clairement d'un cote, faible quand centree ou absente.
+        Equivalent de la calibration IR hardware mais calcule a partir des
+        donnees d'entrainement. Utilise comme defaut quand pas de calibration.
 
-        Doit etre appelee AVANT compute_deltas() pour que les deltas
-        puissent etre calcules sur ces nouvelles features.
+        Returns:
+            float: Offset moyen (ir_bot_left - ir_bot_right) sur les echantillons droits.
         """
-        ir_bot_r = self.captures[:, 1]  # IR_bottom_right
-        ir_bot_l = self.captures[:, 3]  # IR_bottom_left
+        categories = classify_actions(self.captures, self.labels)
+        forward_mask = categories == 1  # forward
 
-        # Position laterale normalisee: invariant a la luminosite ambiante
-        line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
+        if forward_mask.sum() < 10:
+            print(f"[Dataset] IR offset: pas assez d'echantillons forward, defaut={IR_OFFSET_DEFAULT}")
+            return IR_OFFSET_DEFAULT
 
-        # Confiance: ratio du differentiel sur la moyenne
-        line_conf = np.abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
+        # Parmi les forward, filtrer ceux vraiment droits (delta gyro_z faible)
+        gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
+        gyro_z_delta = np.zeros_like(gyro_z_raw)
+        gyro_z_delta[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
+        gyro_z_delta[np.abs(gyro_z_delta) > 150.0] = 0.0
 
-        new_features = np.column_stack([line_pos, line_conf]).astype(np.float32)
+        fwd_delta = gyro_z_delta[forward_mask]
+        straight_mask = np.abs(fwd_delta) < 5.0
+
+        if straight_mask.sum() >= 10:
+            ir_diff_straight = self.captures[forward_mask][straight_mask, 6]  # IR_diff = index 6
+        else:
+            ir_diff_straight = self.captures[forward_mask, 6]
+
+        offset = float(ir_diff_straight.mean())
+        print(f"[Dataset] IR offset estime: {offset:.1f} "
+              f"(n_straight={int(straight_mask.sum()) if straight_mask.sum() >= 10 else len(ir_diff_straight)})")
+        return offset
+
+    def compute_engineered_features(self, ir_offset: float = None):
+        """Ajoute 8 features PID-inspired au vecteur de base (27-dim -> 35-dim).
+
+        Features ajoutees (indices 27-34):
+          27: calibrated_error  - signal d'erreur PID zero-centre
+          28: line_visible      - 1.0 si ligne blanche detectee
+          29: cal_error_norm    - erreur normalisee par luminosite
+          30: approaching_line  - +1 si on se rapproche de la ligne, -1 sinon
+          31: on_road           - 1.0 si sur la route (pas sur gazon)
+          32: grass_detect      - 1.0 si gazon detecte devant
+          33: gyro_z_rate       - vitesse angulaire (delta gyro_z par tick)
+          34: heading_drift     - derive de cap dans les gaps entre tirets
+
+        Doit etre appelee AVANT compute_deltas().
+
+        Args:
+            ir_offset: Offset IR bottom (bot_left - bot_right). Si None, estime depuis le dataset.
+        """
+        if ir_offset is None:
+            ir_offset = self.compute_ir_offset()
+        self._ir_offset = ir_offset
+
+        n = len(self.captures)
+        ir_bot_r = self.captures[:, 1]   # IR_bottom_right
+        ir_bot_l = self.captures[:, 3]   # IR_bottom_left
+        ir_front_r = self.captures[:, 0] # IR_front_right
+        ir_front_l = self.captures[:, 5] # IR_front_left
+        ir_sum = (ir_bot_l + ir_bot_r) / 2.0
+        gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
+
+        # 27: calibrated_error — signal d'erreur PID zero-centre
+        # Convention: positif = robot decale a droite (doit tourner a gauche)
+        calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)  # soustrait le biais
+
+        # 28: line_visible — la ligne blanche est sous un capteur
+        line_visible = (ir_sum < GAP_THRESHOLD).astype(np.float32)
+
+        # 29: cal_error_norm — invariant a la luminosite ambiante
+        cal_error_norm = calibrated_error / (ir_sum + 1e-6)
+
+        # 30: approaching_line — direction de derive (+1 = vers la ligne, -1 = s'eloigne)
+        abs_error = np.abs(calibrated_error)
+        abs_error_prev = np.zeros_like(abs_error)
+        abs_error_prev[1:] = abs_error[:-1]
+        approaching = np.where(abs_error < abs_error_prev, 1.0, -1.0).astype(np.float32)
+        # Frontieres de sequence: zeroiser
+        error_jumps = np.abs(calibrated_error[1:] - calibrated_error[:-1])
+        boundaries = np.zeros(n, dtype=bool)
+        boundaries[0] = True
+        boundaries[1:] = error_jumps > 100.0
+        approaching[boundaries] = 0.0
+
+        # 31: on_road — sur la route noire (pas gazon)
+        on_road = (ir_sum > OFF_ROAD_THRESHOLD).astype(np.float32)
+
+        # 32: grass_detect — gazon detecte par les capteurs front
+        grass_detect = (np.minimum(ir_front_l, ir_front_r) < GRASS_THRESHOLD).astype(np.float32)
+
+        # 33: gyro_z_rate — vitesse angulaire (delta gyro_z cumulatif)
+        gyro_z_rate = np.zeros(n, dtype=np.float32)
+        gyro_z_rate[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
+        # Zeroiser les frontieres de sequence (gros sauts = reset gyro)
+        gyro_boundaries = np.abs(gyro_z_rate) > 150.0
+        gyro_z_rate[gyro_boundaries] = 0.0
+
+        # 34: heading_drift — derive de cap active uniquement dans les gaps
+        heading_drift = gyro_z_rate * (1.0 - line_visible)
+
+        new_features = np.column_stack([
+            calibrated_error, line_visible, cal_error_norm, approaching,
+            on_road, grass_detect, gyro_z_rate, heading_drift
+        ]).astype(np.float32)
+
         original_dim = self.captures.shape[1]
         self.captures = np.hstack([self.captures, new_features])
 
         print(f"[Dataset] Features engineered: {len(ENGINEERED_FEATURE_NAMES)} ajoutees "
-              f"({original_dim}-dim -> {self.captures.shape[1]}-dim): "
-              + ", ".join(ENGINEERED_FEATURE_NAMES))
+              f"({original_dim}-dim -> {self.captures.shape[1]}-dim, ir_offset={ir_offset:.1f})")
 
     def compute_deltas(self, delta_indices: list = None, n_steps: int = None, weights: list = None):
         """Calcule les features temporelles multi-pas avec ponderation exponentielle.
@@ -457,13 +577,13 @@ def create_data_loaders(
     Pipeline complet:
       1. Chargement des donnees
       2. Deduplication des echantillons consecutifs quasi-identiques
-      3. Features engineered (line_position, line_confidence)
-      4. Deltas temporels multi-pas (7 features x 3 pas = 21 colonnes)
+      3. Features engineered PID-inspired (8 features, 27-dim -> 35-dim)
+      4. Deltas temporels multi-pas (12 features x 5 pas = 60 colonnes)
       5. Calcul des poids d'echantillonnage equilibre
       6. Application du masque de features mortes
       7. Split train/validation
       8. Normalisation z-score (stats calculees sur train uniquement)
-      9. Creation des DataLoaders (avec WeightedRandomSampler si equilibre)
+      9. Creation des DataLoaders
 
     Args:
         data_dir: Répertoire des données
@@ -484,8 +604,8 @@ def create_data_loaders(
     if deduplicate:
         dataset.deduplicate()
 
-    # 2. Features engineered (27-dim -> 29-dim)
-    dataset.compute_line_features()
+    # 2. Features engineered (27-dim -> 35-dim)
+    dataset.compute_engineered_features()
 
     # 3. Deltas temporels multi-pas (avant shuffle, sur echantillons consecutifs)
     dataset.compute_deltas()

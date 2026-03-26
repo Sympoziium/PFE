@@ -7,7 +7,9 @@
 # Référence des fonctions du package Zumi:
 # https://docs.robolink.com/docs/Zumi/Python/Function-Documentation
 
+import json
 import time
+from pathlib import Path
 
 import numpy
 from core.robot.robot_base import RobotBase
@@ -57,6 +59,11 @@ class RobotZumi(RobotBase):
         self.personality = Personality(self.zumi, self.screen)
         self._stop_since = None  # Timestamp du début de l'arrêt courant
         self._PID_RESET_DELAY = 1.5  # Secondes d'arrêt continu avant reset PID
+
+        # Calibration IR: offsets entre paires L/R et baselines par capteur
+        self.ir_calibration = None
+        self._ir_calibration_path = Path(__file__).parent / "ir_calibration.json"
+        self.load_ir_calibration()
 
         self.calibrate_sensors()  # Calibrage initial des capteurs pour des lectures précises
 
@@ -215,20 +222,98 @@ class RobotZumi(RobotBase):
 
     def calibrate_sensors(self):
         """
-        Calibre les capteurs du Zumi (MPU, IR, etc.).
+        Calibre les capteurs du Zumi (MPU, gyro, IR).
         Doit être appelé au démarrage pour assurer des lectures précises.
         """
         try:
             # Reset des états de conduite
             self.reset_drive_state()
 
-            # Calibration des sensors
+            # Calibration MPU + gyro
             self.zumi.calibrate_gyro()
-            time.sleep(0.5)  # Pause pour stabiliser les lectures après calibrage
-            self.zumi.mpu.calibrate_MPU(count = 500)
-            time.sleep(0.5)  # Pause pour stabiliser les lectures après calibrage
+            time.sleep(0.5)
+            self.zumi.mpu.calibrate_MPU(count=500)
+            time.sleep(0.5)
+
+            # Calibration IR (mode light)
+            self.calibrate_ir(n_samples=50)
         except Exception as e:
             print("Erreur lors du calibrage des capteurs: {}".format(e))
+
+    def calibrate_ir(self, n_samples=50):
+        """Calibre les 6 capteurs IR en mesurant les baselines sur surface noire.
+
+        Le robot doit etre immobile sur la route noire (sans ligne, espace
+        degage). Mesure la baseline de chaque capteur et les offsets entre
+        paires gauche/droite.
+
+        Ordre des capteurs: [front_r, bottom_r, back_r, bottom_l, back_l, front_l]
+
+        Args:
+            n_samples: Nombre d'echantillons (50=light auto, 200=heavy manuel)
+        """
+        try:
+            print("[IR Calibration] Demarrage ({} samples)...".format(n_samples))
+            readings = []
+            for i in range(n_samples):
+                ir = self.get_ir_data()
+                if ir is not None:
+                    readings.append(ir)
+                time.sleep(0.02)  # ~50 Hz
+
+            if len(readings) < 10:
+                print("[IR Calibration] Echec: pas assez de lectures ({})".format(len(readings)))
+                return None
+
+            arr = numpy.array(readings, dtype=numpy.float64)
+            baselines = arr.mean(axis=0).tolist()
+
+            # Indices: 0=front_r, 1=bottom_r, 2=back_r, 3=bottom_l, 4=back_l, 5=front_l
+            offsets = {
+                "bottom": float(baselines[3] - baselines[1]),   # bot_left - bot_right
+                "front": float(baselines[5] - baselines[0]),    # front_left - front_right
+                "back": float(baselines[4] - baselines[2]),     # back_left - back_right
+            }
+
+            self.ir_calibration = {
+                "ir_baselines": [round(b, 1) for b in baselines],
+                "ir_offsets": offsets,
+                "n_samples": len(readings),
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+
+            # Sauvegarder
+            with open(str(self._ir_calibration_path), 'w') as f:
+                json.dump(self.ir_calibration, f, indent=2)
+
+            print("[IR Calibration] Baselines: {}".format(
+                ["{}={:.0f}".format(n, b) for n, b in
+                 zip(["fr", "br", "bkr", "bl", "bkl", "fl"], baselines)]))
+            print("[IR Calibration] Offsets: bottom={:.1f}, front={:.1f}, back={:.1f}".format(
+                offsets["bottom"], offsets["front"], offsets["back"]))
+            print("[IR Calibration] Sauvegarde: {}".format(self._ir_calibration_path))
+
+            return self.ir_calibration
+
+        except Exception as e:
+            print("[IR Calibration] Erreur: {}".format(e))
+            return None
+
+    def load_ir_calibration(self):
+        """Charge la calibration IR depuis le fichier JSON si disponible."""
+        try:
+            if self._ir_calibration_path.exists():
+                with open(str(self._ir_calibration_path), 'r') as f:
+                    self.ir_calibration = json.load(f)
+                print("[IR Calibration] Charge depuis {} (offset bottom={})".format(
+                    self._ir_calibration_path,
+                    self.ir_calibration.get("ir_offsets", {}).get("bottom", "?")))
+            else:
+                print("[IR Calibration] Pas de fichier de calibration ({}), utilisation des defauts".format(
+                    self._ir_calibration_path))
+        except Exception as e:
+            print("[IR Calibration] Erreur chargement: {}".format(e))
+            self.ir_calibration = None
 
     def reset_drive_state(self):
         """

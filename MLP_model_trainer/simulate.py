@@ -19,6 +19,7 @@ from pathlib import Path
 from dataset import (
     ZumiControlDataset, DELTA_FEATURE_INDICES, DELTA_STEPS, DELTA_WEIGHTS,
     ENGINEERED_FEATURE_NAMES, create_data_loaders,
+    IR_OFFSET_DEFAULT, GAP_THRESHOLD, OFF_ROAD_THRESHOLD, GRASS_THRESHOLD, GYRO_Z_INDEX,
 )
 
 
@@ -70,26 +71,54 @@ def inference(model, vector, stats):
     return out  # [left, right] normalise [-1, 1]
 
 
-def compute_engineered_features(raw_vector):
-    """Calcule line_position et line_confidence a partir d'un vecteur 27-dim."""
+def compute_engineered_features(raw_vector, prev_vec35=None, ir_offset=IR_OFFSET_DEFAULT):
+    """Calcule les 8 features PID-inspired a partir d'un vecteur 27-dim -> 35-dim."""
     ir_bot_r = raw_vector[1]
     ir_bot_l = raw_vector[3]
-    line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
-    line_conf = abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
-    return np.append(raw_vector, [line_pos, line_conf]).astype(np.float32)
+    ir_front_r = raw_vector[0]
+    ir_front_l = raw_vector[5]
+    ir_sum = (ir_bot_l + ir_bot_r) / 2.0
+    gyro_z = raw_vector[GYRO_Z_INDEX]
+
+    calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
+    line_visible = 1.0 if ir_sum < GAP_THRESHOLD else 0.0
+    cal_error_norm = calibrated_error / (ir_sum + 1e-6)
+
+    approaching = 0.0
+    if prev_vec35 is not None:
+        prev_cal = (prev_vec35[1] - prev_vec35[3]) - (-ir_offset)
+        approaching = 1.0 if abs(calibrated_error) < abs(prev_cal) else -1.0
+
+    on_road = 1.0 if ir_sum > OFF_ROAD_THRESHOLD else 0.0
+    grass_detect = 1.0 if min(ir_front_l, ir_front_r) < GRASS_THRESHOLD else 0.0
+
+    gyro_z_rate = 0.0
+    if prev_vec35 is not None:
+        rate = gyro_z - prev_vec35[GYRO_Z_INDEX]
+        if abs(rate) < 150.0:
+            gyro_z_rate = rate
+
+    heading_drift = gyro_z_rate * (1.0 - line_visible)
+
+    engineered = np.array([
+        calibrated_error, line_visible, cal_error_norm, approaching,
+        on_road, grass_detect, gyro_z_rate, heading_drift
+    ], dtype=np.float32)
+
+    return np.concatenate([raw_vector, engineered]).astype(np.float32)
 
 
-def build_full_vector(raw_29, prev_vectors, feature_mask=None):
-    """Construit le vecteur complet (29-dim + deltas multi-pas), applique le masque."""
+def build_full_vector(raw_35, prev_vectors, feature_mask=None):
+    """Construit le vecteur complet (35-dim + deltas multi-pas), applique le masque."""
     all_deltas = []
     for step, weight in enumerate(DELTA_WEIGHTS):
         d = np.zeros(len(DELTA_FEATURE_INDICES), dtype=np.float32)
         if step < len(prev_vectors):
             prev = prev_vectors[-(step + 1)]
-            d = (raw_29[DELTA_FEATURE_INDICES] - prev[DELTA_FEATURE_INDICES]) * weight
+            d = (raw_35[DELTA_FEATURE_INDICES] - prev[DELTA_FEATURE_INDICES]) * weight
         all_deltas.append(d)
 
-    full = np.concatenate([raw_29] + all_deltas)
+    full = np.concatenate([raw_35] + all_deltas)
 
     if feature_mask is not None:
         full = full[feature_mask]
@@ -164,8 +193,9 @@ def run_scenario_tests(model, stats, data_dir: Path):
             vec[idx] = val
         vec[6] = vec[3] - vec[1]  # IR_diff
         vec[7] = (vec[3] + vec[1]) / 2  # IR_sum
-        vec_29 = compute_engineered_features(vec)
-        full = build_full_vector(vec_29, [], stats.get('feature_mask'))
+        ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
+        vec_35 = compute_engineered_features(vec, None, ir_offset)
+        full = build_full_vector(vec_35, [], stats.get('feature_mask'))
         pred = inference(model, full, stats)
         return pred[0] * 50, pred[1] * 50  # vitesses moteur denormalisees
 
@@ -427,13 +457,15 @@ def run_open_loop_simulation(model, stats, sequences_dir: Path, save_dir: Path =
     predictions = []
     feature_mask = stats.get('feature_mask')
 
+    ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
     for t in range(len(captures)):
         raw_27 = captures[t]
-        raw_29 = compute_engineered_features(raw_27)
-        full = build_full_vector(raw_29, prev_vectors, feature_mask)
+        prev_35 = prev_vectors[-1] if len(prev_vectors) > 0 else None
+        raw_35 = compute_engineered_features(raw_27, prev_35, ir_offset)
+        full = build_full_vector(raw_35, prev_vectors, feature_mask)
         pred = inference(model, full, stats)
         predictions.append(pred)
-        prev_vectors.append(raw_29.copy())
+        prev_vectors.append(raw_35.copy())
 
     predictions = np.array(predictions)
 
