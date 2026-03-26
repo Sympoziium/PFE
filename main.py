@@ -186,6 +186,11 @@ def bootstrap():
     ml_ctrl = MLController(vision_adapter=adapter, model_path=MLP_model_path)
     control_manager.register_controller(ml_ctrl.name, ml_ctrl)
 
+    # Instance de contrôleur FSM circuit (navigation autonome avec gestion des virages)
+    from core.control.controlers.circuit_fsm_controller import CircuitFSMController
+    circuit_fsm_ctrl = CircuitFSMController()
+    control_manager.register_controller(circuit_fsm_ctrl.name, circuit_fsm_ctrl)
+
     ctrl.attach_control_manager(control_manager)
     draw_progress_bar(zumi.screen, 95)
     
