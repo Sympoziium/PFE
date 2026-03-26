@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # server_controller.py
 # ------------------
@@ -512,8 +512,38 @@ class controller:
                     if frame_counter % vp._detection_rate == 0:
                         vp._detection_trigger.set()  # signal au thread de détection
 
-                # --- Overlay détection passive sur la frame d'affichage ---
+                # --- Overlay détection de ligne quand circuit_fsm est actif ---
                 display_frame = frame_bgr
+                if self.control_manager and self.control_manager._active_controller:
+                    active_ctrl = self.control_manager._active_controller
+                    if active_ctrl.name == "circuit_fsm":
+                        try:
+                            # Trouver le LineDetector dans le pipeline
+                            line_det = None
+                            for det in vp.get_detectors():
+                                if getattr(det, 'name', '') == 'line':
+                                    line_det = det
+                                    break
+                            if line_det is not None:
+                                line_result = line_det.process(frame_bgr.copy())
+                                if line_result and line_result.get('Object_detected'):
+                                    display_frame = line_det.annotate_detection(frame_bgr.copy())
+                                else:
+                                    display_frame = frame_bgr.copy()
+                                    cv2.putText(display_frame, "Ligne non detectee",
+                                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                                                0.6, (0, 0, 255), 2)
+                                # Ajouter l'état FSM en overlay
+                                fsm_debug = active_ctrl.get_debug_info()
+                                fsm_text = "FSM: {}".format(fsm_debug.get('fsm_state', '?'))
+                                cv2.putText(display_frame, fsm_text,
+                                            (10, display_frame.shape[0] - 10),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                        except Exception as e:
+                            if self.debug:
+                                print("[VideoFeed] Erreur overlay circuit_fsm: {}".format(e))
+
+                # --- Overlay détection passive sur la frame d'affichage ---
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
                     now = time.time()
@@ -1444,6 +1474,12 @@ class controller:
             if active:
                 payload['controller_debug'] = active.get_debug_info()
                 payload['controller_params'] = active.get_params()
+                # Ajouter les params du LineDetector quand circuit_fsm est actif
+                if active.name == 'circuit_fsm' and self.vision_pipeline:
+                    for det in self.vision_pipeline.get_detectors():
+                        if getattr(det, 'name', '') == 'line' and hasattr(det, 'get_params'):
+                            payload['line_detector_params'] = det.get_params()
+                            break
             return jsonify(payload)
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -1464,7 +1500,14 @@ class controller:
             ctrl = self.control_manager.get_controller(ctrl_name)
             if ctrl is None:
                 return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
-            return jsonify({'name': ctrl_name, 'params': ctrl.get_params()})
+            result = {'name': ctrl_name, 'params': ctrl.get_params()}
+            # Ajouter les params du LineDetector pour circuit_fsm
+            if ctrl_name == 'circuit_fsm' and self.vision_pipeline:
+                for det in self.vision_pipeline.get_detectors():
+                    if getattr(det, 'name', '') == 'line' and hasattr(det, 'get_params'):
+                        result['line_detector_params'] = det.get_params()
+                        break
+            return jsonify(result)
 
         # POST: mise à jour des paramètres
         data = request.get_json(silent=True) or {}
@@ -1475,8 +1518,34 @@ class controller:
         if ctrl is None:
             return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
 
-        ctrl.update_params(**data)
-        return jsonify({'name': ctrl_name, 'params': ctrl.get_params()})
+        # Séparer les params du LineDetector de ceux du contrôleur
+        line_detector_keys = {'white_threshold', 'min_area', 'offset_ratio'}
+        line_params = {}
+        ctrl_params = {}
+        for k, v in data.items():
+            if k in line_detector_keys:
+                line_params[k] = v
+            else:
+                ctrl_params[k] = v
+
+        # Mettre à jour les params du contrôleur
+        if ctrl_params:
+            ctrl.update_params(**ctrl_params)
+
+        # Mettre à jour les params du LineDetector si applicable
+        if line_params and ctrl_name == 'circuit_fsm' and self.vision_pipeline:
+            for det in self.vision_pipeline.get_detectors():
+                if getattr(det, 'name', '') == 'line' and hasattr(det, 'update_params'):
+                    det.update_params(**line_params)
+                    break
+
+        result = {'name': ctrl_name, 'params': ctrl.get_params()}
+        if ctrl_name == 'circuit_fsm' and self.vision_pipeline:
+            for det in self.vision_pipeline.get_detectors():
+                if getattr(det, 'name', '') == 'line' and hasattr(det, 'get_params'):
+                    result['line_detector_params'] = det.get_params()
+                    break
+        return jsonify(result)
 
     def _vectorize_state_with_adapter(self, state, adapter):
         if state is None:
