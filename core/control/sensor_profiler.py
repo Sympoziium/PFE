@@ -287,8 +287,30 @@ class CalibrationController(ControllerBase):
                 return MotorCommand.stop()
             d = params.get("direction", 1)
             s = params.get("speed", 1)
-            # direction=1 → gauche: L=-s, R=+s
             return MotorCommand.make_speed(-d * s, d * s)
+
+        elif mtype == "rotate_repeat":
+            # N rotations avec pause de 0.5s entre chaque
+            repeats = params.get("repeats", 4)
+            rot_duration = params.get("duration", 0.5)
+            pause = 0.3
+            cycle = rot_duration + pause
+            total_duration = cycle * repeats
+
+            if elapsed >= total_duration:
+                self._done = True
+                return MotorCommand.stop()
+
+            # Dans quel cycle sommes-nous?
+            cycle_pos = elapsed % cycle
+            if cycle_pos < rot_duration:
+                # Phase rotation
+                d = params.get("direction", 1)
+                s = params.get("speed", 1)
+                return MotorCommand.make_speed(-d * s, d * s)
+            else:
+                # Phase pause
+                return MotorCommand.stop()
 
         return MotorCommand.stop()
 
@@ -474,16 +496,20 @@ class SensorProfiler:
 
         elif phase["type"] == "auto_rotate":
             self._controller.set_maneuver("rotate", phase["params"])
-            return {"action": "activate_calibration_controller", "phase_id": phase["id"]}
+            return {"action": "activate_calibration_controller",
+                    "phase_id": phase["id"], "duration": phase["params"]["duration"]}
 
         elif phase["type"] == "auto_rotate_repeat":
-            # Pour les répétitions, on lance la première. next_phase gère le reste.
-            self._controller.set_maneuver("rotate", {
-                "direction": phase["params"]["direction"],
-                "speed": phase["params"]["speed"],
-                "duration": phase["params"]["duration"],
+            p = phase["params"]
+            total = (p["duration"] + 0.3) * p.get("repeats", 4)
+            self._controller.set_maneuver("rotate_repeat", {
+                "direction": p["direction"],
+                "speed": p["speed"],
+                "duration": p["duration"],
+                "repeats": p.get("repeats", 4),
             })
-            return {"action": "activate_calibration_controller", "phase_id": phase["id"]}
+            return {"action": "activate_calibration_controller",
+                    "phase_id": phase["id"], "duration": total}
 
         return {"error": "Type de phase non supporté: {}".format(phase["type"])}
 
