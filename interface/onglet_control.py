@@ -1054,7 +1054,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var profilerPolling = null;
         var profilerState = 'idle';
         var profilerPhaseType = 'static';
-        var profilerAutoTimer = null;
 
         var btnAction = document.getElementById('btnProfilerAction');
         btnAction.addEventListener('click', function() {
@@ -1095,28 +1094,18 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 }
                 else if (profilerPhaseType.indexOf('auto_') === 0) {
                     btnAction.textContent = 'Manoeuvre en cours...';
+                    // Bloquant côté serveur: attend la fin de la manoeuvre
                     fetch('/robot/sensor_profile/run', {method: 'POST'})
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.error) {
                             btnAction.textContent = 'Erreur — Réessayer';
                             profilerState = 'ready';
-                            btnAction.disabled = false;
-                            return;
+                        } else {
+                            profilerState = 'done';
+                            btnAction.textContent = 'Phase complétée (' + (data.n_samples || 0) + ' samples) — Suivant';
                         }
-                        // Polling pour attendre fin de manoeuvre
-                        profilerAutoTimer = setInterval(function() {
-                            fetch('/robot/sensor_profile/status')
-                            .then(function(r) { return r.json(); })
-                            .then(function(s) {
-                                if (!s.auto_running) {
-                                    clearInterval(profilerAutoTimer);
-                                    profilerState = 'done';
-                                    btnAction.textContent = 'Phase complétée — Suivant';
-                                    btnAction.disabled = false;
-                                }
-                            });
-                        }, 300);
+                        btnAction.disabled = false;
                     });
                 }
             }
@@ -1159,7 +1148,6 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
         function stopProfilerPolling() {
             if (profilerPolling) { clearInterval(profilerPolling); profilerPolling = null; }
-            if (profilerAutoTimer) { clearInterval(profilerAutoTimer); profilerAutoTimer = null; }
         }
 
         function updateProfilerStatus() {

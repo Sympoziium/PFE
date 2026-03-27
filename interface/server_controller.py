@@ -1264,7 +1264,13 @@ class controller:
         return jsonify({'status': 'recorded', 'phase': result.get('description', ''), 'n_samples': result.get('n_samples', 0)})
 
     def sensor_profile_run(self):
-        """Lance la manoeuvre auto de la phase courante."""
+        """Lance la manoeuvre auto et attend qu'elle se termine (bloquant).
+
+        Le endpoint reste bloqué pendant la durée de la manoeuvre (~2-3s)
+        puis retourne les résultats. Le UI disable le bouton pendant ce temps.
+        """
+        import time as _time
+
         if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
             return jsonify({'error': 'Profiler non actif'}), 400
 
@@ -1273,29 +1279,57 @@ class controller:
             return jsonify(result), 400
 
         action = result.get('action')
+        phase_id = result.get('phase_id', '')
+        duration = result.get('duration', 3.0)
 
         if action == 'activate_calibration_controller':
-            # Register and activate the calibration controller
             ctrl = self._sensor_profiler.get_controller()
             if self.control_manager.get_controller('calibration_controller') is None:
                 self.control_manager.register_controller('calibration_controller', ctrl)
-            # Deactivate any current controller first
             if self.control_manager._active_controller is not None:
                 self.control_manager.deactivate_controller()
             self.control_manager.activate_controller('calibration_controller')
-            return jsonify({'status': 'running', 'action': action, 'phase_id': result.get('phase_id')})
+
+            # Attendre que la manoeuvre se termine
+            timeout = _time.time() + duration + 5.0
+            while not ctrl.is_done and _time.time() < timeout:
+                _time.sleep(0.1)
+
+            # Stopper le contrôleur
+            self.control_manager.deactivate_controller()
+
+            # Collecter les résultats
+            phase_result = self._sensor_profiler.collect_auto_results()
+            n_samples = phase_result.get('n_samples', 0) if phase_result else 0
+
+            return jsonify({
+                'status': 'completed', 'phase_id': phase_id,
+                'n_samples': n_samples, 'action': action
+            })
 
         elif action == 'use_manual_controller':
-            # Use ManualController with PID heading correction
             speed = result.get('speed', 10)
-            duration = result.get('duration', 3.0)
-            # Activate manual controller and inject forward command
+            if self.control_manager._active_controller is not None:
+                self.control_manager.deactivate_controller()
             self.control_manager.activate_controller('manual_controller')
             manual = self.control_manager.get_controller('manual_controller')
             if manual:
                 throttle = 1 if speed > 0 else -1
                 manual.set_compound_action(throttle=throttle, steering=0, drive_speed=abs(speed))
-            return jsonify({'status': 'running', 'action': action, 'speed': speed, 'duration': duration})
+
+            # Attendre la durée de la manoeuvre
+            _time.sleep(duration)
+
+            # Stopper
+            if manual:
+                manual.set_compound_action(throttle=0, steering=0)
+            self.control_manager.deactivate_controller()
+
+            # TODO: collecter les samples du ManualController via sampling callback
+            return jsonify({
+                'status': 'completed', 'phase_id': phase_id,
+                'n_samples': 0, 'action': action, 'note': 'PID drive completed'
+            })
 
         return jsonify(result)
 
