@@ -930,17 +930,19 @@ class controller:
                 self._sample_on_command(action, speed)
             return "ok"
 
-        # --- Pas de contrôleur actif : commande moteur directe ---
-        # On n'active plus le ManualController automatiquement pour éviter de
-        # bloquer le ControlManager. Les commandes passent directement au robot.
+        # --- Pas de contrôleur actif : passer par le ManualController ---
+        # On utilise son step() pour bénéficier du PID de cap, mais sans
+        # l'activer dans le ControlManager (pas de boucle de contrôle).
         if not active:
-            from core.control.controlers.manual_controller import _ACTION_MAP
-            throttle, steering = _ACTION_MAP.get(action, (0, 0))
-            left, right = ManualController.compute_speeds(throttle, steering, speed, speed)
-            if action == "stop":
-                self.robot.stop()
-            else:
-                self.robot.control_motors(left, right)
+            ctrl = self.control_manager.get_controller("manual_controller")
+            if ctrl:
+                ctrl.set_action(action, speed)
+                state = self.control_manager.get_last_sensor_data()
+                command = ctrl.step(state)
+                if command.command_type.value == 'stop':
+                    self.robot.stop()
+                else:
+                    self.robot.control_motors(command.left_speed, command.right_speed)
             return "ok"
 
         # Échantillonnage événementiel
@@ -1132,14 +1134,19 @@ class controller:
                 self._sample_compound(left, right)
             return "ok"
 
-        # --- Pas de contrôleur actif : commande moteur directe ---
+        # --- Pas de contrôleur actif : passer par le ManualController ---
         if not active:
-            left, right = ManualController.compute_speeds(
-                throttle, steering, self.manual_drive_speed, self.manual_turn_speed)
-            if throttle == 0 and steering == 0:
-                self.robot.stop()
-            else:
-                self.robot.control_motors(left, right)
+            ctrl = self.control_manager.get_controller("manual_controller")
+            if ctrl:
+                ctrl.set_compound_action(throttle, steering,
+                                         drive_speed=self.manual_drive_speed,
+                                         turn_speed=self.manual_turn_speed)
+                state = self.control_manager.get_last_sensor_data()
+                command = ctrl.step(state)
+                if command.command_type.value == 'stop':
+                    self.robot.stop()
+                else:
+                    self.robot.control_motors(command.left_speed, command.right_speed)
             return "ok"
 
         ctrl = self.control_manager.get_controller("manual_controller")
