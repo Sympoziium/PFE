@@ -1274,6 +1274,7 @@ class controller:
         if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
             return jsonify({'error': 'Profiler non actif'}), 400
 
+        # Configurer la manoeuvre (set_maneuver persiste à travers start())
         result = self._sensor_profiler.run_auto_phase()
         if 'error' in result:
             return jsonify(result), 400
@@ -1288,6 +1289,10 @@ class controller:
                 self.control_manager.register_controller('calibration_controller', ctrl)
             if self.control_manager._active_controller is not None:
                 self.control_manager.deactivate_controller()
+
+            # set_maneuver() a déjà été appelé par run_auto_phase()
+            # activate_controller() appelle start() qui reset timer/samples
+            # mais conserve la manoeuvre
             self.control_manager.activate_controller('calibration_controller')
 
             # Attendre que la manoeuvre se termine
@@ -1295,8 +1300,9 @@ class controller:
             while not ctrl.is_done and _time.time() < timeout:
                 _time.sleep(0.1)
 
-            # Stopper le contrôleur
+            # Stopper le contrôleur et nettoyer la manoeuvre
             self.control_manager.deactivate_controller()
+            ctrl.clear_maneuver()
 
             # Collecter les résultats
             phase_result = self._sensor_profiler.collect_auto_results()

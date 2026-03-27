@@ -205,14 +205,18 @@ class CalibrationController(ControllerBase):
     def set_maneuver(self, maneuver_type, params):
         """Configure la prochaine manoeuvre.
 
+        Peut être appelé avant ou après start(). La manoeuvre persiste
+        à travers les appels start()/stop() du ControlManager.
+
         Args:
             maneuver_type: "drive_raw", "rotate", "static_record"
             params: dict avec les paramètres de la manoeuvre
         """
         self._maneuver = (maneuver_type, params)
-        self._start_time = None
-        self._samples = []
-        self._done = False
+
+    def clear_maneuver(self):
+        """Efface la manoeuvre configurée. Appelé manuellement quand on veut reset."""
+        self._maneuver = None
 
     def step(self, state):
         """Retourne la commande moteur et enregistre les capteurs."""
@@ -274,11 +278,14 @@ class CalibrationController(ControllerBase):
         return self._done
 
     def start(self):
-        self._maneuver = None
+        """Appelé par ControlManager à l'activation. Reset l'état d'exécution
+        mais conserve la manoeuvre configurée par set_maneuver()."""
+        self._start_time = None
         self._samples = []
         self._done = False
 
     def stop(self):
+        """Appelé par ControlManager à la désactivation."""
         self._done = True
 
 
