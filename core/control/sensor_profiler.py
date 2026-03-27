@@ -258,6 +258,29 @@ class CalibrationController(ControllerBase):
             speed = params["speed"]
             return MotorCommand.make_speed(speed, speed)
 
+        elif mtype == "drive_pid":
+            # Avance avec correction de cap proportionnelle (comme ManualController)
+            if elapsed >= params["duration"]:
+                self._done = True
+                return MotorCommand.stop()
+            speed = params["speed"]
+            # Correction de cap via gyro_z
+            heading = 0.0
+            if state.gyro_angles and len(state.gyro_angles) > 2:
+                heading = float(state.gyro_angles[2])
+            # Premier tick: capturer le cap de référence
+            if self._desired_heading is None:
+                self._desired_heading = heading
+            error = heading - self._desired_heading
+            kp = 1.9
+            correction = max(-15, min(9, error * kp))
+            left = speed + correction
+            right = speed - correction
+            # Enregistrer la correction dans le sample
+            self._samples[-1]["correction"] = round(correction, 2)
+            self._samples[-1]["heading"] = round(heading, 2)
+            return MotorCommand.make_speed(left, right)
+
         elif mtype == "rotate":
             if elapsed >= params["duration"]:
                 self._done = True
@@ -283,6 +306,7 @@ class CalibrationController(ControllerBase):
         self._start_time = None
         self._samples = []
         self._done = False
+        self._desired_heading = None  # pour drive_pid
 
     def stop(self):
         """Appelé par ControlManager à la désactivation."""
@@ -440,15 +464,13 @@ class SensorProfiler:
 
         if phase["type"] == "auto_drive":
             params = phase["params"]
-            if params.get("pid"):
-                return {"action": "use_manual_controller", "speed": params["speed"],
-                        "duration": params["duration"], "phase_id": phase["id"]}
-            else:
-                self._controller.set_maneuver("drive_raw", {
-                    "speed": params["speed"],
-                    "duration": params["duration"],
-                })
-                return {"action": "activate_calibration_controller", "phase_id": phase["id"]}
+            maneuver_type = "drive_pid" if params.get("pid") else "drive_raw"
+            self._controller.set_maneuver(maneuver_type, {
+                "speed": params["speed"],
+                "duration": params["duration"],
+            })
+            return {"action": "activate_calibration_controller",
+                    "phase_id": phase["id"], "duration": params["duration"]}
 
         elif phase["type"] == "auto_rotate":
             self._controller.set_maneuver("rotate", phase["params"])

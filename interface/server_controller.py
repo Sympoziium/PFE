@@ -1313,30 +1313,6 @@ class controller:
                 'n_samples': n_samples, 'action': action
             })
 
-        elif action == 'use_manual_controller':
-            speed = result.get('speed', 10)
-            if self.control_manager._active_controller is not None:
-                self.control_manager.deactivate_controller()
-            self.control_manager.activate_controller('manual_controller')
-            manual = self.control_manager.get_controller('manual_controller')
-            if manual:
-                throttle = 1 if speed > 0 else -1
-                manual.set_compound_action(throttle=throttle, steering=0, drive_speed=abs(speed))
-
-            # Attendre la durée de la manoeuvre
-            _time.sleep(duration)
-
-            # Stopper
-            if manual:
-                manual.set_compound_action(throttle=0, steering=0)
-            self.control_manager.deactivate_controller()
-
-            # TODO: collecter les samples du ManualController via sampling callback
-            return jsonify({
-                'status': 'completed', 'phase_id': phase_id,
-                'n_samples': 0, 'action': action, 'note': 'PID drive completed'
-            })
-
         return jsonify(result)
 
     def sensor_profile_next(self):
