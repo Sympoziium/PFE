@@ -96,6 +96,15 @@ def register_routes(ctrl):
     app.add_url_rule('/robot/reset_pid', 'robot_reset_pid', lambda: ctrl.robot_reset_pid(), methods=['POST'])
     app.add_url_rule('/controller/calibrate_ir', 'calibrate_ir', lambda: ctrl.calibrate_ir(), methods=['POST'])
 
+    # Sensor Profiler
+    app.add_url_rule('/robot/sensor_profile/start', 'sp_start', lambda: ctrl.sensor_profile_start(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/status', 'sp_status', lambda: ctrl.sensor_profile_status(), methods=['GET'])
+    app.add_url_rule('/robot/sensor_profile/record', 'sp_record', lambda: ctrl.sensor_profile_record(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/run', 'sp_run', lambda: ctrl.sensor_profile_run(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/next', 'sp_next', lambda: ctrl.sensor_profile_next(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/stop', 'sp_stop', lambda: ctrl.sensor_profile_stop(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/results', 'sp_results', lambda: ctrl.sensor_profile_results(), methods=['GET'])
+
     # --- PONT (Nouveaux liens) ---
     app.add_url_rule('/bridge/open', 'bridge_open', lambda: ctrl.bridge_open(), methods=['POST'])
     app.add_url_rule('/bridge/close', 'bridge_close', lambda: ctrl.bridge_close(), methods=['POST'])

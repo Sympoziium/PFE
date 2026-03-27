@@ -1232,6 +1232,109 @@ class controller:
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    # ============================================================
+    #  Sensor Profiler
+    # ============================================================
+
+    def sensor_profile_start(self):
+        """Démarre le wizard de profiling."""
+        from core.control.sensor_profiler import SensorProfiler
+        data = request.get_json(silent=True) or {}
+        robot_id = data.get('robot_id', 'zumi_1')
+
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            self._sensor_profiler = SensorProfiler(self.robot)
+
+        self._sensor_profiler.start(robot_id)
+        return jsonify({'status': 'started', 'robot_id': robot_id})
+
+    def sensor_profile_status(self):
+        """Retourne l'état actuel du profiler."""
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'active': False})
+        return jsonify(self._sensor_profiler.get_status())
+
+    def sensor_profile_record(self):
+        """Enregistre les données de la phase statique courante."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+        result = self._sensor_profiler.record_static()
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify({'status': 'recorded', 'phase': result.get('description', ''), 'n_samples': result.get('n_samples', 0)})
+
+    def sensor_profile_run(self):
+        """Lance la manoeuvre auto de la phase courante."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+
+        result = self._sensor_profiler.run_auto_phase()
+        if 'error' in result:
+            return jsonify(result), 400
+
+        action = result.get('action')
+
+        if action == 'activate_calibration_controller':
+            # Register and activate the calibration controller
+            ctrl = self._sensor_profiler.get_controller()
+            if self.control_manager.get_controller('calibration_controller') is None:
+                self.control_manager.register_controller(ctrl)
+            self.control_manager.activate_controller('calibration_controller')
+            return jsonify({'status': 'running', 'action': action, 'phase_id': result.get('phase_id')})
+
+        elif action == 'use_manual_controller':
+            # Use ManualController with PID heading correction
+            speed = result.get('speed', 10)
+            duration = result.get('duration', 3.0)
+            # Activate manual controller and inject forward command
+            self.control_manager.activate_controller('manual_controller')
+            manual = self.control_manager.get_controller('manual_controller')
+            if manual:
+                throttle = 1 if speed > 0 else -1
+                manual.set_compound_action(throttle=throttle, steering=0, drive_speed=abs(speed))
+            return jsonify({'status': 'running', 'action': action, 'speed': speed, 'duration': duration})
+
+        return jsonify(result)
+
+    def sensor_profile_next(self):
+        """Passe à la phase suivante."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+
+        # Collect auto results if any
+        if hasattr(self._sensor_profiler, '_controller') and self._sensor_profiler._controller.is_done:
+            self._sensor_profiler.collect_auto_results()
+
+        # Deactivate any running controller
+        if self.control_manager._active_controller is not None:
+            self.control_manager.deactivate_controller()
+
+        result = self._sensor_profiler.next_phase()
+
+        if result.get('completed'):
+            path = self._sensor_profiler.save_profile()
+            return jsonify({'status': 'completed', 'saved': str(path)})
+
+        return jsonify({'status': 'next', **result})
+
+    def sensor_profile_stop(self):
+        """Arrête le profiling et sauvegarde."""
+        if not hasattr(self, '_sensor_profiler'):
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+
+        # Stop any running controller
+        if self.control_manager._active_controller is not None:
+            self.control_manager.deactivate_controller()
+
+        result = self._sensor_profiler.stop_and_save()
+        return jsonify({'status': 'stopped', **result})
+
+    def sensor_profile_results(self):
+        """Retourne le profil complet."""
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+        return jsonify(self._sensor_profiler.profile_data)
+
 # ----------------------------------------------------------------------------
 #          Fonctions pour le contrôle du pont
 # ----------------------------------------------------------------------------
