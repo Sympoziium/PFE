@@ -1347,15 +1347,9 @@ class controller:
             return jsonify({'error': 'Profiler non actif'}), 400
 
         ctrl = self._sensor_profiler.get_controller()
-        if ctrl._maneuver is not None and not ctrl.is_done:
-            return jsonify({'running': True, 'samples': len(ctrl.get_samples())})
-
-        # Manoeuvre terminée
-        phase_idx = self._sensor_profiler.current_phase_idx
-        phase_id = self._sensor_profiler.phases[phase_idx]["id"] if phase_idx < len(self._sensor_profiler.phases) else ""
-        phases = self._sensor_profiler.profile_data.get("phases", {})
-        n_samples = phases.get(phase_id, {}).get("n_samples", 0)
-        return jsonify({'running': False, 'n_samples': n_samples, 'phase_id': phase_id})
+        running = ctrl._maneuver is not None and not ctrl.is_done
+        n_samples = len(ctrl.get_samples())
+        return jsonify({'running': running, 'n_samples': n_samples})
 
     def sensor_profile_manual_start(self):
         """Démarre l'enregistrement pour une phase manuelle (D).
