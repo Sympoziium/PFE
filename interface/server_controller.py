@@ -1297,17 +1297,17 @@ class controller:
         return jsonify({'status': 'recorded', 'phase': result.get('description', ''), 'n_samples': result.get('n_samples', 0)})
 
     def sensor_profile_run(self):
-        """Lance la manoeuvre auto et attend qu'elle se termine (bloquant).
+        """Lance la manoeuvre auto (non-bloquant).
 
-        Le endpoint reste bloqué pendant la durée de la manoeuvre (~2-3s)
-        puis retourne les résultats. Le UI disable le bouton pendant ce temps.
+        Active le CalibrationController et retourne immédiatement.
+        Le UI poll /status pour détecter quand auto_running passe à false,
+        puis appelle /run_complete pour collecter les résultats.
         """
-        import time as _time
+        import threading
 
         if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
             return jsonify({'error': 'Profiler non actif'}), 400
 
-        # Configurer la manoeuvre (set_maneuver persiste à travers start())
         result = self._sensor_profiler.run_auto_phase()
         if 'error' in result:
             return jsonify(result), 400
@@ -1323,30 +1323,39 @@ class controller:
             if self.control_manager._active_controller is not None:
                 self.control_manager.deactivate_controller()
 
-            # set_maneuver() a déjà été appelé par run_auto_phase()
-            # activate_controller() appelle start() qui reset timer/samples
-            # mais conserve la manoeuvre
             self.control_manager.activate_controller('calibration_controller')
 
-            # Attendre que la manoeuvre se termine
-            timeout = _time.time() + duration + 5.0
-            while not ctrl.is_done and _time.time() < timeout:
-                _time.sleep(0.1)
+            # Thread de surveillance: attend la fin, puis cleanup
+            def _wait_and_cleanup():
+                import time as _time
+                timeout = _time.time() + duration + 5.0
+                while not ctrl.is_done and _time.time() < timeout:
+                    _time.sleep(0.1)
+                self.control_manager.deactivate_controller()
+                ctrl.clear_maneuver()
+                self._sensor_profiler.collect_auto_results()
 
-            # Stopper le contrôleur et nettoyer la manoeuvre
-            self.control_manager.deactivate_controller()
-            ctrl.clear_maneuver()
+            threading.Thread(target=_wait_and_cleanup, daemon=True).start()
 
-            # Collecter les résultats
-            phase_result = self._sensor_profiler.collect_auto_results()
-            n_samples = phase_result.get('n_samples', 0) if phase_result else 0
-
-            return jsonify({
-                'status': 'completed', 'phase_id': phase_id,
-                'n_samples': n_samples, 'action': action
-            })
+            return jsonify({'status': 'running', 'phase_id': phase_id})
 
         return jsonify(result)
+
+    def sensor_profile_run_status(self):
+        """Vérifie si la manoeuvre auto est terminée et retourne les résultats."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+
+        ctrl = self._sensor_profiler.get_controller()
+        if ctrl._maneuver is not None and not ctrl.is_done:
+            return jsonify({'running': True, 'samples': len(ctrl.get_samples())})
+
+        # Manoeuvre terminée
+        phase_idx = self._sensor_profiler.current_phase_idx
+        phase_id = self._sensor_profiler.phases[phase_idx]["id"] if phase_idx < len(self._sensor_profiler.phases) else ""
+        phases = self._sensor_profiler.profile_data.get("phases", {})
+        n_samples = phases.get(phase_id, {}).get("n_samples", 0)
+        return jsonify({'running': False, 'n_samples': n_samples, 'phase_id': phase_id})
 
     def sensor_profile_manual_start(self):
         """Démarre l'enregistrement pour une phase manuelle (D).

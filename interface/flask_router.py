@@ -101,6 +101,7 @@ def register_routes(ctrl):
     app.add_url_rule('/robot/sensor_profile/status', 'sp_status', lambda: ctrl.sensor_profile_status(), methods=['GET'])
     app.add_url_rule('/robot/sensor_profile/record', 'sp_record', lambda: ctrl.sensor_profile_record(), methods=['POST'])
     app.add_url_rule('/robot/sensor_profile/run', 'sp_run', lambda: ctrl.sensor_profile_run(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/run_status', 'sp_run_status', lambda: ctrl.sensor_profile_run_status(), methods=['GET'])
     app.add_url_rule('/robot/sensor_profile/next', 'sp_next', lambda: ctrl.sensor_profile_next(), methods=['POST'])
     app.add_url_rule('/robot/sensor_profile/stop', 'sp_stop', lambda: ctrl.sensor_profile_stop(), methods=['POST'])
     app.add_url_rule('/robot/sensor_profile/results', 'sp_results', lambda: ctrl.sensor_profile_results(), methods=['GET'])

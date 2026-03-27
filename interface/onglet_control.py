@@ -1103,11 +1103,21 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         if (data.error) {
                             setBtnStyle('ready', 'Erreur — Réessayer');
                             profilerState = 'ready';
-                        } else {
-                            profilerState = 'done';
-                            showSamples(data.n_samples || 0);
-                            setBtnStyle('ready', 'Suivant');
+                            return;
                         }
+                        // Poll pour détecter la fin de la manoeuvre
+                        var pollTimer = setInterval(function() {
+                            fetch('/robot/sensor_profile/run_status')
+                            .then(function(r) { return r.json(); })
+                            .then(function(rs) {
+                                if (!rs.running) {
+                                    clearInterval(pollTimer);
+                                    profilerState = 'done';
+                                    showSamples(rs.n_samples || 0);
+                                    setBtnStyle('ready', 'Suivant');
+                                }
+                            });
+                        }, 500);
                     });
                 }
                 else if (profilerPhaseType === 'manual_sampling') {
