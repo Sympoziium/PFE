@@ -183,8 +183,11 @@ class ManualController(ControllerBase):
             return float(state.gyro_angles[_HEADING_INDEX])
         return None
 
-    def _apply_heading_correction(self, state, base_left, base_right):
+    def apply_heading_correction(self, state, base_left, base_right):
         """Applique une correction de cap proportionnelle aux vitesses de base.
+
+        Méthode publique — utilisable par d'autres contrôleurs ou par
+        l'override WASD pour maintenir le cap en ligne droite.
 
         Quand on commence à avancer droit, on capture le cap courant comme
         référence. À chaque tick, on calcule l'erreur et on ajuste les
@@ -250,7 +253,7 @@ class ManualController(ControllerBase):
                 self._throttle, 0,
                 self.default_speed, self.turn_speed, self.steering_ratio
             )
-            left, right = self._apply_heading_correction(state, base_left, base_right)
+            left, right = self.apply_heading_correction(state, base_left, base_right)
             return MotorCommand.make_speed(left, right)
 
         # 4. Rotation sur place avec PWM logiciel (A/D seuls)
