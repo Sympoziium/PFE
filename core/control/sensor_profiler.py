@@ -196,7 +196,7 @@ class CalibrationController(ControllerBase):
         self._start_time = None
         self._samples = []
         self._done = False
-        self._timeout = 60.0
+        self._timeout = 10.0
 
     @property
     def name(self):

@@ -1052,7 +1052,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
         // === Sensor Profiler (un seul bouton contextuel) ===
         var profilerPolling = null;
-        var profilerState = 'idle';  // idle -> ready -> recording -> recorded -> idle
+        var profilerState = 'idle';
+        var profilerPhaseType = 'static';
+        var profilerAutoTimer = null;
 
         var btnAction = document.getElementById('btnProfilerAction');
         btnAction.addEventListener('click', function() {
@@ -1066,32 +1068,59 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 }).then(function(r) { return r.json(); }).then(function(data) {
                     if (data.status === 'started') {
                         profilerState = 'ready';
-                        btnAction.textContent = 'Robot en place — Enregistrer';
-                        btnAction.className = 'primary-btn';
-                        btnAction.style.cssText = 'width:100%;padding:10px;font-size:14px;';
                         startProfilerPolling();
+                        updateButtonForPhase();
                     }
                 });
             }
             else if (profilerState === 'ready') {
-                // Enregistrer la phase courante
-                profilerState = 'recording';
-                btnAction.textContent = 'Enregistrement...';
+                // Exécuter la phase courante (static=record, auto=run)
+                profilerState = 'executing';
                 btnAction.disabled = true;
-                fetch('/robot/sensor_profile/record', {method: 'POST'})
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.error) {
-                        btnAction.textContent = 'Erreur — Réessayer';
-                        profilerState = 'ready';
-                    } else {
-                        profilerState = 'recorded';
-                        btnAction.textContent = 'Phase complétée — Suivant';
-                    }
-                    btnAction.disabled = false;
-                });
+
+                if (profilerPhaseType === 'static') {
+                    btnAction.textContent = 'Enregistrement...';
+                    fetch('/robot/sensor_profile/record', {method: 'POST'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) {
+                            btnAction.textContent = 'Erreur — Réessayer';
+                            profilerState = 'ready';
+                        } else {
+                            profilerState = 'done';
+                            btnAction.textContent = 'Phase complétée — Suivant';
+                        }
+                        btnAction.disabled = false;
+                    });
+                }
+                else if (profilerPhaseType.indexOf('auto_') === 0) {
+                    btnAction.textContent = 'Manoeuvre en cours...';
+                    fetch('/robot/sensor_profile/run', {method: 'POST'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) {
+                            btnAction.textContent = 'Erreur — Réessayer';
+                            profilerState = 'ready';
+                            btnAction.disabled = false;
+                            return;
+                        }
+                        // Polling pour attendre fin de manoeuvre
+                        profilerAutoTimer = setInterval(function() {
+                            fetch('/robot/sensor_profile/status')
+                            .then(function(r) { return r.json(); })
+                            .then(function(s) {
+                                if (!s.auto_running) {
+                                    clearInterval(profilerAutoTimer);
+                                    profilerState = 'done';
+                                    btnAction.textContent = 'Phase complétée — Suivant';
+                                    btnAction.disabled = false;
+                                }
+                            });
+                        }, 300);
+                    });
+                }
             }
-            else if (profilerState === 'recorded') {
+            else if (profilerState === 'done') {
                 // Passer à la phase suivante
                 btnAction.disabled = true;
                 fetch('/robot/sensor_profile/next', {method: 'POST'})
@@ -1106,11 +1135,21 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         document.getElementById('profilerProgress').style.width = '100%';
                     } else {
                         profilerState = 'ready';
-                        btnAction.textContent = 'Robot en place — Enregistrer';
+                        updateButtonForPhase();
                     }
                 });
             }
         });
+
+        function updateButtonForPhase() {
+            if (profilerPhaseType === 'static') {
+                btnAction.textContent = 'Robot en place — Enregistrer';
+            } else if (profilerPhaseType.indexOf('auto_') === 0) {
+                btnAction.textContent = 'Robot en place — Exécuter la manoeuvre';
+            } else if (profilerPhaseType === 'manual_sampling') {
+                btnAction.textContent = 'Commencer le pilotage manuel';
+            }
+        }
 
         function startProfilerPolling() {
             if (profilerPolling) clearInterval(profilerPolling);
@@ -1120,6 +1159,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
         function stopProfilerPolling() {
             if (profilerPolling) { clearInterval(profilerPolling); profilerPolling = null; }
+            if (profilerAutoTimer) { clearInterval(profilerAutoTimer); profilerAutoTimer = null; }
         }
 
         function updateProfilerStatus() {
@@ -1128,14 +1168,28 @@ def render_control_tab(title: str = "Contrôle") -> str:
             .then(function(s) {
                 if (!s.active) return;
 
+                profilerPhaseType = s.phase_type || 'static';
+
                 var pct = Math.round((s.current_phase / s.total_phases) * 100);
                 document.getElementById('profilerProgress').style.width = pct + '%';
 
-                var html = '<div style="color:#e94560;font-size:14px;font-weight:bold;">Phase ' + s.current_phase + '/' + s.total_phases + '</div>';
+                var groupColors = {A:'#3498db', B:'#e67e22', C:'#9b59b6', D:'#2ecc71'};
+                var color = groupColors[s.phase_group] || '#e94560';
+
+                var html = '<div style="color:' + color + ';font-size:14px;font-weight:bold;">Phase ' + s.current_phase + '/' + s.total_phases + ' [' + s.phase_group + ']</div>';
                 html += '<div style="color:#fff;font-size:13px;margin-top:6px;">' + s.instruction + '</div>';
                 html += '<div style="color:#888;font-size:11px;margin-top:4px;">' + s.description + '</div>';
 
+                if (s.auto_running) {
+                    html += '<div style="color:#f39c12;font-size:12px;margin-top:4px;">Manoeuvre en cours... (' + (s.auto_samples || 0) + ' samples)</div>';
+                }
+
                 document.getElementById('profilerStatus').innerHTML = html;
+
+                // Mettre à jour le texte du bouton si on est en état ready
+                if (profilerState === 'ready') {
+                    updateButtonForPhase();
+                }
             });
         }
     });

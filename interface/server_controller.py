@@ -1278,7 +1278,10 @@ class controller:
             # Register and activate the calibration controller
             ctrl = self._sensor_profiler.get_controller()
             if self.control_manager.get_controller('calibration_controller') is None:
-                self.control_manager.register_controller(ctrl)
+                self.control_manager.register_controller('calibration_controller', ctrl)
+            # Deactivate any current controller first
+            if self.control_manager._active_controller is not None:
+                self.control_manager.deactivate_controller()
             self.control_manager.activate_controller('calibration_controller')
             return jsonify({'status': 'running', 'action': action, 'phase_id': result.get('phase_id')})
 
