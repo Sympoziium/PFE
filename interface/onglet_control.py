@@ -1120,7 +1120,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
                             profilerState = 'ready';
                         } else {
                             profilerState = 'manual_recording';
-                            setBtnStyle('ready', 'Arrêter l\'enregistrement');
+                            setBtnStyle('ready', 'Arrêter enregistrement');
                         }
                     });
                 }
