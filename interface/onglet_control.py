@@ -1110,6 +1110,41 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         }
                     });
                 }
+                else if (profilerPhaseType === 'manual_sampling') {
+                    setBtnStyle('busy', 'Enregistrement... Pilotez avec WASD');
+                    fetch('/robot/sensor_profile/manual_start', {method: 'POST'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) {
+                            setBtnStyle('ready', 'Erreur — Réessayer');
+                            profilerState = 'ready';
+                        } else {
+                            profilerState = 'manual_recording';
+                            setBtnStyle('ready', 'Arrêter l\'enregistrement');
+                        }
+                    });
+                }
+            }
+            else if (profilerState === 'manual_recording') {
+                // Arrêter l'enregistrement manuel
+                setBtnStyle('busy', 'Validation...');
+                fetch('/robot/sensor_profile/manual_stop', {method: 'POST'})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    showSamples(data.n_samples || 0);
+                    if (data.quality === 'valid') {
+                        if (data.phase_complete) {
+                            profilerState = 'done';
+                            setBtnStyle('ready', 'Runs valides OK — Suivant');
+                        } else {
+                            profilerState = 'ready';
+                            setBtnStyle('ready', 'Run valide (' + data.valid_count + '/' + data.min_valid + ') — Encore');
+                        }
+                    } else {
+                        profilerState = 'ready';
+                        setBtnStyle('ready', 'Rejeté: ' + (data.reason || '?') + ' — Réessayer');
+                    }
+                });
             }
             else if (profilerState === 'done') {
                 // Passer à la phase suivante

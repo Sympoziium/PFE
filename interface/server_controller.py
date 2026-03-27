@@ -930,10 +930,18 @@ class controller:
                 self._sample_on_command(action, speed)
             return "ok"
 
-        # --- Pas de contrôleur actif : activer le contrôleur manuel ---
+        # --- Pas de contrôleur actif : commande moteur directe ---
+        # On n'active plus le ManualController automatiquement pour éviter de
+        # bloquer le ControlManager. Les commandes passent directement au robot.
         if not active:
-            self.control_manager._reset_robot_drive_state()
-            self.control_manager.activate_controller("manual_controller")
+            from core.control.controlers.manual_controller import _ACTION_MAP
+            throttle, steering = _ACTION_MAP.get(action, (0, 0))
+            left, right = ManualController.compute_speeds(throttle, steering, speed, speed)
+            if action == "stop":
+                self.robot.stop()
+            else:
+                self.robot.control_motors(left, right)
+            return "ok"
 
         # Échantillonnage événementiel
         if self.sampling_active and action in ("forward", "left", "right", "reverse", "stop"):
@@ -1124,10 +1132,15 @@ class controller:
                 self._sample_compound(left, right)
             return "ok"
 
-        # --- Pas de contrôleur actif : activer le contrôleur manuel ---
+        # --- Pas de contrôleur actif : commande moteur directe ---
         if not active:
-            self.control_manager._reset_robot_drive_state()
-            self.control_manager.activate_controller("manual_controller")
+            left, right = ManualController.compute_speeds(
+                throttle, steering, self.manual_drive_speed, self.manual_turn_speed)
+            if throttle == 0 and steering == 0:
+                self.robot.stop()
+            else:
+                self.robot.control_motors(left, right)
+            return "ok"
 
         ctrl = self.control_manager.get_controller("manual_controller")
         ctrl.set_compound_action(throttle, steering,
@@ -1315,14 +1328,39 @@ class controller:
 
         return jsonify(result)
 
+    def sensor_profile_manual_start(self):
+        """Démarre l'enregistrement pour une phase manuelle (D).
+        L'utilisateur pilote en WASD pendant que les capteurs sont enregistrés."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+        result = self._sensor_profiler.start_manual_recording()
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    def sensor_profile_manual_stop(self):
+        """Arrête l'enregistrement manuel et retourne la validation du run."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+        result = self._sensor_profiler.stop_manual_recording()
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
     def sensor_profile_next(self):
         """Passe à la phase suivante."""
         if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
             return jsonify({'error': 'Profiler non actif'}), 400
 
+        # Finaliser la phase manuelle si c'est une phase D
+        sp = self._sensor_profiler
+        phase_idx = sp.current_phase_idx
+        if phase_idx < len(sp.phases) and sp.phases[phase_idx]["type"] == "manual_sampling":
+            sp.finalize_manual_phase()
+
         # Collect auto results if any
-        if hasattr(self._sensor_profiler, '_controller') and self._sensor_profiler._controller.is_done:
-            self._sensor_profiler.collect_auto_results()
+        if hasattr(sp, '_controller') and sp._controller.is_done:
+            sp.collect_auto_results()
 
         # Deactivate any running controller
         if self.control_manager._active_controller is not None:

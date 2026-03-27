@@ -513,6 +513,116 @@ class SensorProfiler:
 
         return {"error": "Type de phase non supporté: {}".format(phase["type"])}
 
+    # ------------------------------------------------------------------
+    #  Enregistrement manuel (phases D)
+    # ------------------------------------------------------------------
+
+    def start_manual_recording(self):
+        """Démarre l'enregistrement des capteurs en arrière-plan.
+
+        L'utilisateur pilote le robot avec WASD pendant que ce thread
+        enregistre IR + IMU à 20Hz. Appeler stop_manual_recording()
+        pour arrêter et récupérer les samples.
+        """
+        if self._recording:
+            return {"error": "Enregistrement déjà en cours"}
+
+        self._recording = True
+        self._manual_samples = []
+
+        def _record_loop():
+            while self._recording:
+                ir = self.robot.get_ir_data()
+                imu = self.robot.get_angles()
+                self._manual_samples.append({
+                    "ir": list(ir) if ir else None,
+                    "imu": list(imu) if imu else None,
+                    "t": len(self._manual_samples) * 0.05,
+                })
+                time.sleep(0.05)
+
+        self._record_thread = threading.Thread(target=_record_loop, daemon=True)
+        self._record_thread.start()
+        print("[SensorProfiler] Enregistrement manuel démarré")
+        return {"status": "recording"}
+
+    def stop_manual_recording(self):
+        """Arrête l'enregistrement et valide le run.
+
+        Retourne le résultat avec la qualité du run.
+        """
+        if not self._recording:
+            return {"error": "Pas d'enregistrement en cours"}
+
+        self._recording = False
+        self._record_thread.join(timeout=2.0)
+        samples = self._manual_samples
+
+        n = len(samples)
+        if n < 5:
+            result = {"quality": "rejected", "reason": "Trop peu de samples ({})".format(n),
+                      "n_samples": n}
+            self._manual_runs.append(result)
+            return result
+
+        # Validation: détecter une traversée de ligne
+        # La traversée se manifeste par une chute significative de ir_sum
+        ir_data = [s["ir"] for s in samples if s.get("ir")]
+        if not ir_data:
+            result = {"quality": "rejected", "reason": "Pas de données IR", "n_samples": 0}
+            self._manual_runs.append(result)
+            return result
+
+        ir_arr = np.array(ir_data)
+        ir_sum = (ir_arr[:, 1] + ir_arr[:, 3]) / 2.0  # (bot_r + bot_l) / 2
+        ir_sum_min = ir_sum.min()
+        ir_sum_max = ir_sum.max()
+        ir_range = ir_sum_max - ir_sum_min
+
+        # Une traversée de ligne cause une chute de ir_sum > 30
+        if ir_range < 30:
+            result = {"quality": "rejected",
+                      "reason": "Pas de traversée de ligne détectée (variation IR: {:.0f})".format(ir_range),
+                      "n_samples": n, "ir_range": round(float(ir_range), 1)}
+            self._manual_runs.append(result)
+            return result
+
+        result = {"quality": "valid", "n_samples": n,
+                  "ir_range": round(float(ir_range), 1),
+                  "ir_timeseries": samples}
+        self._manual_runs.append(result)
+
+        # Vérifier si on a assez de runs valides
+        phase = self.phases[self.current_phase_idx]
+        min_valid = phase["params"].get("min_valid_runs", 3)
+        valid_count = sum(1 for r in self._manual_runs if r.get("quality") == "valid")
+
+        print("[SensorProfiler] Run manuel: {} ({} samples, IR range={:.0f}). "
+              "Valides: {}/{}".format(
+                  result["quality"], n, ir_range, valid_count, min_valid))
+
+        return {**result, "valid_count": valid_count, "min_valid": min_valid,
+                "phase_complete": valid_count >= min_valid}
+
+    def finalize_manual_phase(self):
+        """Finalise la phase manuelle et sauvegarde les runs valides."""
+        phase = self.phases[self.current_phase_idx]
+        valid_runs = [r for r in self._manual_runs if r.get("quality") == "valid"]
+        rejected_runs = [r for r in self._manual_runs if r.get("quality") == "rejected"]
+
+        result = {
+            "description": phase["description"],
+            "expected_direction": phase["params"].get("expected_direction", "unknown"),
+            "valid_runs": len(valid_runs),
+            "rejected_runs": len(rejected_runs),
+            "runs": self._manual_runs,
+        }
+        self.profile_data["phases"][phase["id"]] = result
+        self._manual_runs = []
+        print("[SensorProfiler] Phase {} finalisée: {} runs valides".format(
+            phase["id"], len(valid_runs)))
+        return result
+
     def collect_auto_results(self):
         """Collecte les résultats d'une manoeuvre auto terminée."""
         if not self._controller.is_done:
