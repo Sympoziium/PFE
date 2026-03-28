@@ -783,5 +783,49 @@ class SensorProfiler:
         with open(str(filepath), 'w') as f:
             json.dump(self.profile_data, f, indent=2, default=str)
 
+        self._last_save_path = filepath
         print("[SensorProfiler] Profil sauvegardé: {}".format(filepath))
         return filepath
+
+    def get_summary(self):
+        """Retourne un résumé des résultats pour l'écran de fin."""
+        phases = self.profile_data.get("phases", {})
+        derived = self.profile_data.get("derived", {})
+
+        # Total samples
+        total_samples = 0
+        for p in phases.values():
+            n = p.get("n_samples", 0)
+            total_samples += n
+            # Phases manuelles: compter les runs
+            for run in p.get("runs", []):
+                if run.get("quality") == "valid":
+                    total_samples += run.get("n_samples", 0)
+
+        summary = {
+            "robot_id": self.profile_data.get("robot_id", "?"),
+            "n_phases_completed": len(phases),
+            "total_samples": total_samples,
+        }
+
+        # IR offsets
+        if "ir_offsets" in derived:
+            summary["ir_offsets"] = derived["ir_offsets"]
+
+        # Seuils
+        if "surface_thresholds" in derived:
+            summary["thresholds"] = derived["surface_thresholds"]
+
+        # Asymétrie moteur
+        if "motor_asymmetry" in derived:
+            summary["motor_asymmetry"] = derived["motor_asymmetry"]
+
+        # Gyro
+        if "gyro_characterization" in derived:
+            summary["gyro"] = derived["gyro_characterization"]
+
+        # Chemin du fichier sauvegardé
+        if hasattr(self, '_last_save_path'):
+            summary["save_path"] = str(self._last_save_path)
+
+        return summary

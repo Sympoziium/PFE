@@ -222,8 +222,9 @@ class RobotZumi(RobotBase):
 
     def calibrate_sensors(self):
         """
-        Calibre les capteurs du Zumi (MPU, gyro, IR).
-        Doit être appelé au démarrage pour assurer des lectures précises.
+        Calibre les capteurs du Zumi (MPU, gyro).
+        La calibration IR est chargée depuis ir_calibration.json au boot.
+        Pour recalibrer les IR, utiliser calibrate_ir() via le UI.
         """
         try:
             # Reset des états de conduite
@@ -235,8 +236,9 @@ class RobotZumi(RobotBase):
             self.zumi.mpu.calibrate_MPU(count=500)
             time.sleep(0.5)
 
-            # Calibration IR (mode light)
-            self.calibrate_ir(n_samples=50)
+            # Vérifier si la calibration IR existe
+            if self.ir_calibration is None:
+                print("[WARN] Pas de calibration IR! Utilisez le Sensor Profiler pour creer un profil.")
         except Exception as e:
             print("Erreur lors du calibrage des capteurs: {}".format(e))
 

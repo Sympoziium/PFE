@@ -406,6 +406,12 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
                         <!-- Single contextual button -->
                         <button id='btnProfilerAction' style='width:100%; padding:10px; font-size:14px; border:none; border-radius:6px; color:#fff; background:#27ae60; cursor:pointer;'>Démarrer le profiling</button>
+
+                        <!-- End buttons (hidden until profiling complete) -->
+                        <div id='profilerEndButtons' style='display:none; gap:6px; margin-top:6px;'>
+                            <button id='btnProfilerApply' style='flex:1; padding:10px; font-size:13px; border:none; border-radius:6px; color:#fff; background:#27ae60; cursor:pointer;'>Appliquer la calibration</button>
+                            <button id='btnProfilerDownload' style='flex:1; padding:10px; font-size:13px; border:none; border-radius:6px; color:#fff; background:#3498db; cursor:pointer;'>Telecharger le profil</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1163,11 +1169,33 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.status === 'completed') {
-                        profilerState = 'idle';
+                        profilerState = 'completed';
                         stopProfilerPolling();
-                        setBtnStyle('ready', 'Démarrer le profiling');
-                        document.getElementById('profilerStatus').innerHTML = '<div style="color:#2ecc71;font-size:14px;font-weight:bold;">Profiling terminé! Profil sauvegardé.</div>';
                         document.getElementById('profilerProgress').style.width = '100%';
+                        // Charger le résumé
+                        fetch('/robot/sensor_profile/summary')
+                        .then(function(r) { return r.json(); })
+                        .then(function(s) {
+                            var html = '<div style="color:#2ecc71;font-size:16px;font-weight:bold;margin-bottom:8px;">Profiling terminé!</div>';
+                            html += '<div style="color:#fff;font-size:13px;">Robot: ' + (s.robot_id || '?') + ' | Phases: ' + (s.n_phases_completed || 0) + '/18 | Total: <b>' + (s.total_samples || 0) + ' echantillons</b></div>';
+                            if (s.ir_offsets) {
+                                html += '<div style="color:#3498db;font-size:12px;margin-top:6px;">IR offsets: bottom=' + s.ir_offsets.bottom + ', front=' + s.ir_offsets.front + ', back=' + s.ir_offsets.back + '</div>';
+                            }
+                            if (s.thresholds) {
+                                html += '<div style="color:#e67e22;font-size:12px;">Seuils: gap=' + (s.thresholds.gap_threshold || '?') + ', off_road=' + (s.thresholds.off_road_threshold || '?') + '</div>';
+                            }
+                            if (s.motor_asymmetry) {
+                                var speeds = Object.keys(s.motor_asymmetry);
+                                html += '<div style="color:#9b59b6;font-size:12px;">Asymetrie moteur: ';
+                                speeds.forEach(function(k) { html += k + '=' + s.motor_asymmetry[k].drift_deg_per_s + ' deg/s '; });
+                                html += '</div>';
+                            }
+                            document.getElementById('profilerStatus').innerHTML = html;
+                        });
+                        // Afficher les deux boutons
+                        hideSamples();
+                        btnAction.style.display = 'none';
+                        document.getElementById('profilerEndButtons').style.display = 'flex';
                     } else {
                         profilerState = 'ready';
                         hideSamples();
@@ -1200,6 +1228,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
         function updateButtonForPhase() {
             hideSamples();
+            // Cacher les boutons de fin, montrer le bouton principal
+            document.getElementById('profilerEndButtons').style.display = 'none';
+            btnAction.style.display = 'block';
             if (profilerPhaseType === 'static') {
                 setBtnStyle('ready', 'Robot en place — Enregistrer');
             } else if (profilerPhaseType.indexOf('auto_') === 0) {
@@ -1208,6 +1239,29 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 setBtnStyle('ready', 'Commencer le pilotage manuel');
             }
         }
+
+        // Boutons de fin
+        document.getElementById('btnProfilerApply').addEventListener('click', function() {
+            this.textContent = 'Application...';
+            this.disabled = true;
+            // Relancer la calibration IR avec les données du profil
+            fetch('/controller/calibrate_ir', {method: 'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('btnProfilerApply').textContent = 'Calibration appliquee!';
+                // Remettre le bouton principal
+                setTimeout(function() {
+                    document.getElementById('profilerEndButtons').style.display = 'none';
+                    btnAction.style.display = 'block';
+                    profilerState = 'idle';
+                    setBtnStyle('ready', 'Demarrer le profiling');
+                }, 2000);
+            });
+        });
+
+        document.getElementById('btnProfilerDownload').addEventListener('click', function() {
+            window.location.href = '/robot/sensor_profile/download';
+        });
 
         function startProfilerPolling() {
             if (profilerPolling) clearInterval(profilerPolling);
@@ -1239,6 +1293,15 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
                 if (s.auto_running) {
                     html += '<div style="color:#f39c12;font-size:12px;margin-top:4px;">Manoeuvre en cours... (' + (s.auto_samples || 0) + ' samples)</div>';
+                }
+
+                if (s.phase_type === 'manual_sampling') {
+                    var v = s.manual_valid_runs || 0;
+                    var m = s.manual_min_runs || 3;
+                    var t = s.manual_total_runs || 0;
+                    html += '<div style="color:#3498db;font-size:13px;margin-top:6px;font-weight:bold;">Runs valides: ' + v + '/' + m;
+                    if (t > v) html += ' (' + (t - v) + ' rejetés)';
+                    html += '</div>';
                 }
 
                 document.getElementById('profilerStatus').innerHTML = html;

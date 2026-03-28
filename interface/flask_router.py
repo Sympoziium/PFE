@@ -107,6 +107,8 @@ def register_routes(ctrl):
     app.add_url_rule('/robot/sensor_profile/results', 'sp_results', lambda: ctrl.sensor_profile_results(), methods=['GET'])
     app.add_url_rule('/robot/sensor_profile/manual_start', 'sp_manual_start', lambda: ctrl.sensor_profile_manual_start(), methods=['POST'])
     app.add_url_rule('/robot/sensor_profile/manual_stop', 'sp_manual_stop', lambda: ctrl.sensor_profile_manual_stop(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/summary', 'sp_summary', lambda: ctrl.sensor_profile_summary(), methods=['GET'])
+    app.add_url_rule('/robot/sensor_profile/download', 'sp_download', lambda: ctrl.sensor_profile_download(), methods=['GET'])
 
     # --- PONT (Nouveaux liens) ---
     app.add_url_rule('/bridge/open', 'bridge_open', lambda: ctrl.bridge_open(), methods=['POST'])

@@ -1415,6 +1415,40 @@ class controller:
             return jsonify({'error': 'Profiler non initialisé'}), 400
         return jsonify(self._sensor_profiler.profile_data)
 
+    def sensor_profile_summary(self):
+        """Retourne un résumé des résultats pour l'écran de fin."""
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+        return jsonify(self._sensor_profiler.get_summary())
+
+    def sensor_profile_download(self):
+        """Télécharge le profil JSON + calibration IR en ZIP."""
+        from flask import send_file
+        import zipfile
+        import io
+
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+
+        sp = self._sensor_profiler
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Profil complet
+            import json
+            profile_json = json.dumps(sp.profile_data, indent=2, default=str)
+            zf.writestr('sensor_profile_{}.json'.format(sp.robot_id), profile_json)
+
+            # Calibration IR si disponible
+            from pathlib import Path
+            ir_cal_path = Path(__file__).parent.parent / 'core' / 'robot' / 'ir_calibration.json'
+            if ir_cal_path.exists():
+                zf.write(str(ir_cal_path), 'ir_calibration.json')
+
+        buf.seek(0)
+        return send_file(buf, mimetype='application/zip',
+                        as_attachment=True,
+                        download_name='sensor_profile_{}.zip'.format(sp.robot_id))
+
 # ----------------------------------------------------------------------------
 #          Fonctions pour le contrôle du pont
 # ----------------------------------------------------------------------------

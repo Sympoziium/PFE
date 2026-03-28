@@ -185,9 +185,9 @@ class ControlManager:
             self._motor_driver = MotorDriver(self.robot)
 
     def _init_robot_sensors(self):
-        """Initialise les capteurs du robot (MPU, IR, batterie)."""
-        self.robot.calibrate_sensors() # initialisation des capteurs (gyro, MPU, PID, etc.)
-        self.update_sensors() # lecture initiale pour remplir last_sensor_data
+        """Lecture initiale des capteurs pour remplir last_sensor_data.
+        La calibration MPU/gyro est faite dans robot.__init__(), pas ici."""
+        self.update_sensors()
 
     # ------------------------------------------------------------------
     #  Mise à jours des capteurs
