@@ -19,17 +19,17 @@ def render_accueil_tab(title: str = "Accueil") -> str:
 	<style>
     body {
         margin: 0; padding: 0;
-        width: 100vw; height: 100vh;
+        width: 100vw; min-height: 100vh;
         font-family: 'Segoe UI', Arial, sans-serif;
         /* Ton background préféré rose et bleu pastel */
         background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
         color: #333; display: flex; flex-direction: column;
-        overflow: hidden;
+        overflow-y: auto;
     }
 
     .container {
         display: flex; justify-content: center; align-items: flex-start;
-        padding: 2vh; height: 96vh;
+        padding: 2vh; min-height: 96vh;
     }
 
     .tab-shell {
@@ -40,7 +40,8 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         box-shadow: 0 8px 20px rgba(0,0,0,0.08);
         width: 90%; 
         max-width: 1100px;
-        height: 85%;
+        min-height: fit-content;
+        margin-bottom: 4vh;
         display: flex;
         flex-direction: column;
     }
@@ -63,11 +64,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         border: 3px dashed #B5FFFC;
         border-radius: 15px;
         padding: 3%;
-        flex-grow: 1;
         background: #FFFDF0; 
         display: flex;
         gap: 3%;
-        overflow-y: auto;
     }
 
     .left-panel, .right-panel {
@@ -304,8 +303,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 <button class='primary-btn' data-path="/">Accueil</button>
                 <button class='primary-btn' data-path="/vision">Vision</button>
                 <button class='primary-btn' data-path="/pid">PID</button>
-                <button class='primary-btn' data-path="/onglet_template">Template</button>
-                <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
+                                <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
                 </div>
             </div>
 
@@ -351,35 +349,45 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                     <div class='driving-mode' style='margin-top: 20px;'>
                         <h3 style='margin: 0 0 16px 0;'>🌉 Pont Levis</h3>
 
-                        <!-- Toggle Mode Auto -->
-                        <div style='display:flex; align-items:center; gap:12px; margin-bottom:18px;'>
-                            <span style='font-weight:bold; color:#555;'>Mode Auto</span>
-                            <div id='autoToggle' onclick='toggleAuto(!autoIsOn)' style='
-                                width:52px; height:28px; border-radius:14px;
-                                background:#A8E6CF; cursor:pointer; position:relative;
-                                box-shadow:0 3px 0 #74C69D; transition:background 0.2s;'>
-                                <div id='autoToggleThumb' style='
-                                    position:absolute; top:4px; left:28px;
-                                    width:20px; height:20px; border-radius:50%;
-                                    background:white; box-shadow:0 2px 4px rgba(0,0,0,0.2);
-                                    transition:left 0.2s;'></div>
+                        <!-- Grille 2x2 : [Toggle Auto | Bouton pont] / [Feu Vert | Feu Rouge] -->
+                        <div style='display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%;'>
+
+                            <!-- Ligne 1 col 1 : Toggle Mode Auto -->
+                            <div style='display:flex; align-items:center; justify-content:center; gap:8px;
+                                        background:rgba(247,253,255,0.6); border-radius:12px; padding:10px;
+                                        border:2px solid #B5FFFC;'>
+                                <span style='font-weight:bold; color:#555; font-size:0.9rem; white-space:nowrap;'>Mode Auto</span>
+                                <div id='autoToggle' onclick='toggleAuto(!autoIsOn)' style='
+                                    width:52px; height:28px; border-radius:14px; flex-shrink:0;
+                                    background:#A8E6CF; cursor:pointer; position:relative;
+                                    box-shadow:0 3px 0 #74C69D; transition:background 0.2s;'>
+                                    <div id='autoToggleThumb' style='
+                                        position:absolute; top:4px; left:28px;
+                                        width:20px; height:20px; border-radius:50%;
+                                        background:white; box-shadow:0 2px 4px rgba(0,0,0,0.2);
+                                        transition:left 0.2s;'></div>
+                                </div>
+                                <span id='autoToggleLabel' style='font-size:0.9rem; color:#2d6a4f; font-weight:bold;'>ON</span>
+                                <input type='checkbox' id='autoCheck' checked style='display:none;'>
                             </div>
-                            <span id='autoToggleLabel' style='font-size:0.95rem; color:#2d6a4f; font-weight:bold;'>ON</span>
-                            <input type='checkbox' id='autoCheck' checked style='display:none;'>
-                        </div>
 
-                        <!-- Feux -->
-                        <div style='display:flex; gap:10px; margin-bottom:12px; width:100%;'>
-                            <button class='primary-btn' style='background:#A8E6CF; color:#2d6a4f; box-shadow:0 4px 0 #74C69D; flex:1; white-space:nowrap;'
+                            <!-- Ligne 1 col 2 : Bouton pont -->
+                            <button class='toggle-btn' id='bridgeToggleBtn' onclick='toggleBridge()'
+                                    style='width:100%; white-space:nowrap;'>
+                                🌉 Ouvrir le pont
+                            </button>
+
+                            <!-- Ligne 2 col 1 : Feu Vert -->
+                            <button class='primary-btn' style='background:#A8E6CF; color:#2d6a4f;
+                                box-shadow:0 4px 0 #74C69D; white-space:nowrap;'
                                 onclick="fetch('/bridge/green', {method:'POST'})">🟢 Feu Vert</button>
-                            <button class='primary-btn' style='background:#F4A0A0; color:#7a1f1f; box-shadow:0 4px 0 #d97070; flex:1; white-space:nowrap;'
-                                onclick="fetch('/bridge/red', {method:'POST'})">🔴 Feu Rouge</button>
-                        </div>
 
-                        <!-- Ouvrir / Fermer (toggle unique) -->
-                        <button class='toggle-btn' id='bridgeToggleBtn' onclick='toggleBridge()' style='width:100%;'>
-                            🌉 Ouvrir le pont
-                        </button>
+                            <!-- Ligne 2 col 2 : Feu Rouge -->
+                            <button class='primary-btn' style='background:#F4A0A0; color:#7a1f1f;
+                                box-shadow:0 4px 0 #d97070; white-space:nowrap;'
+                                onclick="fetch('/bridge/red', {method:'POST'})">🔴 Feu Rouge</button>
+
+                        </div>
                     </div>
                 </div>    
             </div>
