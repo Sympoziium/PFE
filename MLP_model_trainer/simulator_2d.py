@@ -23,7 +23,7 @@ except ImportError:
 
 from dataset import (
     DELTA_FEATURE_INDICES, DELTA_STEPS, DELTA_WEIGHTS, ENGINEERED_FEATURE_NAMES,
-    IR_OFFSET_DEFAULT, GAP_THRESHOLD, OFF_ROAD_THRESHOLD, GRASS_THRESHOLD, GYRO_Z_INDEX,
+    IR_OFFSET_DEFAULT, GAP_THRESHOLD, GYRO_Z_INDEX,
 )
 
 
@@ -797,18 +797,16 @@ def build_state_vector(ir_data, imu_data):
     return vec
 
 
-def compute_engineered(vec27, prev_vec35=None, ir_offset=IR_OFFSET_DEFAULT):
-    """Ajoute 8 features PID-inspired -> 35-dim.
+def compute_engineered(vec27, prev_vec32=None, ir_offset=IR_OFFSET_DEFAULT):
+    """Ajoute 5 features PID-inspired -> 32-dim.
 
     Args:
         vec27: Vecteur brut 27-dim
-        prev_vec35: Vecteur 35-dim precedent (pour gyro_z_rate et approaching_line)
+        prev_vec32: Vecteur 32-dim precedent (pour gyro_z_rate)
         ir_offset: Offset IR bottom (bot_left - bot_right)
     """
     ir_bot_r = vec27[1]
     ir_bot_l = vec27[3]
-    ir_front_r = vec27[0]
-    ir_front_l = vec27[5]
     ir_sum = (ir_bot_l + ir_bot_r) / 2.0
     gyro_z = vec27[GYRO_Z_INDEX]
 
@@ -821,47 +819,35 @@ def compute_engineered(vec27, prev_vec35=None, ir_offset=IR_OFFSET_DEFAULT):
     # 29: cal_error_norm
     cal_error_norm = calibrated_error / (ir_sum + 1e-6)
 
-    # 30: approaching_line
-    approaching = 0.0
-    if prev_vec35 is not None:
-        prev_cal = (prev_vec35[1] - prev_vec35[3]) - (-ir_offset)
-        approaching = 1.0 if abs(calibrated_error) < abs(prev_cal) else -1.0
-
-    # 31: on_road
-    on_road = 1.0 if ir_sum > OFF_ROAD_THRESHOLD else 0.0
-
-    # 32: grass_detect
-    grass_detect = 1.0 if min(ir_front_l, ir_front_r) < GRASS_THRESHOLD else 0.0
-
-    # 33: gyro_z_rate
+    # 30: gyro_z_rate
     gyro_z_rate = 0.0
-    if prev_vec35 is not None:
-        rate = gyro_z - prev_vec35[GYRO_Z_INDEX]
+    if prev_vec32 is not None:
+        rate = gyro_z - prev_vec32[GYRO_Z_INDEX]
         if abs(rate) < 150.0:
             gyro_z_rate = rate
 
-    # 34: heading_drift
+    # 31: heading_drift
     heading_drift = gyro_z_rate * (1.0 - line_visible)
 
     engineered = np.array([
-        calibrated_error, line_visible, cal_error_norm, approaching,
-        on_road, grass_detect, gyro_z_rate, heading_drift
+        calibrated_error, line_visible, cal_error_norm,
+        gyro_z_rate, heading_drift
     ], dtype=np.float32)
 
     return np.concatenate([vec27, engineered]).astype(np.float32)
 
 
-def build_full_vector(raw_35, prev_vectors, feature_mask=None):
-    """Construit le vecteur complet avec deltas multi-pas (35-dim -> 95-dim)."""
+def build_full_vector(raw_32, prev_vectors, feature_mask=None):
+    """Construit le vecteur complet avec deltas multi-pas (32-dim -> 77-dim)."""
     all_deltas = []
     for step, weight in enumerate(DELTA_WEIGHTS):
         d = np.zeros(len(DELTA_FEATURE_INDICES), dtype=np.float32)
         if step < len(prev_vectors):
             prev = prev_vectors[-(step + 1)]
-            d = (raw_35[DELTA_FEATURE_INDICES] - prev[DELTA_FEATURE_INDICES]) * weight
+            d = (raw_32[DELTA_FEATURE_INDICES] - prev[DELTA_FEATURE_INDICES]) * weight
         all_deltas.append(d)
 
-    full = np.concatenate([raw_35] + all_deltas)
+    full = np.concatenate([raw_32] + all_deltas)
     if feature_mask is not None:
         full = full[feature_mask]
     return full
@@ -1131,11 +1117,11 @@ def run_simulator(script_dir, state, track_mode='loop'):
                 # 2. Vecteur 27-dim
                 state_vec = build_state_vector(ir_data, imu_data)
 
-                # 3. Features engineered (27 -> 35) + deltas (35 -> 95)
-                prev_35 = prev_vectors[-1] if len(prev_vectors) > 0 else None
+                # 3. Features engineered (27 -> 32) + deltas (32 -> 77)
+                prev_32 = prev_vectors[-1] if len(prev_vectors) > 0 else None
                 ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
-                state_35 = compute_engineered(state_vec, prev_35, ir_offset)
-                full = build_full_vector(state_35, prev_vectors, feature_mask)
+                state_32 = compute_engineered(state_vec, prev_32, ir_offset)
+                full = build_full_vector(state_32, prev_vectors, feature_mask)
 
                 # 4. Z-score + inference
                 normalized = ((full - mean) / std).astype(np.float32)
@@ -1148,7 +1134,7 @@ def run_simulator(script_dir, state, track_mode='loop'):
 
                 # 5. Physique
                 robot.update(left_speed, right_speed, SIM_DT)
-                prev_vectors.append(state_35.copy())
+                prev_vectors.append(state_32.copy())
 
                 # 6. Metriques
                 _, signed_dist, _, seg_idx = track.closest_point_on_track((robot.x, robot.y))

@@ -241,18 +241,31 @@ class controller:
         """
         Callback synchronisé avec la boucle de contrôle (appelé à chaque tick).
 
-        Échantillonne quand sampling_active est True ET qu'un contrôleur
-        automatique (PID, etc.) est actif. Pour le contrôle manuel (WASD),
-        l'échantillonnage reste événementiel via _sample_on_command().
+        Échantillonne quand sampling_active est True ET qu'un contrôleur est actif.
+        Le command reçu est la sortie de step() = commande POST-PID.
+
+        Filtre les samples idle (0,0 prolongés) pour éviter de bruiter le dataset
+        avec des échantillons sans mouvement. Les premiers samples d'arrêt après
+        un mouvement sont conservés (arrêt intentionnel).
         """
         if not self.sampling_active:
             return
 
-        # Sampler pour tous les contrôleurs actifs (PID, manuel, ML, etc.)
-        # Le command reçu est la sortie de step() = commande POST-PID
         active = self.control_manager._active_controller
         if active is None:
             return
+
+        # Filtrer l'idle prolongé: garder max 10 samples consécutifs à (0,0)
+        # pour représenter un arrêt intentionnel sans flood le dataset
+        is_stop = (command.left_speed == 0 and command.right_speed == 0)
+        if is_stop:
+            if not hasattr(self, '_consecutive_stop_samples'):
+                self._consecutive_stop_samples = 0
+            self._consecutive_stop_samples += 1
+            if self._consecutive_stop_samples > 10:
+                return  # Skip l'idle prolongé
+        else:
+            self._consecutive_stop_samples = 0
 
         try:
             adapter = self._get_ml_adapter(state)

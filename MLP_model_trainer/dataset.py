@@ -25,39 +25,33 @@ GAP_THRESHOLD = 210.8        # ir_sum sous lequel la ligne blanche est visible
 OFF_ROAD_THRESHOLD = 165.9   # ir_sum sous lequel on est hors piste (gazon)
 GRASS_THRESHOLD = 140.0      # capteurs front sous ce seuil = gazon devant
 
-# Features engineered ajoutees au vecteur de base (27-dim -> 35-dim)
+# Features engineered ajoutees au vecteur de base (27-dim -> 32-dim)
+# Retrait de approaching_line (corr ~0), on_road (~0), grass_detect (~0)
 ENGINEERED_FEATURE_NAMES = [
     'calibrated_error',   # 27: (ir_bot_r - ir_bot_l) - ir_offset
     'line_visible',       # 28: 1.0 si ir_sum < GAP_THRESHOLD
     'cal_error_norm',     # 29: calibrated_error / (ir_sum + eps)
-    'approaching_line',   # 30: +1 si |cal_error| diminue, -1 sinon
-    'on_road',            # 31: 1.0 si ir_sum > OFF_ROAD_THRESHOLD
-    'grass_detect',       # 32: 1.0 si min(ir_front_l, ir_front_r) < GRASS_THRESHOLD
-    'gyro_z_rate',        # 33: delta gyro_z (vitesse angulaire par tick)
-    'heading_drift',      # 34: gyro_z_rate * (1 - line_visible)
+    'gyro_z_rate',        # 30: delta gyro_z (vitesse angulaire par tick)
+    'heading_drift',      # 31: gyro_z_rate * (1 - line_visible)
 ]
 
 # Indices des features pour lesquelles calculer des deltas temporels
-# Note: indices 27-34 sont les features engineered ajoutees par
-# compute_engineered_features() avant l'appel a compute_deltas()
+# Focus sur les features avec signal (retrait de acc_x, acc_y, approaching_line)
 DELTA_FEATURE_INDICES = [
     1,   # IR_bot_R
     3,   # IR_bot_L
     6,   # IR_diff
     7,   # IR_sum
     18,  # gyro_z (heading cumulatif)
-    19,  # acc_x
-    20,  # acc_y
     27,  # calibrated_error
     29,  # cal_error_norm
-    30,  # approaching_line
-    33,  # gyro_z_rate
-    34,  # heading_drift
+    30,  # gyro_z_rate
+    31,  # heading_drift
 ]
 DELTA_FEATURE_NAMES = [
     'IR_bot_R_delta', 'IR_bot_L_delta', 'IR_diff_delta', 'IR_sum_delta',
-    'gyro_z_delta', 'acc_x_delta', 'acc_y_delta',
-    'cal_error_delta', 'cal_error_norm_delta', 'approaching_delta',
+    'gyro_z_delta',
+    'cal_error_delta', 'cal_error_norm_delta',
     'gyro_z_rate_delta', 'heading_drift_delta',
 ]
 
@@ -319,14 +313,11 @@ class ZumiControlDataset(Dataset):
         n = len(self.captures)
         ir_bot_r = self.captures[:, 1]   # IR_bottom_right
         ir_bot_l = self.captures[:, 3]   # IR_bottom_left
-        ir_front_r = self.captures[:, 0] # IR_front_right
-        ir_front_l = self.captures[:, 5] # IR_front_left
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
         gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
 
         # 27: calibrated_error — signal d'erreur PID zero-centre
-        # Convention: positif = robot decale a droite (doit tourner a gauche)
-        calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)  # soustrait le biais
+        calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
 
         # 28: line_visible — la ligne blanche est sous un capteur
         line_visible = (ir_sum < GAP_THRESHOLD).astype(np.float32)
@@ -334,37 +325,18 @@ class ZumiControlDataset(Dataset):
         # 29: cal_error_norm — invariant a la luminosite ambiante
         cal_error_norm = calibrated_error / (ir_sum + 1e-6)
 
-        # 30: approaching_line — direction de derive (+1 = vers la ligne, -1 = s'eloigne)
-        abs_error = np.abs(calibrated_error)
-        abs_error_prev = np.zeros_like(abs_error)
-        abs_error_prev[1:] = abs_error[:-1]
-        approaching = np.where(abs_error < abs_error_prev, 1.0, -1.0).astype(np.float32)
-        # Frontieres de sequence: zeroiser
-        error_jumps = np.abs(calibrated_error[1:] - calibrated_error[:-1])
-        boundaries = np.zeros(n, dtype=bool)
-        boundaries[0] = True
-        boundaries[1:] = error_jumps > 100.0
-        approaching[boundaries] = 0.0
-
-        # 31: on_road — sur la route noire (pas gazon)
-        on_road = (ir_sum > OFF_ROAD_THRESHOLD).astype(np.float32)
-
-        # 32: grass_detect — gazon detecte par les capteurs front
-        grass_detect = (np.minimum(ir_front_l, ir_front_r) < GRASS_THRESHOLD).astype(np.float32)
-
-        # 33: gyro_z_rate — vitesse angulaire (delta gyro_z cumulatif)
+        # 30: gyro_z_rate — vitesse angulaire (delta gyro_z cumulatif)
         gyro_z_rate = np.zeros(n, dtype=np.float32)
         gyro_z_rate[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
-        # Zeroiser les frontieres de sequence (gros sauts = reset gyro)
         gyro_boundaries = np.abs(gyro_z_rate) > 150.0
         gyro_z_rate[gyro_boundaries] = 0.0
 
-        # 34: heading_drift — derive de cap active uniquement dans les gaps
+        # 31: heading_drift — derive de cap active uniquement dans les gaps
         heading_drift = gyro_z_rate * (1.0 - line_visible)
 
         new_features = np.column_stack([
-            calibrated_error, line_visible, cal_error_norm, approaching,
-            on_road, grass_detect, gyro_z_rate, heading_drift
+            calibrated_error, line_visible, cal_error_norm,
+            gyro_z_rate, heading_drift
         ]).astype(np.float32)
 
         original_dim = self.captures.shape[1]

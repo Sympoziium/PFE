@@ -125,24 +125,21 @@ def analyze_dataset(captures, labels, save_dir=None):
         "imu_rot_y",            # 24
         "imu_rot_z",            # 25
         "imu_tilt_state",       # 26
-        # 8 engineered features (indices 27-34)
+        # 5 engineered features (indices 27-31)
         "calibrated_error",     # 27
         "line_visible",         # 28
         "cal_error_norm",       # 29
-        "approaching_line",     # 30
-        "on_road",              # 31
-        "grass_detect",         # 32
-        "gyro_z_rate",          # 33
-        "heading_drift",        # 34
+        "gyro_z_rate",          # 30
+        "heading_drift",        # 31
     ]
-    # 60 delta features (indices 35-94): 12 features x 5 steps
+    # 45 delta features (indices 32-76): 9 features x 5 steps
     _delta_source_names = [
-        "IR_bot_R", "IR_bot_L", "IR_diff", "IR_sum", "gyro_z", "acc_x", "acc_y",
-        "cal_error", "cal_err_norm", "approaching", "gyro_z_rate", "heading_drift",
+        "IR_bot_R", "IR_bot_L", "IR_diff", "IR_sum", "gyro_z",
+        "cal_error", "cal_err_norm", "gyro_z_rate", "heading_drift",
     ]
     for _step in range(1, 6):
         for _src in _delta_source_names:
-            feature_names.append(f"d{_step}_{_src}")  # 35..94
+            feature_names.append(f"d{_step}_{_src}")  # 32..76
 
     # Support des anciens datasets 27-dim (sans deltas)
     for i in range(captures.shape[1]):
