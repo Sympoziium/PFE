@@ -248,10 +248,10 @@ class controller:
         if not self.sampling_active:
             return
 
-        # Ne sampler ici que pour les contrôleurs automatiques (PID, etc.)
-        # Le manuel est géré par _sample_on_command()
+        # Sampler pour tous les contrôleurs actifs (PID, manuel, ML, etc.)
+        # Le command reçu est la sortie de step() = commande POST-PID
         active = self.control_manager._active_controller
-        if active is None or active.name == "manual_controller":
+        if active is None:
             return
 
         try:
@@ -1136,9 +1136,7 @@ class controller:
                 ctrl.steering_ratio)
             self.control_manager.set_manual_override(
                 MotorCommand.make_speed(left, right))
-
-            if self.sampling_active:
-                self._sample_compound(left, right)
+            # Sampling géré par _sampling_callback (labels post-PID)
             return "ok"
 
         # --- Pas de contrôleur actif : commande directe avec PID de cap ---
@@ -1167,13 +1165,7 @@ class controller:
                                  drive_speed=self.manual_drive_speed,
                                  turn_speed=self.manual_turn_speed)
 
-        if self.sampling_active and (throttle != 0 or steering != 0):
-            left_speed, right_speed = ManualController.compute_speeds(
-                throttle, steering,
-                self.manual_drive_speed, self.manual_turn_speed,
-                ctrl.steering_ratio)
-            self._sample_compound(left_speed, right_speed)
-
+        # Sampling géré par _sampling_callback (labels post-PID)
         return "ok"
 
     def _sample_compound(self, left_speed, right_speed):

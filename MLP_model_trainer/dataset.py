@@ -19,9 +19,10 @@ from pathlib import Path
 # ============================================================
 
 # Seuils IR pour la detection de ligne et de surface
-IR_OFFSET_DEFAULT = -17.0    # Offset bot_left - bot_right (defaut, remplace par calibration)
-GAP_THRESHOLD = 195.0        # ir_sum sous lequel la ligne blanche est visible
-OFF_ROAD_THRESHOLD = 120.0   # ir_sum sous lequel on est hors piste (gazon)
+# Valeurs mesurees via Sensor Profiler sur zumi_1 (2026-03-28)
+IR_OFFSET_DEFAULT = 8.8      # Offset bot_left - bot_right (mesure sur route noire)
+GAP_THRESHOLD = 210.8        # ir_sum sous lequel la ligne blanche est visible
+OFF_ROAD_THRESHOLD = 165.9   # ir_sum sous lequel on est hors piste (gazon)
 GRASS_THRESHOLD = 140.0      # capteurs front sous ce seuil = gazon devant
 
 # Features engineered ajoutees au vecteur de base (27-dim -> 35-dim)
