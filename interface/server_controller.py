@@ -14,6 +14,7 @@ import json
 
 from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
+from core.robot.Archive.Programme_UI import battery
 from interface.onglet_acceuil import render_accueil_tab
 from interface.onglet_control import render_control_tab
 from interface.onglet_vision import render_vision_tab
@@ -113,7 +114,7 @@ def format_detection_result(results, detector_name="Détecteur"):
 # --- Constantes de contrôle importées depuis robot_zumi (source unique) ---
 from core.robot.robot_zumi import (
     DRIVE_SPEED_DEFAULT, TURN_SPEED_DEFAULT,
-    CAMERA_PROFILES
+    CAMERA_PROFILES, BATTERY_VOLTAGE_MAX, BATTERY_VOLTAGE_MIN
 )
 # Alias pour compatibilité avec le code existant
 DRIVE_SPEED = DRIVE_SPEED_DEFAULT
@@ -157,7 +158,7 @@ class controller:
         self.manual_drive_speed = DRIVE_SPEED
         self.manual_turn_speed = TURN_SPEED
         self.last_action = None  # Pour mémoriser la dernière action de contrôle (pour le sampling)
-
+        self.battery_level = None  # Niveau de batterie (si disponible via SensorDriver)
         
         # --- CONFIGURATION DU PONT ---
         # ⚠️ REMPLACE CECI PAR L'IP QUE TON ARDUINO A AFFICHÉE
@@ -644,6 +645,14 @@ class controller:
             print("[RAM] {:.1f} MB used | {:.1f} MB free | {:.1f} MB total | IO Wait: {:.2f}s".format(
                 ram_used_mb, ram_free_mb, ram_total_mb, io_wait))
             print("[Timestamp] {}".format(time.strftime('%H:%M:%S')))
+            # Battery level
+            if self.robot and hasattr(self.robot, 'get_battery_voltage'):
+                try:
+                    battery_voltage = self.robot.get_battery_voltage()
+                    battery_percent = max(0, min(100, int((battery_voltage - BATTERY_VOLTAGE_MIN) / (BATTERY_VOLTAGE_MAX - BATTERY_VOLTAGE_MIN) * 100)))
+                    print("[Battery] Level: {}V ({:.1f}%)".format(battery_voltage, battery_percent))
+                except Exception as e:
+                    print("[Battery] Error reading battery level: {}".format(e))
         except Exception as e:
             pass  # Silencieux si psutil indisponible
 

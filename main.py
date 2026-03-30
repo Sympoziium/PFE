@@ -27,7 +27,7 @@ def _verbosity_print(*args, **kwargs):
 
     # Messages essentiels conservés dans tous les modes (Boot et Profilage Système)
     is_essential = any(tag in out_text for tag in [
-        "[Zumi] CPU", "[RAM]", "[Timestamp]", "[BOOT]", 
+        "[Zumi] CPU", "[RAM]", "[Timestamp]", "[BOOT]", "[Battery]",
         "DÉMARRAGE DU ZUMI", "Flask server", "Arrêt propre", "[Exception]"
     ])
 
