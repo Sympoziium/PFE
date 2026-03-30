@@ -640,6 +640,7 @@ class controller:
             ram_total_mb = round(ram.total / (1024 * 1024), 1)
             io_wait = psutil.Process().cpu_times().iowait if hasattr(psutil.Process().cpu_times(), 'iowait') else 0
             # Format compact pour vision rapide dans le terminal
+            print("\n" + "-" * 60)
             print("[Zumi] CPU: {:.1f}% | RAM: {:.1f}% | Threads: {}".format(
                 cpu_percent, ram.percent, num_threads))
             print("[RAM] {:.1f} MB used | {:.1f} MB free | {:.1f} MB total | IO Wait: {:.2f}s".format(
