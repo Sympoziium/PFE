@@ -26,8 +26,6 @@ from core.hardware.personality import Personality
 
 # === Constantes de contrôle centralisées ===
 # Ces valeurs sont la source unique de vérité pour tout le projet.
-SPEED_LIMIT_MIN = 0
-SPEED_LIMIT_MAX = 60        # Max absolu pour l'interface et les commandes
 DRIVE_SPEED_DEFAULT = 15    # Vitesse par défaut avance/recul
 TURN_SPEED_DEFAULT = 1     # Vitesse par défaut virages
 
@@ -58,7 +56,7 @@ class RobotZumi(RobotBase):
         self.screen = Screen()
         self.personality = Personality(self.zumi, self.screen)
         self._stop_since = None  # Timestamp du début de l'arrêt courant
-        self._PID_RESET_DELAY = 1.5  # Secondes d'arrêt continu avant reset PID
+        self._PID_RESET_DELAY = 1  # Secondes d'arrêt continu avant reset PID
 
         # Calibration IR: offsets entre paires L/R et baselines par capteur
         self.ir_calibration = None
