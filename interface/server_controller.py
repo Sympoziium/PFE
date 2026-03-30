@@ -14,7 +14,7 @@ import json
 
 from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
-from core.robot.Archive.Programme_UI import battery
+
 from interface.onglet_acceuil import render_accueil_tab
 from interface.onglet_control import render_control_tab
 from interface.onglet_vision import render_vision_tab
