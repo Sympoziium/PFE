@@ -42,7 +42,7 @@ CAMERA_PROFILES = {
     'passive': {  # Détection passive avec contrôleurs (manuel, ML) - économie CPU
         'width': 320,
         'height': 240,
-        'fps': 15,
+        'fps': 20,
     },
     'stream': {   # Streaming vidéo seul (pas de contrôleur actif)
         'width': 640,
