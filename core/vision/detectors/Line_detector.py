@@ -13,13 +13,13 @@ import cv2
 import numpy as np
 
 class LineDetector(BaseDetector):
-    def __init__(self, white_threshold=150, min_area=20, offset_ratio=0.7):
+    def __init__(self, white_threshold=150, min_area=55, offset_ratio=0.7):
         """
         Initialise le détecteur de ligne.
         
         Args:
             white_threshold: Seuil pour détecter le blanc (0-255). Plus élevé = plus strict
-            min_area: Aire minimale d'un pointillé (réduit à 50 pour petits pointillés)
+            min_area: Aire minimale d'un pointillé (réduit à 55 pour petits pointillés)
             offset_ratio: Ratio de la hauteur où commencer la détection (0.3 = commence à 30%)
         """
         self.white_threshold = white_threshold
