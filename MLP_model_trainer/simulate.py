@@ -452,6 +452,7 @@ def run_open_loop_simulation(model, stats, sequences_dir: Path, save_dir: Path =
         raw_27 = captures[t]
         prev_32 = prev_vectors[-1] if len(prev_vectors) > 0 else None
         raw_32 = compute_engineered_features(raw_27, prev_32, ir_offset)
+
         full = build_full_vector(raw_32, prev_vectors, feature_mask)
         pred = inference(model, full, stats)
         predictions.append(pred)

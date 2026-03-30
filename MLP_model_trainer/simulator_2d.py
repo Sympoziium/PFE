@@ -1121,6 +1121,7 @@ def run_simulator(script_dir, state, track_mode='loop'):
                 prev_32 = prev_vectors[-1] if len(prev_vectors) > 0 else None
                 ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
                 state_32 = compute_engineered(state_vec, prev_32, ir_offset)
+
                 full = build_full_vector(state_32, prev_vectors, feature_mask)
 
                 # 4. Z-score + inference

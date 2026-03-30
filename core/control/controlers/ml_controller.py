@@ -27,8 +27,9 @@ class MLController(ControllerBase):
 
     # Indices des features pour le calcul des deltas temporels
     # Doit correspondre a DELTA_FEATURE_INDICES dans dataset.py
-    # Note: indices 27-31 sont les 5 features engineered PID-inspired
-    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 27, 29, 30, 31]
+    # 27=line_camera_offset, 28=line_camera_detected (features camera)
+    # 29-33 = features engineered PID-inspired
+    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 27, 29, 31, 32, 33]
     DELTA_STEPS = 5
     DELTA_WEIGHTS = [1.0, 0.7, 0.5, 0.3, 0.15]
 
@@ -205,7 +206,7 @@ class MLController(ControllerBase):
     def _build_state_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'etat a partir du SensorState.
 
-        Pipeline v2: VisionAdapter (27-dim) -> engineered (32-dim) -> deltas (77-dim)
+        Pipeline v3: VisionAdapter (29-dim) -> engineered (34-dim) -> deltas (84-dim)
                      -> masque (N-dim) -> z-score
 
         Args:
@@ -234,7 +235,8 @@ class MLController(ControllerBase):
             }
 
         ir_data = state.ir_sensors if state.ir_sensors else [0] * 6
-        raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
+        line_off = state.line_offset if hasattr(state, 'line_offset') else None
+        raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data, line_offset=line_off)
 
         # Features engineered PID-inspired (5 features, indices 27-31)
         ir_bot_r = raw_vector[1]   # IR_bottom_right

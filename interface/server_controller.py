@@ -1732,7 +1732,8 @@ class controller:
             }
 
         ir_data = state.ir_sensors if state.ir_sensors is not None else None
-        vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data)
+        line_off = state.line_offset if hasattr(state, 'line_offset') else None
+        vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data, line_offset=line_off)
         return vector.tolist()
 
     def _infer_ml_classes(self):

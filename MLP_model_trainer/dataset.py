@@ -25,32 +25,34 @@ GAP_THRESHOLD = 210.8        # ir_sum sous lequel la ligne blanche est visible
 OFF_ROAD_THRESHOLD = 165.9   # ir_sum sous lequel on est hors piste (gazon)
 GRASS_THRESHOLD = 140.0      # capteurs front sous ce seuil = gazon devant
 
-# Features engineered ajoutees au vecteur de base (27-dim -> 32-dim)
-# Retrait de approaching_line (corr ~0), on_road (~0), grass_detect (~0)
+# Features engineered ajoutees au vecteur de base (29-dim -> 34-dim)
+# Le vecteur de base est maintenant 29-dim (27 + 2 features camera: line_offset, line_detected)
+# Les indices des features engineered commencent a 29
 ENGINEERED_FEATURE_NAMES = [
-    'calibrated_error',   # 27: (ir_bot_r - ir_bot_l) - ir_offset
-    'line_visible',       # 28: 1.0 si ir_sum < GAP_THRESHOLD
-    'cal_error_norm',     # 29: calibrated_error / (ir_sum + eps)
-    'gyro_z_rate',        # 30: delta gyro_z (vitesse angulaire par tick)
-    'heading_drift',      # 31: gyro_z_rate * (1 - line_visible)
+    'calibrated_error',   # 29: (ir_bot_r - ir_bot_l) - ir_offset
+    'line_visible',       # 30: 1.0 si ir_sum < GAP_THRESHOLD (IR)
+    'cal_error_norm',     # 31: calibrated_error / (ir_sum + eps)
+    'gyro_z_rate',        # 32: delta gyro_z (vitesse angulaire par tick)
+    'heading_drift',      # 33: gyro_z_rate * (1 - line_visible)
 ]
 
 # Indices des features pour lesquelles calculer des deltas temporels
-# Focus sur les features avec signal (retrait de acc_x, acc_y, approaching_line)
+# Note: 27=line_camera_offset, 28=line_camera_detected (features camera brutes)
 DELTA_FEATURE_INDICES = [
     1,   # IR_bot_R
     3,   # IR_bot_L
     6,   # IR_diff
     7,   # IR_sum
     18,  # gyro_z (heading cumulatif)
-    27,  # calibrated_error
-    29,  # cal_error_norm
-    30,  # gyro_z_rate
-    31,  # heading_drift
+    27,  # line_camera_offset (NOUVEAU — signal camera fort!)
+    29,  # calibrated_error
+    31,  # cal_error_norm
+    32,  # gyro_z_rate
+    33,  # heading_drift
 ]
 DELTA_FEATURE_NAMES = [
     'IR_bot_R_delta', 'IR_bot_L_delta', 'IR_diff_delta', 'IR_sum_delta',
-    'gyro_z_delta',
+    'gyro_z_delta', 'line_cam_delta',
     'cal_error_delta', 'cal_error_norm_delta',
     'gyro_z_rate_delta', 'heading_drift_delta',
 ]
@@ -59,7 +61,7 @@ DELTA_FEATURE_NAMES = [
 DELTA_STEPS = 5
 DELTA_WEIGHTS = [1.0, 0.7, 0.5, 0.3, 0.15]
 
-# Indice du gyro_z (vitesse angulaire yaw en deg/s) dans le vecteur 27-dim
+# Indice du gyro_z dans le vecteur de base
 GYRO_Z_INDEX = 18
 
 # Noms des categories d'actions
@@ -316,7 +318,7 @@ class ZumiControlDataset(Dataset):
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
         gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
 
-        # 27: calibrated_error — signal d'erreur PID zero-centre
+        # 29: calibrated_error — signal d'erreur PID zero-centre
         calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
 
         # 28: line_visible — la ligne blanche est sous un capteur
