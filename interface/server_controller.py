@@ -112,7 +112,6 @@ def format_detection_result(results, detector_name="Détecteur"):
 
 # --- Constantes de contrôle importées depuis robot_zumi (source unique) ---
 from core.robot.robot_zumi import (
-    SPEED_LIMIT_MAX, SPEED_LIMIT_MIN,
     DRIVE_SPEED_DEFAULT, TURN_SPEED_DEFAULT,
     CAMERA_PROFILES
 )
