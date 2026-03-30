@@ -152,6 +152,7 @@ class controller:
         self.sampling_active = False
         self.sampling_vectors = [] # Vecteurs d'entrées (NDJSON)
         self.sampling_labels = []  # Vecteurs labels (NDJSON)
+        self.sampling_zeroed_groups = set()  # Groupes de features forcés à 0 pendant l'échantillonnage
         self._ml_classes = []
         self._last_debug_print_time = 0.0  # Throttle du debug à ~3 Hz
         self.manual_drive_speed = DRIVE_SPEED
@@ -280,9 +281,10 @@ class controller:
             import numpy as np
             v_array = np.array(vector)
             l_array = np.array(label)
+            v_array = self._apply_sampling_kill(v_array, adapter)
 
             if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
-                self.sampling_vectors.append(vector)
+                self.sampling_vectors.append(v_array.tolist())
                 self.sampling_labels.append(label)
         except Exception as e:
             print("[Sampling] Erreur callback contrôleur auto: {}".format(e))
@@ -1002,9 +1004,10 @@ class controller:
             import numpy as np
             v_array = np.array(vector)
             l_array = np.array(label)
+            v_array = self._apply_sampling_kill(v_array, adapter)
 
             if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
-                self.sampling_vectors.append(vector)
+                self.sampling_vectors.append(v_array.tolist())
                 self.sampling_labels.append(label)
 
                 if self.debug_control_sampling:
@@ -1202,9 +1205,10 @@ class controller:
             import numpy as np
             v_array = np.array(vector)
             l_array = np.array(label)
+            v_array = self._apply_sampling_kill(v_array, adapter)
 
             if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
-                self.sampling_vectors.append(vector)
+                self.sampling_vectors.append(v_array.tolist())
                 self.sampling_labels.append(label)
 
                 if self.debug_control_sampling:
@@ -1567,6 +1571,30 @@ class controller:
             self.sampling_active = False
         return jsonify({'status': 'sampling stopped'})
 
+    def sampling_feature_kill(self):
+        """Configure les groupes de features forcés à 0 pendant l'échantillonnage.
+
+        GET  → retourne l'état courant
+        POST → body JSON {"groups": ["haar", "line_camera"]}
+                          [] pour désactiver le kill (revenir au comportement normal)
+
+        Groupes disponibles:
+          "haar"        : detection_flag + class_onehot + bbox (indices 8..12+N)
+          "line_camera" : line_camera_offset + line_camera_detected (indices 24+N, 25+N)
+        """
+        if request.method == 'GET':
+            return jsonify({"zeroed_groups": sorted(self.sampling_zeroed_groups)})
+
+        data = request.get_json(silent=True) or {}
+        groups = set(data.get("groups", []))
+        valid_groups = {"haar", "line_camera"}
+        invalid = groups - valid_groups
+        if invalid:
+            return jsonify({"error": "Groupes invalides: {}. Valides: {}".format(
+                sorted(invalid), sorted(valid_groups))}), 400
+        self.sampling_zeroed_groups = groups
+        return jsonify({"status": "ok", "zeroed_groups": sorted(self.sampling_zeroed_groups)})
+
     def controller_list(self):
         """Retourne la liste des contrôleurs enregistrés."""
         if self.control_manager is None:
@@ -1704,6 +1732,24 @@ class controller:
 
         ctrl.update_params(**data)
         return jsonify({'name': ctrl_name, 'params': ctrl.get_params()})
+
+    def _apply_sampling_kill(self, v_array, adapter):
+        """Force les groupes de features killés à 0 dans le vecteur d'échantillonnage.
+
+        Opère in-place sur v_array. Les indices dépendent du nombre de classes HAAR (N).
+        Les validations restent cohérentes car 0.0 est valide pour tous ces champs.
+        """
+        if not self.sampling_zeroed_groups:
+            return v_array
+        N = len(adapter.classes)
+        if "haar" in self.sampling_zeroed_groups:
+            # detection_flag (8) + class_onehot (9..8+N) + bbox cx,cy,w,h (9+N..12+N)
+            v_array[8 : 13 + N] = 0.0
+        if "line_camera" in self.sampling_zeroed_groups:
+            # line_camera_offset (24+N) + line_camera_detected (25+N)
+            v_array[24 + N] = 0.0
+            v_array[25 + N] = 0.0
+        return v_array
 
     def _vectorize_state_with_adapter(self, state, adapter):
         if state is None:

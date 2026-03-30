@@ -338,6 +338,13 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         <button class='primary-btn' id='samplingDownloadBtn'>⬇️ Télécharger</button>
                     </div>
 
+                    <div style='width:85%; margin-top:8px; display:flex; align-items:center; gap:8px;'>
+                        <button class='toggle-btn' id='featureKillBtn' style='flex:1; font-size:12px; padding:6px 8px;'>
+                            Détection passive : ON
+                        </button>
+                        <span style='font-size:11px; color:#aaa;' title='Quand actif, les features HAAR et caméra-ligne sont forcées à 0 dans les échantillons'>?</span>
+                    </div>
+
                     <div style='width:85%; margin-top:12px;'>
                         <select id='controllerSelect' style='width:100%; padding:10px; border-radius:10px; border:2px solid #B5FFFC; font-weight:bold;'>
                             <option value='line_follower'>line_follower</option>
@@ -527,6 +534,29 @@ def render_control_tab(title: str = "Contrôle") -> str:
             btn.textContent = 'Échantillonnage';
             fetch('/stop_sampling', { method: 'POST' });
         }
+    }
+
+    // Modes cycliques: 0=all, 1=line only (haar killé), 2=haar only (line killé)
+    var _featureKillMode = 0;
+    var _featureKillModes = [
+        { groups: [],               label: 'Passif: tout actif',      cls: '' },
+        { groups: ['haar'],         label: 'Passif: ligne seulement', cls: 'active' },
+        { groups: ['line_camera'],  label: 'Passif: HAAR seulement',  cls: 'active' }
+    ];
+
+    function toggleFeatureKill() {
+        _featureKillMode = (_featureKillMode + 1) % 3;
+        var mode = _featureKillModes[_featureKillMode];
+        var btn = document.getElementById('featureKillBtn');
+        fetch('/sampling/feature_kill', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({groups: mode.groups})
+        }).then(function(r) { return r.json(); }).then(function() {
+            btn.className = 'toggle-btn' + (mode.cls ? ' ' + mode.cls : '');
+            btn.style.cssText = 'flex:1; font-size:12px; padding:6px 8px;';
+            btn.textContent = mode.label;
+        });
     }
 
     function downloadSampling() {
@@ -964,6 +994,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
         var samplingDownloadBtn = document.getElementById('samplingDownloadBtn');
         if (samplingDownloadBtn) samplingDownloadBtn.addEventListener('click', downloadSampling);
+
+        var featureKillBtn = document.getElementById('featureKillBtn');
+        if (featureKillBtn) featureKillBtn.addEventListener('click', toggleFeatureKill);
         
         // Controller toggle
         var ctrlBtn = document.getElementById('controllerToggleBtn');

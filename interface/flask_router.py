@@ -58,6 +58,7 @@ def register_routes(ctrl):
     app.add_url_rule('/start_sampling', 'start_sampling', lambda: ctrl.start_sampling(), methods=['POST'])
     app.add_url_rule('/stop_sampling', 'stop_sampling', lambda: ctrl.stop_sampling(), methods=['POST'])
     app.add_url_rule('/sampling/download', 'sampling_download', lambda: ctrl.download_sampling(), methods=['GET'])
+    app.add_url_rule('/sampling/feature_kill', 'sampling_feature_kill', lambda: ctrl.sampling_feature_kill(), methods=['GET', 'POST'])
     app.add_url_rule('/manual/settings', 'manual_settings', lambda: ctrl.manual_settings(), methods=['GET', 'POST'])
     app.add_url_rule('/controller/start', 'controller_start', lambda: ctrl.start_controller(), methods=['POST'])
     app.add_url_rule('/controller/stop', 'controller_stop', lambda: ctrl.stop_controller(), methods=['POST'])

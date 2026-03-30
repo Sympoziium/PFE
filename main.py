@@ -103,7 +103,7 @@ def bootstrap():
     from core.vision.detectors.Haar_classifier import HaarDetector
     from core.vision.detectors.Line_detector import LineDetector
 
-    line_detector = LineDetector(white_threshold=190, min_area=65, offset_ratio=0.55)
+    line_detector = LineDetector(white_threshold=180, min_area=65, offset_ratio=0.65)
     draw_progress_bar(zumi.screen, 20)
     
     haar_classifier = HaarDetector()
