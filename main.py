@@ -133,6 +133,7 @@ def bootstrap():
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
+    vision_pipeline.add_passive_detectors(line_detector)  # Le line_detector est utilisé à la fois en actif (PID) et passif (MLP)
     draw_progress_bar(zumi.screen, 70)
     
     # Étape 6 : Initialiser Flask et routes
