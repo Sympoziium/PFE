@@ -34,7 +34,7 @@ DRIVE_SPEED = DRIVE_SPEED_DEFAULT
 TURN_SPEED = TURN_SPEED_DEFAULT
 
 BATTERY_VOLTAGE_MAX = 4.2  # Tension max de la batterie du Zumi (en volts)
-BATTERY_VOLTAGE_MIN = 3.0  # Tension minimale pour un fonctionnement sûr (en volts)
+BATTERY_VOLTAGE_MIN = 3.4  # Tension minimale pour un fonctionnement sûr (en volts)
 
 # === Profils de caméra ===
 # Utilisés par le server_controller pour ajuster automatiquement la résolution
