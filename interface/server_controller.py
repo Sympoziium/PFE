@@ -649,9 +649,23 @@ class controller:
             # Battery level
             if self.robot and hasattr(self.robot, 'get_battery_voltage'):
                 try:
-                    battery_voltage = self.robot.get_battery_voltage()
-                    battery_percent = max(0, min(100, int((battery_voltage - BATTERY_VOLTAGE_MIN) / (BATTERY_VOLTAGE_MAX - BATTERY_VOLTAGE_MIN) * 100)))
-                    print("[Battery] Level: {}V ({:.1f}%)".format(battery_voltage, battery_percent))
+                    raw_voltage = self.robot.get_battery_voltage()
+                    
+                    # Initialisation au premier appel
+                    if getattr(self, 'battery_ema', None) is None:
+                        self.battery_ema = raw_voltage
+                    else:
+                        # Calcul EMA : (nouvelle_lecture * alpha) + (ancienne_moyenne * (1 - alpha))
+                        # Alpha = 0.2 (20% de la nouvelle valeur, 80% de l'ancienne)
+                        alpha = 0.2  
+                        self.battery_ema = (raw_voltage * alpha) + (self.battery_ema * (1.0 - alpha))
+                    
+                    # Arrondi pour un affichage propre
+                    smoothed_voltage = round(self.battery_ema, 3)
+                    
+                    # Calcul sur la tension lissée
+                    battery_percent = max(0, min(100, int((smoothed_voltage - BATTERY_VOLTAGE_MIN) / (BATTERY_VOLTAGE_MAX - BATTERY_VOLTAGE_MIN) * 100)))
+                    print("[Battery] Level: {}V ({:.1f}%)".format(smoothed_voltage, battery_percent))
                 except Exception as e:
                     print("[Battery] Error reading battery level: {}".format(e))
         except Exception as e:
