@@ -657,7 +657,7 @@ class controller:
                     else:
                         # Calcul EMA : (nouvelle_lecture * alpha) + (ancienne_moyenne * (1 - alpha))
                         # Alpha = 0.2 (20% de la nouvelle valeur, 80% de l'ancienne)
-                        alpha = 0.2  
+                        alpha = 0.1  
                         self.battery_ema = (raw_voltage * alpha) + (self.battery_ema * (1.0 - alpha))
                     
                     # Arrondi pour un affichage propre
