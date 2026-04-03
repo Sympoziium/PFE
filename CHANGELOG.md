@@ -5,6 +5,58 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publié] — Fenetre glissante, Huber Loss et augmentation de donnees (2026-04-02)
+
+### Contexte
+Le MLP avec deltas temporels (82-dim, R²=0.48) sous-apprenait : l'ecart train/val etait quasi nul,
+indiquant un probleme de representation. La ligne blanche pointillee disparait aux capteurs IR quand
+le robot est centre, creant des etats ambigus que 5 pas de deltas ne suffisent pas a resoudre.
+
+### Added
+- **Fenetre glissante** (`dataset.py`): remplace les deltas temporels par une fenetre de 20 pas
+  consecutifs (1 seconde a 20Hz) de vecteurs 34-dim (29 raw + 5 engineered) = **680-dim d'entree**.
+  Le modele recoit 1 seconde complete de contexte temporel brut au lieu de differences ponderees.
+  - `compute_sliding_windows()`: construction vectorisee avec detection de frontieres de sequence
+    et zero-padding aux limites
+  - Buffer circulaire 20 pas dans `ml_controller.py` pour l'inference temps reel
+- **ZumiMLPWindow** (`model.py`): variante [256, 128, 64] avec dropout 0.15, ~210K params,
+  dimensionnee pour les 680-dim d'entree. Accessible via `create_model(size="window")`.
+- **Module d'augmentation de donnees** (`augment.py`, nouveau):
+  - `augment_ir_noise()`: bruit gaussien N(0, sigma) sur les 6 capteurs IR, sigma=[1.5, 3.0, 4.5]
+  - `augment_ir_scaling()`: facteurs multiplicatifs [0.85, 0.92, 1.08, 1.15] simulant des variations d'eclairage
+  - `augment_ir_dropout()`: zero-out aleatoire des capteurs IR bottom sur des patches de 3 frames
+  - `augment_combined()`: bruit + scaling combine, multiplicateur ~4x
+  - Menu interactif avec resume, validation, et log de tracabilite (`augmentation_log.json`)
+  - **Contrainte respectee**: les labels moteur ne sont jamais modifies (preservation du PID asymetrique)
+- **Menu [3] Augmenter les donnees** dans `train.py`: sous-menu pour choisir et appliquer les techniques
+  d'augmentation avant l'entrainement
+
+### Changed
+- **Huber Loss** (`train.py`): `nn.SmoothL1Loss(beta=0.1)` remplace `nn.MSELoss()`. Le MSE causait
+  une regression vers la moyenne sur les etats ambigus (ligne invisible entre les tirets). Huber
+  penalise lineairement les grands ecarts, produisant des predictions plus tranchees.
+- **`suggest_training_profile()`** refactore:
+  - Calcule `effective_dim = step_dim * WINDOW_SIZE` (680-dim) pour le budget de parametres
+  - Ratio cible ajuste a 2.5:1 (vs 3:1) pour les entrees fortement correlees
+  - Affiche un tableau des architectures possibles avec le nombre d'echantillons requis pour chacune
+  - Warning explicite quand les donnees sont insuffisantes + recommande l'augmentation
+- **`choose_training_profile()`** simplifie: [1] Adaptatif + [2] Custom. Le profil fenetre en dur est retire.
+- **`export_normalization_stats()`** inclut les metadonnees de fenetre (`mode`, `window_size`, `window_feature_dim`)
+- **Menu principal** renumerote: [3]=Augmentation, [4]=Entrainement, [5]=Simulation, [6]=Simulateur 2D
+
+### Removed
+- `compute_deltas()` et constantes `DELTA_FEATURE_INDICES`, `DELTA_STEPS`, `DELTA_WEIGHTS` de `dataset.py`
+- Profil statique `'fenetre'` de `TRAINING_PROFILES`
+- Ancien buffer de deltas dans `ml_controller.py` (remplace par `_window_buffer`)
+
+### Resultats premier entrainement (fenetre, avant augmentation)
+- **R² = 0.35** (vs 0.48 avec deltas) — regression due a l'overfitting (215K params / 72K samples = ratio 0.3:1)
+- Train/Val gap: 0.032 vs 0.060 — **overfitting confirme** (le modele memorise)
+- Conclusion: le modele fenetre a besoin de significativement plus de donnees.
+  L'augmentation (x4-6) devrait amener le ratio a un niveau sain.
+
+---
+
 ## [Non publié] — Feature engineering PID-inspired et vecteur 95-dim (2026-03-26)
 
 ### Added

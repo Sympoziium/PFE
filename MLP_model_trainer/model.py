@@ -126,6 +126,23 @@ class ZumiMLPSmall(ZumiMLP):
         )
 
 
+class ZumiMLPWindow(ZumiMLP):
+    """Version large du MLP pour entree en fenetre glissante (~680 dims).
+
+    Dimensionnee pour traiter des vecteurs d'etat concatenes sur plusieurs pas
+    temporels (ex: 34 features x 20 pas = 680 dims). Le reseau est plus large
+    que le MLP standard pour exploiter la richesse du contexte temporel.
+    """
+
+    def __init__(self, input_dim: int, output_dim: int = 2, dropout: float = 0.15):
+        super().__init__(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            hidden_dims=[256, 128, 64],
+            dropout=dropout
+        )
+
+
 def create_model(
     input_dim: int,
     output_dim: int = 2,
@@ -136,7 +153,7 @@ def create_model(
     Args:
         input_dim: Dimension d'entrée
         output_dim: Dimension de sortie
-        model_size: "small", "medium" ou "large"
+        model_size: "small", "medium", "large" ou "window"
 
     Returns:
         Instance de ZumiMLP
@@ -145,6 +162,8 @@ def create_model(
         return ZumiMLPSmall(input_dim, output_dim)
     elif model_size == "large":
         return ZumiMLPLarge(input_dim, output_dim)
+    elif model_size == "window":
+        return ZumiMLPWindow(input_dim, output_dim)
     else:  # medium (default)
         return ZumiMLP(input_dim, output_dim)
 

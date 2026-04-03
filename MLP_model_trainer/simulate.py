@@ -508,7 +508,10 @@ def run_open_loop_simulation(model, stats, sequences_dir: Path, save_dir: Path =
         plt.savefig(fname, dpi=150, bbox_inches='tight')
         print(f"  Graphique sauvegarde: {fname}")
 
-    plt.show()
+    # plt.show() uniquement si un display est disponible (pas en headless/VPS)
+    import os
+    if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY') or sys.platform == 'win32':
+        plt.show()
     plt.close()
     print()
 

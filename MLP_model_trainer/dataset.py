@@ -36,30 +36,9 @@ ENGINEERED_FEATURE_NAMES = [
     'heading_drift',      # 33: gyro_z_rate * (1 - line_visible)
 ]
 
-# Indices des features pour lesquelles calculer des deltas temporels
-# Note: 27=line_camera_offset, 28=line_camera_detected (features camera brutes)
-DELTA_FEATURE_INDICES = [
-    1,   # IR_bot_R
-    3,   # IR_bot_L
-    6,   # IR_diff
-    7,   # IR_sum
-    18,  # gyro_z (heading cumulatif)
-    27,  # line_camera_offset (NOUVEAU — signal camera fort!)
-    29,  # calibrated_error
-    31,  # cal_error_norm
-    32,  # gyro_z_rate
-    33,  # heading_drift
-]
-DELTA_FEATURE_NAMES = [
-    'IR_bot_R_delta', 'IR_bot_L_delta', 'IR_diff_delta', 'IR_sum_delta',
-    'gyro_z_delta', 'line_cam_delta',
-    'cal_error_delta', 'cal_error_norm_delta',
-    'gyro_z_rate_delta', 'heading_drift_delta',
-]
-
-# Deltas multi-pas: 5 pas d'historique avec ponderation exponentielle
-DELTA_STEPS = 5
-DELTA_WEIGHTS = [1.0, 0.7, 0.5, 0.3, 0.15]
+# Fenetre glissante: 20 pas d'historique (1 seconde a 20Hz)
+WINDOW_SIZE = 20
+WINDOW_FEATURE_DIM = 34  # 29 raw + 5 engineered (par pas de fenetre)
 
 # Indice du gyro_z dans le vecteur de base
 GYRO_Z_INDEX = 18
@@ -303,7 +282,7 @@ class ZumiControlDataset(Dataset):
           33: gyro_z_rate       - vitesse angulaire (delta gyro_z par tick)
           34: heading_drift     - derive de cap dans les gaps entre tirets
 
-        Doit etre appelee AVANT compute_deltas().
+        Doit etre appelee AVANT compute_sliding_windows().
 
         Args:
             ir_offset: Offset IR bottom (bot_left - bot_right). Si None, estime depuis le dataset.
@@ -347,75 +326,79 @@ class ZumiControlDataset(Dataset):
         print(f"[Dataset] Features engineered: {len(ENGINEERED_FEATURE_NAMES)} ajoutees "
               f"({original_dim}-dim -> {self.captures.shape[1]}-dim, ir_offset={ir_offset:.1f})")
 
-    def compute_deltas(self, delta_indices: list = None, n_steps: int = None, weights: list = None):
-        """Calcule les features temporelles multi-pas avec ponderation exponentielle.
+    def compute_sliding_windows(self, window_size: int = None):
+        """Construit des fenetres glissantes a partir des vecteurs d'etat.
 
-        Pour chaque pas k (1..n_steps), calcule:
-          delta_k[t] = (state[t] - state[t-k]) * weights[k-1]
+        Concatene window_size vecteurs d'etat consecutifs en un seul vecteur
+        plat. Le modele peut ainsi apprendre ses propres representations
+        temporelles a partir des etats bruts.
 
-        Les deltas approximent les derivees temporelles (vitesse de changement)
-        et sont appeles AVANT le shuffle pour que les echantillons consecutifs
-        soient coherents. Chaque delta est ensuite attache a son echantillon.
+        Chaque echantillon t devient: [state(t-W+1), state(t-W+2), ..., state(t)]
+        aplatit en vecteur de (feature_dim * window_size) dimensions.
+
+        Les frontieres de sequence (detectees par sauts IR > 150) sont respectees:
+        les pas avant une frontiere sont remplaces par des zeros (zero-padding).
+
+        Doit etre appelee APRES compute_engineered_features() et AVANT le shuffle.
 
         Args:
-            delta_indices: Indices des features source dans le vecteur.
-                          Par defaut DELTA_FEATURE_INDICES.
-            n_steps: Nombre de pas d'historique (defaut: DELTA_STEPS = 3).
-            weights: Poids par pas (defaut: DELTA_WEIGHTS = [1.0, 0.5, 0.25]).
+            window_size: Nombre de pas dans la fenetre (defaut: WINDOW_SIZE = 20)
         """
-        if delta_indices is None:
-            delta_indices = DELTA_FEATURE_INDICES
-        if n_steps is None:
-            n_steps = DELTA_STEPS
-        if weights is None:
-            weights = DELTA_WEIGHTS
+        if window_size is None:
+            window_size = WINDOW_SIZE
 
-        if len(self.captures) < 2:
+        n_samples = len(self.captures)
+        feature_dim = self.captures.shape[1]
+
+        if n_samples < 2:
             return
 
-        # Detecter les frontieres de sequence AVANT de calculer les deltas
-        # On utilise le delta pas-1 sur les features IR seulement (indices bruts 0-7)
-        selected_step1 = self.captures[:, delta_indices]
-        delta_step1 = np.zeros_like(selected_step1)
-        delta_step1[1:] = selected_step1[1:] - selected_step1[:-1]
-
-        ir_delta_cols = [j for j, idx in enumerate(delta_indices) if idx <= 7]
-        if ir_delta_cols:
-            ir_jumps = np.linalg.norm(delta_step1[:, ir_delta_cols], axis=1)
+        # Detecter les frontieres de sequence via sauts IR
+        ir_indices = list(range(min(8, feature_dim)))
+        if ir_indices:
+            ir_step1 = np.zeros((n_samples, len(ir_indices)), dtype=np.float32)
+            ir_step1[1:] = self.captures[1:, ir_indices] - self.captures[:-1, ir_indices]
+            ir_jumps = np.linalg.norm(ir_step1, axis=1)
             boundary_mask = ir_jumps > 150.0
         else:
-            boundary_mask = np.zeros(len(self.captures), dtype=bool)
-        boundary_mask[0] = True  # premier echantillon = pas de precedent
+            boundary_mask = np.zeros(n_samples, dtype=bool)
+        boundary_mask[0] = True
         n_boundaries = int(np.sum(boundary_mask))
 
-        # Propager les frontieres: pour un delta de pas k, zeroiser si une
-        # frontiere existe dans les k echantillons precedents
-        boundary_indices = np.where(boundary_mask)[0]
+        # Assigner un ID de sequence a chaque echantillon
+        # Les echantillons d'une meme sequence partagent le meme ID
+        seq_id = np.cumsum(boundary_mask)
 
-        # Calculer les deltas multi-pas
+        # Construire les fenetres de facon vectorisee (boucle sur window_size, pas sur n_samples)
+        windowed = np.zeros((n_samples, window_size * feature_dim), dtype=np.float32)
+
+        for w in range(window_size):
+            offset = window_size - 1 - w  # distance de lookback (0 = pas actuel)
+            col_start = w * feature_dim
+            col_end = (w + 1) * feature_dim
+
+            if offset == 0:
+                # Pas actuel — toujours valide
+                windowed[:, col_start:col_end] = self.captures
+            else:
+                # Pas decale — valide uniquement si meme sequence et index >= 0
+                valid_dst = slice(offset, n_samples)
+                valid_src = slice(0, n_samples - offset)
+
+                same_seq = seq_id[valid_dst] == seq_id[valid_src]
+
+                # Remplir seulement les echantillons valides (le reste reste a zero)
+                temp = np.zeros((n_samples, feature_dim), dtype=np.float32)
+                temp_dst = np.arange(offset, n_samples)
+                temp[temp_dst[same_seq]] = self.captures[:n_samples - offset][same_seq]
+                windowed[:, col_start:col_end] = temp
+
         original_dim = self.captures.shape[1]
-        all_deltas = []
-        for step in range(1, n_steps + 1):
-            selected = self.captures[:, delta_indices]
-            delta = np.zeros_like(selected)
-            delta[step:] = (selected[step:] - selected[:-step]) * weights[step - 1]
+        self.captures = windowed
 
-            # Zeroiser les frontieres: pour le pas k, zeroiser les indices
-            # qui ont une frontiere dans [t-k+1, t]
-            for bi in boundary_indices:
-                start = bi
-                end = min(bi + step, len(delta))
-                delta[start:end] = 0.0
-
-            all_deltas.append(delta.astype(np.float32))
-
-        self.captures = np.hstack([self.captures] + all_deltas)
-
-        n_total_deltas = len(delta_indices) * n_steps
-        print(f"[Dataset] Deltas temporels: {n_total_deltas} features ajoutees "
-              f"({original_dim}-dim -> {self.captures.shape[1]}-dim, "
-              f"{len(delta_indices)} features x {n_steps} pas)"
-              + (f", {n_boundaries} frontieres de sequence detectees" if n_boundaries > 0 else ""))
+        print(f"[Dataset] Fenetre glissante: {window_size} pas x {feature_dim} features = "
+              f"{window_size * feature_dim}-dim "
+              f"({n_boundaries} frontieres de sequence detectees)")
 
     def compute_sample_weights(self) -> np.ndarray:
         """Calcule les poids par echantillon pour equilibrer les categories d'actions.
@@ -545,20 +528,20 @@ def create_data_loaders(
     seed: int = 42,
     feature_mask: list = None,
     deduplicate: bool = True,
-    balanced_sampling: bool = True
+    balanced_sampling: bool = True,
+    window_size: int = None
 ) -> tuple:
     """Crée les DataLoaders pour l'entraînement et la validation.
 
     Pipeline complet:
       1. Chargement des donnees
       2. Deduplication des echantillons consecutifs quasi-identiques
-      3. Features engineered PID-inspired (8 features, 27-dim -> 35-dim)
-      4. Deltas temporels multi-pas (12 features x 5 pas = 60 colonnes)
-      5. Calcul des poids d'echantillonnage equilibre
-      6. Application du masque de features mortes
-      7. Split train/validation
-      8. Normalisation z-score (stats calculees sur train uniquement)
-      9. Creation des DataLoaders
+      3. Features engineered PID-inspired (5 features, 29-dim -> 34-dim)
+      4. Calcul des poids d'echantillonnage equilibre (avant fenetre glissante)
+      5. Fenetre glissante (34 features x 20 pas = 680 colonnes)
+      6. Split train/validation
+      7. Normalisation z-score (stats calculees sur train uniquement)
+      8. Creation des DataLoaders
 
     Args:
         data_dir: Répertoire des données
@@ -566,9 +549,10 @@ def create_data_loaders(
         train_ratio: Proportion des données pour l'entraînement (0.8 = 80%)
         shuffle: Mélanger les données d'entraînement (ignore si balanced_sampling=True)
         seed: Graine aléatoire pour reproductibilité
-        feature_mask: Liste d'indices de features a conserver (None = toutes)
+        feature_mask: Inutilise (conserve pour compatibilite de signature)
         deduplicate: Retirer les doublons consecutifs (defaut: True)
         balanced_sampling: Utiliser WeightedRandomSampler pour equilibrer les categories (defaut: True)
+        window_size: Taille de la fenetre glissante (defaut: WINDOW_SIZE=20)
 
     Returns:
         tuple: (train_loader, val_loader, dataset)
@@ -579,31 +563,20 @@ def create_data_loaders(
     if deduplicate:
         dataset.deduplicate()
 
-    # 2. Features engineered (27-dim -> 35-dim)
+    # 2. Features engineered (29-dim -> 34-dim)
     dataset.compute_engineered_features()
 
-    # 3. Deltas temporels multi-pas (avant shuffle, sur echantillons consecutifs)
-    dataset.compute_deltas()
-
-    # 4. Calculer les poids d'echantillonnage (avant masque, base sur les labels)
+    # 3. Calculer les poids d'echantillonnage AVANT la fenetre glissante
+    #    car classify_actions() a besoin d'acceder aux indices bruts (gyro_z = index 18)
+    #    qui ne sont plus accessibles apres le windowing
     sample_weights = None
     if balanced_sampling:
         sample_weights = dataset.compute_sample_weights()
 
-    # 5. Appliquer le masque de features (retire les features mortes)
-    #    Le masque est calcule sur les features originales (27-dim).
-    #    Les features engineered et deltas (ajoutees apres) sont toujours actives.
-    if feature_mask is not None:
-        n_engineered = len(ENGINEERED_FEATURE_NAMES)
-        n_deltas = len(DELTA_FEATURE_INDICES) * DELTA_STEPS
-        n_extra = n_engineered + n_deltas
-        original_dim = dataset.captures.shape[1] - n_extra
-        extra_indices = list(range(original_dim, original_dim + n_extra))
-        extended_mask = feature_mask + extra_indices
-        dataset.apply_feature_mask(extended_mask)
-        dataset.feature_mask = extended_mask
-    else:
-        dataset.feature_mask = None
+    # 4. Fenetre glissante (34-dim x window_size = 680-dim)
+    dataset.compute_sliding_windows(window_size=window_size)
+    dataset.window_size = window_size or WINDOW_SIZE
+    dataset.feature_mask = None
 
     # 6. Split train/validation
     n_train = int(len(dataset) * train_ratio)

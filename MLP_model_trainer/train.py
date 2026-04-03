@@ -43,7 +43,7 @@ TRAINING_PROFILES = {
         'description': 'Test rapide, petit modele',
         'model_size': 'small',
         'hidden_dims': [32, 16],
-        'epochs': 50,
+        'epochs': 200,
         'batch_size': 64,
         'lr': 1e-3,
         'weight_decay': 1e-4,
@@ -53,7 +53,7 @@ TRAINING_PROFILES = {
         'description': 'Bon compromis qualite/temps',
         'model_size': 'medium',
         'hidden_dims': [64, 32],
-        'epochs': 100,
+        'epochs': 250,
         'batch_size': 32,
         'lr': 1e-3,
         'weight_decay': 1e-4,
@@ -63,7 +63,7 @@ TRAINING_PROFILES = {
         'description': 'Meilleure qualite, plus long',
         'model_size': 'large',
         'hidden_dims': [128, 64, 32],
-        'epochs': 200,
+        'epochs': 300,
         'batch_size': 16,
         'lr': 5e-4,
         'weight_decay': 1e-5,
@@ -133,7 +133,7 @@ class Trainer:
         self.device = device
         self.norm_stats = norm_stats or {}
 
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.SmoothL1Loss(beta=0.1)
         self.optimizer = optim.AdamW(
             model.parameters(),
             lr=lr,
@@ -607,13 +607,14 @@ def show_main_menu(script_dir: Path) -> tuple:
     print(f"\n  Options :")
     print(f"    [1] Agreger les sequences (consolide tous les scenarios -> data/)")
     print(f"    [2] Analyser le dataset (statistiques + graphiques)")
-    print(f"    [3] Entrainer un modele")
-    print(f"    [4] Simulation & evaluation avancee")
-    print(f"    [5] Simulateur 2D (circuit virtuel temps reel)")
+    print(f"    [3] Augmenter les donnees (bruit IR, scaling, dropout)")
+    print(f"    [4] Entrainer un modele")
+    print(f"    [5] Simulation & evaluation avancee")
+    print(f"    [6] Simulateur 2D (circuit virtuel temps reel)")
     print(f"    [Q] Quitter")
 
     # Validation du choix
-    valid_choices = {'1', '2', '3', '4', '5', 'Q'}
+    valid_choices = {'1', '2', '3', '4', '5', '6', 'Q'}
 
     while True:
         choice = input(f"\n  Choix : ").strip().upper()
@@ -634,38 +635,34 @@ def _count_params(input_dim, hidden_dims, output_dim=2):
 
 
 def suggest_training_profile(dataset) -> dict:
-    """Analyse le dataset et propose un profil d'entrainement adapte.
+    """Analyse le dataset et propose un profil d'entrainement adapte a la fenetre glissante.
 
-    Calcule les hidden_dims pour maintenir un ratio params/samples entre 1:5 et 1:10.
-    Adapte les epochs, batch_size, lr et weight_decay en consequence.
-
-    Detecte aussi le cas ou le dataset est trop petit pour apprendre une relation
-    non-lineaire (architecture minimum requise > budget disponible).
+    Calcule les hidden_dims pour maintenir un ratio samples/params >= 2.5.
+    L'entree effective est (raw_active + engineered) * WINDOW_SIZE (~680 dims).
+    Avertit quand le dataset est insuffisant et suggere l'augmentation.
     """
     n_samples = len(dataset)
     raw_dim = dataset.input_dim
 
-    # Detecter les features mortes (std < 1e-6) et construire le masque
+    # Detecter les features mortes (std < 1e-6)
     stds = dataset.captures.std(axis=0)
     active_indices = [i for i in range(raw_dim) if stds[i] > 1e-6]
     n_active = len(active_indices)
     n_dead = raw_dim - n_active
 
-    # Appliquer le masque si >0 features mortes
     feature_mask = active_indices if n_dead > 0 else None
-    # Le pipeline ajoute 2 features engineered + 7 features x 3 pas = 21 deltas
-    from dataset import ENGINEERED_FEATURE_NAMES, DELTA_FEATURE_INDICES, DELTA_STEPS
+
+    # Dimension effective apres fenetre glissante
+    from dataset import ENGINEERED_FEATURE_NAMES, WINDOW_SIZE
     n_engineered = len(ENGINEERED_FEATURE_NAMES)
-    n_deltas = len(DELTA_FEATURE_INDICES) * DELTA_STEPS
-    effective_dim = (n_active if feature_mask else raw_dim) + n_engineered + n_deltas
+    step_dim = (n_active if feature_mask else raw_dim) + n_engineered
+    effective_dim = step_dim * WINDOW_SIZE
 
-    # Budget de parametres: viser ratio 1:3 a 1:7
-    # Avec 85K+ samples et un vecteur 87-dim, on peut se permettre des modeles
-    # plus gros (cible ~50-60KB TFLite, bien en dessous des 90KB des modeles Haar)
-    target_ratio = 3
-    param_budget = n_samples // target_ratio
+    # Budget: ratio samples/params >= 2.5 (adapte aux entrees correlees de la fenetre)
+    target_ratio = 2.5
+    param_budget = int(n_samples / target_ratio)
 
-    # Chercher les hidden_dims qui respectent le budget (avec effective_dim)
+    # Architectures candidates (triees par taille croissante)
     candidates = [
         [16],
         [32, 16],
@@ -685,35 +682,42 @@ def suggest_training_profile(dataset) -> dict:
     n_params = _count_params(effective_dim, best_dims)
     actual_ratio = n_samples / n_params if n_params > 0 else 0
 
-    # --- Detection dataset insuffisant ---
-    min_viable_dims = [32, 16]
-    min_viable_params = _count_params(effective_dim, min_viable_dims)
-    min_samples_needed = min_viable_params * target_ratio
-
+    # --- Warnings et recommandations ---
     warnings = []
-    if len(best_dims) < 2:
+
+    # Montrer les architectures possibles avec le nombre de samples requis
+    arch_table = []
+    for dims in candidates:
+        p = _count_params(effective_dim, dims)
+        needed = int(p * target_ratio)
+        fits = "  <--" if dims == best_dims else ""
+        arch_table.append(f"      {str(dims):20s} {p:>8,} params  ({needed:>9,} samples requis){fits}")
+
+    if len(best_dims) < 2 or actual_ratio < 2.5:
+        min_dims = [64, 32]
+        min_params = _count_params(effective_dim, min_dims)
+        min_samples = int(min_params * target_ratio)
         warnings.append(
-            f"[WARN] Dataset insuffisant pour l'apprentissage non-lineaire!\n"
-            f"           Le budget ({param_budget} params) ne permet qu'une seule couche cachee,\n"
-            f"           ce qui est insuffisant pour capter des relations non-lineaires\n"
-            f"           (ex: suivi de ligne, reactions aux virages).\n"
-            f"           Architecture minimum viable: {effective_dim} -> {' -> '.join(map(str, min_viable_dims))} -> 2\n"
-            f"             = {min_viable_params:,} parametres (ratio {target_ratio}:1 -> {min_samples_needed:,} echantillons)\n"
-            f"           Echantillons actuels: {n_samples:,}\n"
-            f"           Objectif minimum: ~{min_samples_needed:,} echantillons"
+            f"[WARN] Dataset limite pour la fenetre glissante ({effective_dim}-dim)!\n"
+            f"           Echantillons: {n_samples:,}, Budget: {param_budget:,} params\n"
+            f"           Architecture recommandee: {min_dims} = {min_params:,} params\n"
+            f"           Echantillons necessaires: ~{min_samples:,}\n"
+            f"           -> Utilisez l'option [3] Augmenter les donnees (x4-6 avec combine)"
         )
 
-    # Adapter les hyperparametres selon la taille du dataset
+    # Hyperparametres adaptes
     if n_samples < 5000:
         epochs, batch_size, lr, wd = 400, 32, 1e-3, 1e-4
-    elif n_samples < 20000:
+    elif n_samples < 50000:
         epochs, batch_size, lr, wd = 300, 64, 1e-3, 1e-4
+    elif n_samples < 200000:
+        epochs, batch_size, lr, wd = 200, 64, 1e-3, 1e-4
     else:
-        epochs, batch_size, lr, wd = 250, 64, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 300, 64, 1e-3, 1e-4
 
     profile = {
         'name': 'Adaptatif',
-        'description': f'Adapte au dataset ({n_samples} samples, {n_active} features actives)',
+        'description': f'Adapte au dataset ({n_samples} samples, fenetre {WINDOW_SIZE}x{step_dim}={effective_dim}-dim)',
         'hidden_dims': best_dims,
         'epochs': epochs,
         'batch_size': batch_size,
@@ -722,7 +726,7 @@ def suggest_training_profile(dataset) -> dict:
         'feature_mask': feature_mask,
     }
 
-    return profile, n_params, actual_ratio, n_active, warnings
+    return profile, n_params, actual_ratio, n_active, warnings, arch_table
 
 
 def choose_training_profile(dataset=None) -> dict:
@@ -730,32 +734,32 @@ def choose_training_profile(dataset=None) -> dict:
 
     suggested = None
     if dataset is not None:
-        suggested, n_params, ratio, n_active, warnings = suggest_training_profile(dataset)
+        suggested, n_params, ratio, n_active, warnings, arch_table = suggest_training_profile(dataset)
 
-        from dataset import ENGINEERED_FEATURE_NAMES, DELTA_FEATURE_INDICES, DELTA_STEPS
+        from dataset import ENGINEERED_FEATURE_NAMES, WINDOW_SIZE
         n_eng = len(ENGINEERED_FEATURE_NAMES)
-        n_dlt = len(DELTA_FEATURE_INDICES) * DELTA_STEPS
-
-        mask = suggested.get('feature_mask')
-        base_active = n_active
-        effective_dim = (len(mask) if mask else dataset.input_dim) + n_eng + n_dlt
+        step_dim = n_active + n_eng
+        effective_dim = step_dim * WINDOW_SIZE
 
         print(f"\n  Profil suggere (base sur l'analyse du dataset) :")
-        print(f"    Dataset: {len(dataset)} echantillons, {dataset.input_dim} features "
-              f"({base_active} actives + {n_eng} engineered + {n_dlt} deltas)")
-        if mask:
-            print(f"    Masque: {dataset.input_dim}-dim -> {base_active}-dim actives "
-                  f"+ {n_eng} eng + {n_dlt} deltas = {effective_dim}-dim")
+        print(f"    Dataset: {len(dataset):,} echantillons, {dataset.input_dim} features brutes")
+        print(f"    Pipeline: {n_active} actives + {n_eng} engineered = {step_dim}/pas, "
+              f"fenetre x{WINDOW_SIZE} = {effective_dim}-dim")
         print(f"    Architecture: {effective_dim} -> {' -> '.join(map(str, suggested['hidden_dims']))} -> 2")
         print(f"    Parametres: {n_params:,} (ratio samples/params: {ratio:.1f}:1)")
         print(f"    Epochs: {suggested['epochs']}, Batch: {suggested['batch_size']}, LR: {suggested['lr']}")
 
-        if ratio < 2:
-            print(f"    [WARN] Ratio faible ({ratio:.1f}:1) - risque de surapprentissage.")
-            print(f"           Envisagez de collecter plus d'echantillons.")
+        if ratio < 2.5:
+            print(f"    [WARN] Ratio faible ({ratio:.1f}:1) — risque de surapprentissage.")
+            print(f"           Utilisez l'option [3] du menu pour augmenter les donnees.")
 
         for w in warnings:
             print(f"    {w}")
+
+        # Tableau des architectures possibles
+        print(f"\n  Architectures possibles (ratio cible >= {2.5}:1) :")
+        for line in arch_table:
+            print(line)
 
     print(f"\n  Options :")
     if suggested:
@@ -768,16 +772,16 @@ def choose_training_profile(dataset=None) -> dict:
             return suggested
         elif c == '2':
             config = configure_custom_profile()
-            # Hériter feature_mask du profil suggéré
             if suggested:
                 config['feature_mask'] = suggested.get('feature_mask')
-            # Afficher un avertissement si le custom est risque
             if dataset is not None:
-                custom_params = _count_params(dataset.input_dim, config['hidden_dims'])
+                from dataset import WINDOW_SIZE
+                effective = dataset.input_dim  # raw dim avant fenetre
+                custom_params = _count_params(effective * WINDOW_SIZE, config['hidden_dims'])
                 custom_ratio = len(dataset) / custom_params if custom_params > 0 else 0
                 print(f"\n    Parametres: {custom_params:,} (ratio samples/params: {custom_ratio:.1f}:1)")
                 if custom_ratio < 2:
-                    print(f"    [WARN] Ratio faible - risque de surapprentissage avec ce dataset.")
+                    print(f"    [WARN] Ratio faible — risque de surapprentissage avec ce dataset.")
                 elif custom_ratio > 20:
                     print(f"    [INFO] Modele tres petit par rapport aux donnees. Pourrait sous-apprendre.")
             return config
@@ -1019,15 +1023,15 @@ def run_training(script_dir: Path, state: dict):
     load_environment_config(script_dir)
 
     # Chargement des donnees avec dedup + masque + z-score + echantillonnage equilibre
-    feature_mask = config.get('feature_mask')
-    print("\n  Chargement des donnees (dedup + deltas + z-score + equilibrage)...")
+    window_size = config.get('window_size')
+    print(f"\n  Chargement des donnees (dedup + fenetre glissante + z-score + equilibrage)...")
     train_loader, val_loader, dataset = create_data_loaders(
         str(data_dir),
         batch_size=config.get('batch_size', 32),
         seed=seed,
-        feature_mask=feature_mask,
         deduplicate=True,
-        balanced_sampling=False
+        balanced_sampling=False,
+        window_size=window_size
     )
 
     # Creation du modele avec la configuration custom
@@ -1051,7 +1055,8 @@ def run_training(script_dir: Path, state: dict):
     norm_stats = {}
     if hasattr(dataset, 'feature_mean'):
         from dataset import (IR_OFFSET_DEFAULT, GAP_THRESHOLD,
-                             OFF_ROAD_THRESHOLD, GRASS_THRESHOLD)
+                             OFF_ROAD_THRESHOLD, GRASS_THRESHOLD,
+                             WINDOW_SIZE, WINDOW_FEATURE_DIM)
         norm_stats = {
             'feature_mean': dataset.feature_mean.tolist(),
             'feature_std': dataset.feature_std.tolist(),
@@ -1064,6 +1069,10 @@ def run_training(script_dir: Path, state: dict):
             'off_road_threshold': OFF_ROAD_THRESHOLD,
             'grass_threshold': GRASS_THRESHOLD,
             'feature_version': 2,
+            # Metadonnees fenetre glissante
+            'mode': 'sliding_window',
+            'window_size': getattr(dataset, 'window_size', WINDOW_SIZE),
+            'window_feature_dim': WINDOW_FEATURE_DIM,
         }
 
     # Entraînement
@@ -1245,14 +1254,19 @@ def main():
             input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == '3':
-            run_training(script_dir, state)
+            from augment import run_augmentation_menu
+            run_augmentation_menu(script_dir)
             input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == '4':
+            run_training(script_dir, state)
+            input("\n  Appuyez sur Entree pour continuer...")
+
+        elif choice == '5':
             from simulate import run_simulation_menu
             run_simulation_menu(script_dir, state)
 
-        elif choice == '5':
+        elif choice == '6':
             from simulator_2d import run_simulator_menu
             run_simulator_menu(script_dir, state)
 

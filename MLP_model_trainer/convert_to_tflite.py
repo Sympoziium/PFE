@@ -235,6 +235,10 @@ def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
         "off_road_threshold": checkpoint.get('off_road_threshold', 120.0),
         "grass_threshold": checkpoint.get('grass_threshold', 140.0),
         "feature_version": checkpoint.get('feature_version', 1),
+        # Metadonnees fenetre glissante
+        "mode": checkpoint.get('mode', 'sliding_window'),
+        "window_size": checkpoint.get('window_size', 20),
+        "window_feature_dim": checkpoint.get('window_feature_dim', 34),
     }
 
     stats_path = output_dir / "normalization_stats.json"
