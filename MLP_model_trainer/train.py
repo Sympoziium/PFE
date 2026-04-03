@@ -32,6 +32,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataset import ZumiControlDataset, create_data_loaders
 from model import create_model, ZumiMLP
 
+EARLY_STOPPING_PATIENCE = 55 # Nombre d'epochs sans amelioration avant arret (ajuste pour les profils plus longs)
 
 # ══════════════════════════════════════════════════════════════
 #  Profils d'entrainement par defaut
@@ -342,7 +343,7 @@ class Trainer:
         self,
         epochs: int,
         save_dir: Path,
-        early_stopping_patience: int = 35
+        early_stopping_patience: int = EARLY_STOPPING_PATIENCE
     ) -> dict:
         """Boucle d'entraînement principale.
 
@@ -827,7 +828,7 @@ def configure_custom_profile() -> dict:
     while True:
         try:
             epochs = int(input("    Nombre d'epochs (10-500, defaut: 100) : ").strip() or "100")
-            if 10 <= epochs <= 500:
+            if 10 <= epochs:
                 config['epochs'] = epochs
                 break
             print("    Doit etre entre 10 et 500.")
