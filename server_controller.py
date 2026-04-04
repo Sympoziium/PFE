@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # server_controller.py
 # ------------------
@@ -7,17 +7,27 @@
     Centralise la logique des endpoints; `flask_router.py` ne fait que lier les routes
     à ces méthodes.
 """
+
 import requests  # <--- IMPORTANT : Pour communiquer avec le pont
 import os, uuid, time, cv2, itertools, numpy as np
+import json
 
 from flask import Flask, Response, request, jsonify, send_from_directory, url_for
 
+
 from interface.onglet_acceuil import render_accueil_tab
+from interface.onglet_control import render_control_tab
 from interface.onglet_vision import render_vision_tab
+from interface.onglet_pid import render_pid_tab
 from interface.onglet_template import render_template_tab  # Exemple d'onglet template générique
-from core.control.pid_controller import PIDController
-from core.control.line_following_state_machine import StepByStepStateMachine
-from core.control.control_manager import ControlManager, MODE_IDLE, MODE_PID, MODE_STATE_MACHINE, MODE_STEP_BY_STEP
+from core.control.legacy.line_following_pid import PIDController
+from core.control.legacy.line_following_state_machine import StepByStepStateMachine
+from core.control.control_manager import ControlManager
+from core.control.controlers.manual_controller import ManualController
+from core.control.IO_drivers.motor_command import MotorCommand
+from core.control.IO_drivers.sensor_driver import SensorDriver # test du nouveau driver de capteurs
+from core.control.IO_drivers.motor_command import CommandType
+from core.vision.vision_adapter import VisionAdapter
 
 # --- Fonction helper pour formater les résultats de détection ---
 def format_detection_result(results, detector_name="Détecteur"):
@@ -101,9 +111,14 @@ def format_detection_result(results, detector_name="Détecteur"):
     return '\n'.join(lines)
 
 
-# --- Variables pour le contrôle des moteurs ---
-DRIVE_SPEED = 20
-TURN_SPEED = 15
+# --- Constantes de contrôle importées depuis robot_zumi (source unique) ---
+from core.robot.robot_zumi import (
+    DRIVE_SPEED_DEFAULT, TURN_SPEED_DEFAULT,
+    CAMERA_PROFILES, BATTERY_VOLTAGE_MAX, BATTERY_VOLTAGE_MIN
+)
+# Alias pour compatibilité avec le code existant
+DRIVE_SPEED = DRIVE_SPEED_DEFAULT
+TURN_SPEED = TURN_SPEED_DEFAULT
 WATCHDOG_TIMEOUT_SECONDS = 0.8
 
 class controller:
@@ -115,6 +130,7 @@ class controller:
         self.last_move_time = time.time()
         self.debug = debug
         self.watchdog_active = False
+        self.livefeed_fps = 30
         # Rétro-compatibilité : pid_controller local utilisé seulement
         # quand aucun ControlManager n'est attaché.
         self.pid_controller = PIDController()
@@ -131,7 +147,18 @@ class controller:
         # Dossier pour sauvegarder les captures d'images
         self.CAPTURE_DIR = os.path.join(self.app.static_folder, 'captured_images')
         os.makedirs(self.CAPTURE_DIR, exist_ok=True)
-
+        # Échantillonnage des données des capteurs
+        self.debug_control_sampling = False  # Désactivé par défaut pour réduire l'overhead CPU
+        self.sampling_active = False
+        self.sampling_vectors = [] # Vecteurs d'entrées (NDJSON)
+        self.sampling_labels = []  # Vecteurs labels (NDJSON)
+        self.sampling_zeroed_groups = set()  # Groupes de features forcés à 0 pendant l'échantillonnage
+        self._ml_classes = []
+        self._last_debug_print_time = 0.0  # Throttle du debug à ~3 Hz
+        self.manual_drive_speed = DRIVE_SPEED
+        self.manual_turn_speed = TURN_SPEED
+        self.last_action = None  # Pour mémoriser la dernière action de contrôle (pour le sampling)
+        self.battery_level = None  # Niveau de batterie (si disponible via SensorDriver)
         
         # --- CONFIGURATION DU PONT ---
         # ⚠️ REMPLACE CECI PAR L'IP QUE TON ARDUINO A AFFICHÉE
@@ -146,17 +173,19 @@ class controller:
         pipeline.attach_capture_dir(self.CAPTURE_DIR)
         self.vision_pipeline = pipeline
         self.vision_pipeline.debug = self.debug
+        self._ml_classes = self._infer_ml_classes()
 
     def attach_control_manager(self, control_manager):
-        """Attache le ControlManager (orchestrateur de contrôle).
-
-        Quand un ControlManager est attaché, les routes PID/step délèguent
-        au manager plutôt que de gérer les threads en interne.
-        """
+        """Attache le ControlManager (orchestrateur de contrôle)."""
         self.control_manager = control_manager
-        # Utiliser le PID du ControlManager comme référence unique
-        if control_manager.pid_controller is not None:
-            self.pid_controller = control_manager.pid_controller
+
+        # --- Enregistrement du contrôleur manuel ---
+        # Si le contrôleur manuel n'est pas encore enregistré dans le ControlManager, on le fait ici.
+        if "manual_controller" not in self.control_manager._controllers:
+            self.control_manager.register_controller("manual_controller", ManualController(default_speed=self.manual_drive_speed))
+
+        # Hook pour l'échantillonnage de données synchronisé avec la boucle de contrôle
+        self.control_manager.set_sampling_callback(self._sampling_callback)
 
     # --- Navigation ---
     def home(self):
@@ -168,6 +197,12 @@ class controller:
     def onglet_template(self):
         return render_template_tab("Template")
     
+    def onglet_control(self):
+        return render_control_tab("Contrôle du Zumi")
+    
+    def pid_page(self):
+        return render_pid_tab("Asservissement PID")
+    
     # --- Système ---
     def exit_server(self):
         func = request.environ.get('werkzeug.server.shutdown')
@@ -175,39 +210,84 @@ class controller:
         func()
         return ('', 204)
     
-    def motor_watchdog(self):
+    def Log_watchdog(self):
         """
         Thread qui s'exécute en arrière-plan.
-        Arrête les moteurs si la dernière commande de mouvement
-        est trop ancienne (ex: le client s'est déconnecté).
-        
-        *** AUSSI: Log les ressources du Pi toutes les 5 secondes ***
-        (10 itérations * 0.5s = 5s) sans thread additionnel.
+        Gère les logs ressources système.
+        Note: L'échantillonnage est maintenant synchronisé dans _sampling_callback via ControlManager.
+        Le watchdog moteur est géré par le ManualController.
         """
-        print("[Watchdog] Démarré (en attente d'activation).")
+        print("[Watchdog] Démarré.")
         iteration_count = 0
-        
+
         while True:
             iteration_count += 1
-            
-            # --- Watchdog moteur ---
-            if self.watchdog_active:
-                time_since_last_move = time.time() - self.last_move_time
-                if time_since_last_move > WATCHDOG_TIMEOUT_SECONDS:
-                    try:
-                        if self.robot: 
-                            self.robot.stop()
-                        self.last_move_time = time.time() 
-                    except Exception as e:
-                        pass
-            
-            # --- Log ressources toutes les 40s (40 itérations * 0.5s) ---
+
+            # --- Logs du controleur actif toutes les 3 secondes (6 itérations * 0.5s) ---
+            if self.control_manager and iteration_count % 6 == 0:
+                active = self.control_manager._active_controller
+                if active:
+                    print(f"[Watchdog] Contrôleur actif: {active.name}")
+                    if hasattr(active, 'get_debug_info'):
+                        debug_info = active.get_debug_info()
+                        print(f"[Watchdog] {active.name}: {json.dumps(debug_info, indent=2)}")
+
+            # --- Logs des ressources système toutes les 20 secondes (40 itérations * 0.5s) ---
             if iteration_count % 40 == 0:
                 self._log_resource_usage_internal()
-                iteration_count = 0  # reset du compteur après log
-            
+
             time.sleep(0.5)
 
+    def _sampling_callback(self, state, command):
+        """
+        Callback synchronisé avec la boucle de contrôle (appelé à chaque tick).
+
+        Échantillonne quand sampling_active est True ET qu'un contrôleur est actif.
+        Le command reçu est la sortie de step() = commande POST-PID.
+
+        Filtre les samples idle (0,0 prolongés) pour éviter de bruiter le dataset
+        avec des échantillons sans mouvement. Les premiers samples d'arrêt après
+        un mouvement sont conservés (arrêt intentionnel).
+        """
+        if not self.sampling_active:
+            return
+
+        active = self.control_manager._active_controller
+        if active is None:
+            return
+
+        # Filtrer l'idle prolongé: garder max 10 samples consécutifs à (0,0)
+        # pour représenter un arrêt intentionnel sans flood le dataset
+        is_stop = (command.left_speed == 0 and command.right_speed == 0)
+        if is_stop:
+            if not hasattr(self, '_consecutive_stop_samples'):
+                self._consecutive_stop_samples = 0
+            self._consecutive_stop_samples += 1
+            if self._consecutive_stop_samples > 10:
+                return  # Skip l'idle prolongé
+        else:
+            self._consecutive_stop_samples = 0
+
+        try:
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+            label = adapter.encode_label(
+                command.left_speed, command.right_speed
+            ).tolist()
+
+            if vector is None or label is None:
+                return
+
+            import numpy as np
+            v_array = np.array(vector)
+            l_array = np.array(label)
+            v_array = self._apply_sampling_kill(v_array, adapter)
+
+            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                self.sampling_vectors.append(v_array.tolist())
+                self.sampling_labels.append(label)
+        except Exception as e:
+            print("[Sampling] Erreur callback contrôleur auto: {}".format(e))
 
 # ----------------------------------------------------------------------------
 #            Fonctions de callback pour les actions de vision
@@ -320,7 +400,7 @@ class controller:
             if frame_bgr is None:
                 return jsonify({'error': 'failed to read captured image'}), 500
 
-            results = vp.process_frame(frame_bgr, detetor_index=self.selected_detector_index, filename=filename)
+            results = vp.process_frame(frame_bgr, detector_index=self.selected_detector_index, filename=filename)
 
             # Afficher les résultats formatés dans les logs
             detector_name = vp.get_detectors()[self.selected_detector_index].name if hasattr(vp.get_detectors()[self.selected_detector_index], 'name') else 'Unknown'
@@ -403,68 +483,85 @@ class controller:
             traceback.print_exc()
             return jsonify({'error': 'diagnose_detector failed', 'details': str(e)}), 500
 
-
+    def set_livefeed_fps(self, fps=None):
+        """Met à jour le framerate du flux vidéo en direct.
+        
+        Le FPS est contrôlé par le sleep_time dans la boucle du générateur vidéo.
+        Pas besoin de toucher à la caméra — la valeur est lue dynamiquement à chaque itération.
+        """
+        if fps is None:
+            data = request.get_json(silent=True) or {}
+            fps = data.get('fps')
+        try:
+            fps = int(fps)
+            if fps < 1 or fps > 60:
+                return jsonify({'error': 'FPS doit être entre 1 et 60'}), 400
+            self.livefeed_fps = fps
+            print("FPS du flux vidéo mis à jour: {} FPS".format(self.livefeed_fps))
+            return jsonify({'ok': True, 'fps': fps})
+        except (ValueError, TypeError):
+            return jsonify({'error': 'FPS doit être un entier valide'}), 400
+        
     # Flux vidéo
     def video_feed(self):
         vp = self.vision_pipeline
         if not vp or not vp.is_running(): return "Camera OFF", 503
         def generate():
-            frames = 0
+            frame_counter  = 0
             previous_distance = None
-            STICKY_SECONDS = 1.5        # Durée pendant laquelle la dernière détection positive reste affichée
-            last_positive_time = 0.0    # time.time() du dernier résultat positif
-            last_positive_result = None # dernier résultat positif reçu
+            
             while vp.is_running():
                 try:
-                    # Capture directe depuis la caméra
-                    # (get_last_frame ne fonctionne que si un contrôleur
-                    #  peuple le buffer via vp.step(); ici on capture nous-mêmes)
                     frame_bgr = vp.camera.capture()
                     if frame_bgr is None:
                         time.sleep(0.1)
                         continue
-                    # Mettre à jour le buffer pour les captures instantanées
-                    # NOTE: on stocke la frame BRUTE (sans annotations) pour que
-                    # le thread de détection passive travaille sur une image propre.
                     vp.update_last_frame(frame_bgr)
                 except Exception:
                     time.sleep(0.1)
                     continue
+
+                # --- Déclencher la détection passive selon detection_rate ---
+                if vp._passive_running:
+                    frame_counter += 1
+                    if frame_counter % vp._detection_rate == 0:
+                        vp._detection_trigger.set()  # signal au thread de détection
 
                 # --- Overlay détection passive sur la frame d'affichage ---
                 display_frame = frame_bgr
                 if vp._passive_running:
                     result = vp.get_last_detection_result()
                     now = time.time()
-                    if result and result.get('Object_detected'):
-                        last_positive_time = now
-                        last_positive_result = result
-                    # Garder l'annotation visible pendant STICKY_SECONDS après la dernière détection positive
-                    active_result = last_positive_result if (now - last_positive_time) < STICKY_SECONDS else None
-                    if active_result:
-                        if frames % 10 == 0:  # Limiter la fréquence d'annotation pour réduire la charge CPU
-                            # Dessine sur une copie pour ne pas polluer le buffer brut
-                            display_frame, previous_distance = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=True, previous_distance=previous_distance, debug=self.debug)
-                            frames = 0  # reset du compteur après annotation
-                        else:
-                            # Dessin des contours détecté sans recalculer la distance pour économiser du CPU
-                            display_frame, _ = self._draw_passive_overlay(frame_bgr.copy(), active_result, approximate_distance=False, previous_distance=previous_distance, debug=self.debug)
 
-                elif self.control_manager and self.control_manager.mode != MODE_IDLE:
-                    # Mode actif (PID / state machine) — annoter avec les données du dernier cycle
-                    for det in vp.detectors:
-                        if getattr(det, 'name', '') == 'line' and getattr(det, '_last_annotation_data', None) is not None:
-                            display_frame = det.annotate_detection(frame_bgr.copy())
-                            break
-                
+                    # vérifier que la détection est récente (ex: dans les 2-5 dernières Frames)
+                    max_age = (vp._detection_rate / self.livefeed_fps) * 2
+                    result_age = now - result.get('timestamp', 0) if result else float('inf')
+
+                    # On annote seulement si la détection est récente pour éviter d'afficher des résultats obsolètes
+                    if result and result.get('Object_detected') and result_age <= max_age:
+                        # Calcul de distance seulement toutes les 3 frames pour économiser le CPU
+                        if frame_counter % 3 == 0:
+                            display_frame, previous_distance = self._draw_passive_overlay(
+                                frame_bgr.copy(), result,
+                                approximate_distance=True,
+                                previous_distance=previous_distance,
+                                debug=self.debug
+                            )
+                        else:
+                            display_frame, _ = self._draw_passive_overlay(
+                                frame_bgr.copy(), result,
+                                approximate_distance=False,
+                                previous_distance=previous_distance,
+                                debug=self.debug
+                            )
 
                 # Encodage direct en JPEG depuis BGR
                 ret, jpeg = cv2.imencode('.jpg', display_frame)
                 if not ret:
                     continue
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-                time.sleep(0.05) ### on impose une limite du livefeed a 20fps si on veux faire de la détection passive sa pourrais bloquer le Pi
-                frames += 1 # mise à jour du compteur de frames pour l'annotation de détection passive
+                
+                time.sleep(1.0 / self.livefeed_fps)
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
@@ -530,7 +627,7 @@ class controller:
 
     def _log_resource_usage_internal(self):
         """
-        Helper interne: Log LÉGER des ressources du Pi (appelé par motor_watchdog toutes les 5s).
+        Helper interne: Log LÉGER des ressources du Pi (appelé par Log_watchdog toutes les 5s).
         Optimisé pour Pi Zero V1 - zéro overhead, directement dans stdout du serveur.
         """
         try:
@@ -539,13 +636,38 @@ class controller:
             ram = psutil.virtual_memory()
             num_threads = psutil.Process().num_threads()
             ram_used_mb = round(ram.used / (1024 * 1024), 1)
-            ram_available_mb = round(ram.available / (1024 * 1024), 1)
+            ram_free_mb = round(ram.available / (1024 * 1024), 1)
+            ram_total_mb = round(ram.total / (1024 * 1024), 1)
             io_wait = psutil.Process().cpu_times().iowait if hasattr(psutil.Process().cpu_times(), 'iowait') else 0
             # Format compact pour vision rapide dans le terminal
+            print("\n" + "-" * 60)
             print("[Zumi] CPU: {:.1f}% | RAM: {:.1f}% | Threads: {}".format(
                 cpu_percent, ram.percent, num_threads))
-            print("[Other] RAM Usage: {}/{} MB | IO Wait: {:.2f}s".format(ram_used_mb, ram_available_mb, io_wait))
+            print("[RAM] {:.1f} MB used | {:.1f} MB free | {:.1f} MB total | IO Wait: {:.2f}s".format(
+                ram_used_mb, ram_free_mb, ram_total_mb, io_wait))
             print("[Timestamp] {}".format(time.strftime('%H:%M:%S')))
+            # Battery level
+            if self.robot and hasattr(self.robot, 'get_battery_voltage'):
+                try:
+                    raw_voltage = self.robot.get_battery_voltage()
+                    
+                    # Initialisation au premier appel
+                    if getattr(self, 'battery_ema', None) is None:
+                        self.battery_ema = raw_voltage
+                    else:
+                        # Calcul EMA : (nouvelle_lecture * alpha) + (ancienne_moyenne * (1 - alpha))
+                        # Alpha = 0.2 (20% de la nouvelle valeur, 80% de l'ancienne)
+                        alpha = 0.15
+                        self.battery_ema = (raw_voltage * alpha) + (self.battery_ema * (1.0 - alpha))
+                    
+                    # Arrondi pour un affichage propre
+                    smoothed_voltage = round(self.battery_ema, 3)
+                    
+                    # Calcul sur la tension lissée
+                    battery_percent = max(0, min(100, int((smoothed_voltage - BATTERY_VOLTAGE_MIN) / (BATTERY_VOLTAGE_MAX - BATTERY_VOLTAGE_MIN) * 100)))
+                    print("[Battery] Level: {}V ({:.1f}%)".format(smoothed_voltage, battery_percent))
+                except Exception as e:
+                    print("[Battery] Error reading battery level: {}".format(e))
         except Exception as e:
             pass  # Silencieux si psutil indisponible
 
@@ -625,6 +747,55 @@ class controller:
 
         return jsonify({'ok': True, 'resolution': '{}x{}'.format(w, h)})
 
+    def _apply_camera_profile(self, profile_name):
+        """Applique un profil de caméra (résolution) de façon transparente.
+
+        Utilisé automatiquement lors de l'activation/désactivation des contrôleurs
+        pour optimiser les ressources CPU selon le mode actif.
+
+        Args:
+            profile_name: 'passive' (320x240) ou 'stream' (640x480)
+        """
+        if profile_name not in CAMERA_PROFILES:
+            print("[ServerController] Profil caméra inconnu: {}".format(profile_name))
+            return
+
+        vp = self.vision_pipeline
+        if vp is None:
+            return
+
+        profile = CAMERA_PROFILES[profile_name]
+        w, h, fps = profile['width'], profile['height'], profile['fps']
+
+        # Vérifier si on est déjà à cette résolution (éviter changement inutile)
+        if hasattr(vp, 'camera') and vp.camera is not None:
+            current_w = getattr(vp.camera, '_width', None)
+            current_h = getattr(vp.camera, '_height', None)
+            if current_w == w and current_h == h:
+                return  # Déjà à la bonne résolution
+
+        was_running = vp.is_running()
+        was_passive = vp._passive_running
+
+        if was_passive:
+            vp.pause_passive_detection()
+        if was_running:
+            vp.stop()
+            time.sleep(0.2)
+
+        try:
+            vp.set_passive_detection_FPS(1) # on souhaite trigger la détection sur chaque frame du livefeed
+            self.set_livefeed_fps(fps) # mettre à jour le FPS du livefeed pour correspondre au profil
+            vp.change_camera_resolution(w, h)
+            print("[ServerController] Profil caméra '{}' Résolution appliqué: {}x{} @ {} FPS".format(profile_name, w, h, fps))
+        except Exception as e:
+            print("[ServerController] Erreur changement profil caméra: {}".format(e))
+
+        if was_running:
+            vp.start()
+        if was_passive:
+            vp.resume_passive_detection()
+
 # ----------------------------------------------------------------------------
 #          Fonctions de callback pour les actions moteur du robot
 # ----------------------------------------------------------------------------
@@ -663,6 +834,22 @@ class controller:
             return ("", 204)
         vp.resume_passive_detection()
         return ("", 204)
+    
+    def set_passive_detection_rate(self, detection_rate=None):
+        if detection_rate is None:
+            data = request.get_json(silent=True) or {}
+            detection_rate = data.get('detection_rate')
+        vp = self.vision_pipeline
+        if vp is None:
+            return jsonify({'error': 'pipeline vision non initialisé'}), 400
+        try:
+            detection_rate = int(detection_rate)
+            if detection_rate < 1 or detection_rate > 60:
+                return jsonify({'error': 'detection_rate doit être supérieur a 0 (ex: 1 = une détection par image du livefeed)'}), 400
+            vp.set_passive_detection_FPS(detection_rate)
+            return jsonify({'ok': True, 'detection_rate': detection_rate})
+        except (ValueError, TypeError):
+            return jsonify({'error': 'detection_rate doit être un entier valide'}), 400
     
     def get_passive_detection(self):
         """
@@ -745,532 +932,564 @@ class controller:
 #          Fonctions de callback pour les actions moteur du robot
 # ----------------------------------------------------------------------------
     
-    def forward(self): 
-        self.last_move_time = time.time(); self.watchdog_active = True
-        self.robot.control_motors(DRIVE_SPEED, DRIVE_SPEED)
+    def _dispatch_manual_action(self, action, speed=DRIVE_SPEED):
+        """Délègue la commande de mouvement au ManualController via l'orchestrateur.
+
+        Si un contrôleur automatique (PID, etc.) est actif, utilise l'override
+        temporaire pour envoyer les commandes moteur sans changer de contrôleur.
+        Quand les touches sont relâchées, le contrôleur actif reprend automatiquement.
+
+        Si aucun contrôleur n'est actif, active le contrôleur manuel normalement.
+        """
+        if not self.control_manager:
+            return "ControlManager missing"
+
+        if self.control_manager.get_controller("manual_controller") is None:
+            return "Manual controller missing"
+
+        active = self.control_manager._active_controller
+
+        # --- Override temporaire si un contrôleur auto est actif ---
+        if active and active.name != "manual_controller":
+            if action == "stop":
+                # Relâchement des touches : annuler l'override, le contrôleur reprend
+                self.control_manager.clear_manual_override()
+                return "ok"
+
+            # Calculer la commande moteur et l'injecter en override
+            from core.control.controlers.manual_controller import _ACTION_MAP
+            throttle, steering = _ACTION_MAP.get(action, (0, 0))
+            left, right = ManualController.compute_speeds(
+                throttle, steering, speed, speed)
+            self.control_manager.set_manual_override(
+                MotorCommand.make_speed(left, right))
+
+            if self.sampling_active and action in ("forward", "left", "right", "reverse"):
+                self._sample_on_command(action, speed)
+            return "ok"
+
+        # --- Pas de contrôleur actif : commande directe avec PID de cap ---
+        if not active:
+            from core.control.controlers.manual_controller import _ACTION_MAP
+            throttle, steering = _ACTION_MAP.get(action, (0, 0))
+            if action == "stop" or (throttle == 0 and steering == 0):
+                self.robot.stop()
+                ctrl = self.control_manager.get_controller("manual_controller")
+                if ctrl:
+                    ctrl._heading_hold_active = False
+            else:
+                left, right = ManualController.compute_speeds(
+                    throttle, steering, speed, speed)
+                # Appliquer le PID de cap si on avance tout droit
+                ctrl = self.control_manager.get_controller("manual_controller")
+                if ctrl and throttle != 0 and steering == 0:
+                    state = self.control_manager.get_last_sensor_data()
+                    left, right = ctrl.apply_heading_correction(state, left, right)
+                elif ctrl and steering != 0:
+                    ctrl._heading_hold_active = False
+                self.robot.control_motors(left, right)
+            return "ok"
+
+        # Échantillonnage événementiel
+        if self.sampling_active and action in ("forward", "left", "right", "reverse", "stop"):
+            self._sample_on_command(action, speed)
+
+        ctrl = self.control_manager.get_controller("manual_controller")
+        if ctrl:
+            ctrl.set_action(action, speed=speed)
         return "ok"
 
+    def _sample_on_command(self, action, speed):
+        """Échantillonne l'état capteur et la commande au moment de la réception.
+
+        Convertit l'action (forward/left/right/reverse/stop) en vitesses gauche/droite
+        et enregistre l'échantillon (vecteur état → label vitesses).
+        """
+        try:
+            # Récupérer l'état capteur le plus récent
+            state = self.control_manager.get_last_sensor_data()
+            if state is None:
+                return
+
+            # Convertir action → (left_speed, right_speed)
+            left_speed, right_speed = self._action_to_speeds(action, speed)
+            if left_speed == 0 and right_speed == 0:
+                print(f"[DEBUG] Zero speeds! action={action}, speed={speed}")
+            # Encoder via l'adapter ML
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+            label = adapter.encode_label(left_speed, right_speed).tolist()
+
+            if vector is None or label is None:
+                return
+
+            # Validation des données
+            import numpy as np
+            v_array = np.array(vector)
+            l_array = np.array(label)
+            v_array = self._apply_sampling_kill(v_array, adapter)
+
+            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                self.sampling_vectors.append(v_array.tolist())
+                self.sampling_labels.append(label)
+
+                if self.debug_control_sampling:
+                    now = time.time()
+                    if now - self._last_debug_print_time >= 0.33:
+                        self._last_debug_print_time = now
+                        adapter.debug_print_state(v_array, l_array)
+            else:
+                print("[Sampling] Échantillon rejeté lors de la validation !")
+
+        except Exception as e:
+            print("[Sampling] Erreur dans échantillonnage événementiel: {}".format(e))
+
+    def _action_to_speeds(self, action, speed):
+        """Convertit une action simple (D-pad) en vitesses gauche/droite.
+
+        Délègue à ManualController.compute_speeds() pour garantir la cohérence
+        entre le sampling et l'exécution moteur.
+
+        Returns:
+            tuple: (left_speed, right_speed)
+        """
+        from core.control.controlers.manual_controller import _ACTION_MAP
+        throttle, steering = _ACTION_MAP.get(action, (0, 0))
+        # Pour les actions simples du D-pad, on utilise speed comme drive_speed
+        # et self.manual_turn_speed pour les rotations
+        if action in ("left", "right"):
+            return ManualController.compute_speeds(throttle, steering, speed, speed)
+        return ManualController.compute_speeds(throttle, steering, speed, speed)
+
+    def forward(self): 
+        return self._dispatch_manual_action("forward", self.manual_drive_speed)
+
     def reverse(self): 
-        self.last_move_time = time.time(); self.watchdog_active = True
-        self.robot.control_motors(-DRIVE_SPEED, -DRIVE_SPEED)
-        return "ok"
+        return self._dispatch_manual_action("reverse", self.manual_drive_speed)
         
     def left(self): 
-        self.last_move_time = time.time(); self.watchdog_active = True
-        self.robot.control_motors(-TURN_SPEED, TURN_SPEED)
-        return "ok"
+        return self._dispatch_manual_action("left", self.manual_turn_speed)
         
     def right(self): 
-        self.last_move_time = time.time(); self.watchdog_active = True
-        self.robot.control_motors(TURN_SPEED, -TURN_SPEED)
-        return "ok"
+        return self._dispatch_manual_action("right", self.manual_turn_speed)
         
-    def stop(self): 
-        print("[HTTP] /zumi/stop reçu") 
-        try: 
-            self.robot.stop() 
-            print("[ACTION] zumi.stop() exécuté") 
-            return "ok" 
-        except Exception as e: 
-            print("[ERREUR] zumi.stop():", e) 
+    def stop(self):
+        try:
+            # Si un override est actif, le nettoyer directement
+            # pour que le contrôleur auto reprenne immédiatement
+            if self.control_manager and self.control_manager.manual_override_active:
+                self.control_manager.clear_manual_override()
+                return "ok"
+            return self._dispatch_manual_action("stop", 0)
+        except Exception as e:
+            print("[ERREUR] _dispatch_manual_action(stop):", e)
             return "error", 500
-      
 
     def manual_turn(self):
         """
-        Fait tourner le Zumi d'un angle spécifié (rotation précise avec gyroscope).
-        Attend un JSON avec la clé 'angle' (en degrés).
-        Angle positif = rotation à gauche, angle négatif = rotation à droite.
+        Fait tourner le Zumi d'un angle spécifié (rotation précise).
         """
         data = request.get_json(silent=True) or {}
         angle = data.get('angle', 0)
-        
         print("[HTTP] /zumi/turn reçu - angle: {}°".format(angle))
-        
+
         try:
             angle_float = float(angle)
-            
             if angle_float == 0:
-                return jsonify({'status': 'ok', 'message': 'Angle nul, aucune rotation'}), 200
+                return jsonify({'status': 'ok', 'message': 'Angle nul'}), 200
+
+            # On utilise le MotorDriver existant via le controleur manuel s'il est là, 
+            # ou on délègue temporairement :
+            # L'idéal est de créer une MotorCommand.TURN et l'exécuter via _motor_driver de ControlManager
+            # Mais comme la rotation est synchrone (bloquante), le plus simple est de réutiliser notre _dispatch:
             
-            if not hasattr(self.robot, 'turn'):
-                return jsonify({'error': 'La méthode turn() n\'est pas disponible sur ce robot'}), 400
+            if not self.control_manager:
+                return jsonify({'error': 'ControlManager missing'}), 500
+                
+            self._dispatch_manual_action("stop", 0) # Assurer l'arrêt d'abord
             
-            self.robot.turn(angle_float)
+            if self.control_manager._motor_driver:
+                self.control_manager._motor_driver.execute(MotorCommand.make_turn(angle_float))
+                
             direction = "gauche" if angle_float > 0 else "droite"
-            print("[ACTION] zumi.turn({}) exécuté - Rotation de {} degrés vers la {}".format(angle_float, abs(angle_float), direction))
-            
             return jsonify({
-                'status': 'ok', 
-                'angle': angle_float, 
-                'direction': direction,
-                'message': 'Rotation de {} degrés vers la {} complétée'.format(abs(angle_float), direction)
+                'status': 'ok',
+                'message': 'Rotation de {} degrés vers la {}'.format(abs(angle_float), direction)
             }), 200
             
         except ValueError:
             print("[ERREUR] Angle invalide: {}".format(angle))
             return jsonify({'error': 'Angle invalide: doit être un nombre'}), 400
         except Exception as e:
-            print("[ERREUR] zumi.turn({}):", angle, e)
+            print("[ERREUR] zumi.turn({}):".format(angle), e)
             return jsonify({'error': str(e)}), 500
 
-# ----------------------------------------------------------------------------
-#          Fonctions pour le contrôle PID du suivi de ligne
-# ----------------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    #  Contrôle composé WASD (touches simultanées)
+    # ------------------------------------------------------------------
 
-    def pid_page(self):
-        from interface.onglet_pid import render_pid_tab
-        return render_pid_tab("Asservissement PID")
+    def move(self):
+        """Endpoint POST /zumi/move pour le contrôle WASD composé.
 
-    def pid_update_params(self):
-        """Met à jour les paramètres du PID."""
+        Reçoit un JSON {"keys": ["w", "a"]} et convertit en throttle/steering.
+        """
         data = request.get_json(silent=True) or {}
-        try:
-            kp = float(data.get('kp', self.pid_controller.kp))
-            ki = float(data.get('ki', self.pid_controller.ki))
-            kd = float(data.get('kd', self.pid_controller.kd))
-            base_speed = int(data.get('base_speed', self.pid_controller.base_speed))
-            max_correction = int(data.get('max_correction', self.pid_controller.max_correction))
-            rotation_mode = bool(data.get('rotation_mode', self.pid_controller.rotation_mode))
-            
-            # Nouveaux paramètres pour le calcul d'angle
-            angle_scale = float(data.get('angle_scale', self.pid_controller.angle_scale))
-            max_angle = float(data.get('max_angle', self.pid_controller.max_angle))
-            min_angle_threshold = float(data.get('min_angle_threshold', self.pid_controller.min_angle_threshold))
-            
-            self.pid_controller.update_params(kp=kp, ki=ki, kd=kd, 
-                                            base_speed=base_speed, 
-                                            max_correction=max_correction,
-                                            rotation_mode=rotation_mode,
-                                            angle_scale=angle_scale,
-                                            max_angle=max_angle,
-                                            min_angle_threshold=min_angle_threshold)
-            
-            return jsonify({'status': 'ok', 'params': self.pid_controller.get_params()})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 400
+        keys = set(data.get('keys', []))
+        throttle, steering = self._keys_to_throttle_steering(keys)
+        return self._dispatch_compound_action(throttle, steering)
 
-    def pid_get_params(self):
-        """Retourne les paramètres actuels du PID."""
-        return jsonify(self.pid_controller.get_params())
+    def _keys_to_throttle_steering(self, keys):
+        """Convertit un set de touches WASD en (throttle, steering).
 
-    def pid_start(self):
-        """Démarre le contrôle PID."""
-        try:
-            print("[DEBUG] pid_start() appelé")
+        Returns:
+            tuple: (throttle, steering) chacun dans {-1, 0, +1}
+        """
+        throttle = (1 if 'w' in keys else 0) + (-1 if 's' in keys else 0)
+        steering = (-1 if 'a' in keys else 0) + (1 if 'd' in keys else 0)
+        return throttle, steering
 
-            vp = self.vision_pipeline
-            if not vp:
-                return jsonify({'error': 'Vision pipeline not initialized'}), 400
-            # Auto-start caméra si nécessaire
-            if not vp.is_running():
-                print("[INFO] pid_start: caméra inactive, démarrage automatique...")
-                vp.start()
-                time.sleep(0.3)  # laisser le temps à la caméra de s'initialiser
+    def _dispatch_compound_action(self, throttle, steering):
+        """Dispatch une action composée (throttle+steering).
 
-            # --- Via ControlManager (nouvelle architecture) ---
-            if self.control_manager is not None:
-                if self.control_manager.mode != MODE_IDLE:
-                    return jsonify({'error': 'Un autre mode est déjà actif: {}'.format(self.control_manager.mode)}), 400
-                self.control_manager.activate(MODE_PID)
-                self.pid_active = True
-                return jsonify({'status': 'started'})
+        Si un contrôleur auto est actif, utilise l'override temporaire.
+        Le contrôleur reprend automatiquement quand les touches sont relâchées.
+        """
+        if not self.control_manager:
+            return "ControlManager missing"
 
-            # --- Fallback legacy (sans ControlManager) ---
-            if self.pid_active:
-                return jsonify({'error': 'PID already running'}), 400
+        if self.control_manager.get_controller("manual_controller") is None:
+            return "Manual controller missing"
 
-            if self.pid_thread and self.pid_thread.is_alive():
-                print("[WARNING] Thread PID encore actif, arrêt forcé")
-                self.pid_active = False
-                self.pid_thread.join(timeout=2.0)
-                self.pid_thread = None
+        active = self.control_manager._active_controller
 
-            self.pid_controller.reset()
-            self.pid_active = True
+        # --- Override temporaire si un contrôleur auto est actif ---
+        if active and active.name != "manual_controller":
+            if throttle == 0 and steering == 0:
+                self.control_manager.clear_manual_override()
+                return "ok"
 
-            import threading
-            def pid_loop():
-                loop_count = 0
-                while self.pid_active:
-                    try:
-                        line_offset = getattr(vp, 'last_line_offset', None)
-                        if line_offset is None:
-                            self.robot.stop()
-                            time.sleep(0.05)
-                            continue
+            ctrl = self.control_manager.get_controller("manual_controller")
+            left, right = ManualController.compute_speeds(
+                throttle, steering,
+                self.manual_drive_speed, self.manual_turn_speed,
+                ctrl.steering_ratio)
+            self.control_manager.set_manual_override(
+                MotorCommand.make_speed(left, right))
+            # Sampling géré par _sampling_callback (labels post-PID)
+            return "ok"
 
-                        if self.pid_controller.rotation_mode:
-                            angle = self.pid_controller.compute_rotation_angle(line_offset)
-                            if angle is not None:
-                                self.robot.turn(angle)
-                                self.last_line_offset = line_offset
-                                self.last_correction = angle
-                            else:
-                                self.robot.stop()
-                                self.last_line_offset = line_offset
-                                self.last_correction = 0
-                            time.sleep(0.2)
-                        else:
-                            left_speed, right_speed = self.pid_controller.compute(line_offset)
-                            self.robot.control_motors(left_speed, right_speed)
-                            self.last_line_offset = line_offset
-                            self.last_correction = self.pid_controller.correction_history[-1] if self.pid_controller.correction_history else 0
-                            self.last_left_speed = left_speed
-                            self.last_right_speed = right_speed
-                            time.sleep(0.05)
-
-                    except Exception as e:
-                        print("[ERROR] pid_loop: {}".format(e))
-                        time.sleep(0.1)
+        # --- Pas de contrôleur actif : commande directe avec PID de cap ---
+        if not active:
+            if throttle == 0 and steering == 0:
                 self.robot.stop()
+                ctrl = self.control_manager.get_controller("manual_controller")
+                if ctrl:
+                    ctrl._heading_hold_active = False
+            else:
+                ctrl = self.control_manager.get_controller("manual_controller")
+                left, right = ManualController.compute_speeds(
+                    throttle, steering, self.manual_drive_speed,
+                    self.manual_turn_speed, ctrl.steering_ratio if ctrl else 0.5)
+                # PID de cap si ligne droite (throttle sans steering)
+                if ctrl and throttle != 0 and steering == 0:
+                    state = self.control_manager.get_last_sensor_data()
+                    left, right = ctrl.apply_heading_correction(state, left, right)
+                elif ctrl and steering != 0:
+                    ctrl._heading_hold_active = False
+                self.robot.control_motors(left, right)
+            return "ok"
 
-            self.pid_thread = threading.Thread(target=pid_loop, daemon=True)
-            self.pid_thread.start()
-            return jsonify({'status': 'started'})
+        ctrl = self.control_manager.get_controller("manual_controller")
+        ctrl.set_compound_action(throttle, steering,
+                                 drive_speed=self.manual_drive_speed,
+                                 turn_speed=self.manual_turn_speed)
+
+        # Sampling géré par _sampling_callback (labels post-PID)
+        return "ok"
+
+    def _sample_compound(self, left_speed, right_speed):
+        """Échantillonne l'état capteur avec des vitesses pré-calculées.
+
+        Utilise les vitesses intentionnelles (de compute_speeds), pas les vitesses
+        PWM-modulées, pour des labels d'entraînement propres.
+        """
+        try:
+            state = self.control_manager.get_last_sensor_data()
+            if state is None:
+                return
+
+            adapter = self._get_ml_adapter(state)
+            vector = self._vectorize_state_with_adapter(state, adapter)
+            label = adapter.encode_label(left_speed, right_speed).tolist()
+
+            if vector is None or label is None:
+                return
+
+            import numpy as np
+            v_array = np.array(vector)
+            l_array = np.array(label)
+            v_array = self._apply_sampling_kill(v_array, adapter)
+
+            if adapter.validate_state_vector(v_array) and adapter.validate_label_vector(l_array):
+                self.sampling_vectors.append(v_array.tolist())
+                self.sampling_labels.append(label)
+
+                if self.debug_control_sampling:
+                    now = time.time()
+                    if now - self._last_debug_print_time >= 0.33:
+                        self._last_debug_print_time = now
+                        adapter.debug_print_state(v_array, l_array)
+            else:
+                print("[Sampling] Échantillon rejeté lors de la validation !")
 
         except Exception as e:
-            print("[ERROR] pid_start(): {}".format(e))
-            import traceback
-            traceback.print_exc()
-            self.pid_active = False
-            return jsonify({'error': 'Failed to start PID: {}'.format(str(e))}), 500
+            print("[Sampling] Erreur dans échantillonnage composé: {}".format(e))
 
-    def pid_stop(self):
-        """Arrête le contrôle PID."""
-        print("[DEBUG] pid_stop() appelé")
+    # ------------------------------------------------------------------
+    #  Reset capteurs / PID
+    # ------------------------------------------------------------------
 
-        # --- Via ControlManager ---
-        if self.control_manager is not None and self.control_manager.mode == MODE_PID:
-            self.control_manager.deactivate()
-            self.pid_active = False
-            self.last_line_offset = 0
-            self.last_correction = 0
-            self.last_left_speed = 0
-            self.last_right_speed = 0
-            return jsonify({'status': 'stopped'})
+    def robot_calibrate(self):
+        """Calibration complete: gyro + MPU + IR heavy (~3-5s bloquant)."""
+        try:
+            self.robot.calibrate_sensors()
+            # Heavy IR calibration en plus (calibrate_sensors fait light=50)
+            self.robot.calibrate_ir(n_samples=200)
+            return jsonify({'status': 'ok', 'message': 'Calibration complete (MPU + IR)'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
-        # --- Fallback legacy ---
-        self.pid_active = False
+    def robot_reset_drive(self):
+        """Reset PIDs + gyro (reset_drive_state)."""
+        try:
+            self.robot.reset_drive_state()
+            return jsonify({'status': 'ok', 'message': 'Drive state reset'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
-        if self.pid_thread and self.pid_thread.is_alive():
-            self.pid_thread.join(timeout=2.0)
-        self.pid_thread = None
+    def robot_reset_gyro(self):
+        """Reset gyro uniquement."""
+        try:
+            self.robot._reset_gyro()
+            return jsonify({'status': 'ok', 'message': 'Gyro reset'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
-        self.robot.stop()
-        self.last_line_offset = 0
-        self.last_correction = 0
-        self.last_left_speed = 0
-        self.last_right_speed = 0
-        
-        print("[DEBUG] PID arrêté avec succès")
-        return jsonify({'status': 'stopped'})
+    def robot_reset_pid(self):
+        """Reset PID uniquement."""
+        try:
+            self.robot._reset_PID()
+            return jsonify({'status': 'ok', 'message': 'PID reset'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
-    def pid_reset(self):
-        """Réinitialise le PID."""
-        self.pid_controller.reset()
-        self.last_line_offset = 0
-        self.last_correction = 0
-        self.last_left_speed = 0
-        self.last_right_speed = 0
-        return jsonify({'status': 'reset'})
+    def calibrate_ir(self):
+        """Calibration IR complete (mode heavy, N=200). Mesure les baselines
+        et offsets de tous les capteurs IR. Le robot doit etre immobile
+        sur la route noire (sans ligne)."""
+        try:
+            if self.robot is None:
+                return jsonify({'error': 'Robot non initialisé'}), 400
+            result = self.robot.calibrate_ir(n_samples=200)
+            if result is None:
+                return jsonify({'error': 'Calibration IR echouee'}), 500
+            return jsonify({'status': 'ok', 'message': 'Calibration IR terminee', 'calibration': result})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
-    def pid_status(self):
-        """Retourne le statut actuel du PID."""
-        # --- Via ControlManager ---
-        if self.control_manager is not None:
-            cm = self.control_manager
-            with cm._data_lock:
-                return jsonify({
-                    'active': cm.mode == MODE_PID,
-                    'mode': cm.mode,
-                    'error': cm.last_line_offset,
-                    'correction': cm.last_correction,
-                    'left_speed': cm.last_left_speed,
-                    'right_speed': cm.last_right_speed,
-                    'debug': self.pid_controller.get_debug_info()
-                })
+    # ============================================================
+    #  Sensor Profiler
+    # ============================================================
 
-        # --- Fallback legacy ---
-        return jsonify({
-            'active': self.pid_active,
-            'error': self.last_line_offset,
-            'correction': self.last_correction,
-            'left_speed': self.last_left_speed,
-            'right_speed': self.last_right_speed,
-            'debug': self.pid_controller.get_debug_info()
-        })
-    
-    def line_detector_update_params(self):
-        """Met à jour les paramètres du détecteur de ligne."""
-        vp = self.vision_pipeline
-        if not vp:
-            return jsonify({'error': 'Vision pipeline not initialized'}), 400
-        
-        # Trouver le détecteur de ligne
-        line_detector = None
-        for detector in vp.get_detectors():
-            if hasattr(detector, 'white_threshold'):  # C'est le LineDetector
-                line_detector = detector
-                break
-        
-        if not line_detector:
-            return jsonify({'error': 'Line detector not found'}), 404
-        
+    def sensor_profile_start(self):
+        """Démarre le wizard de profiling."""
+        from core.control.sensor_profiler import SensorProfiler
         data = request.get_json(silent=True) or {}
-        try:
-            white_threshold = data.get('white_threshold')
-            min_area = data.get('min_area')
-            offset_ratio = data.get('offset_ratio')
-            
-            line_detector.update_params(
-                white_threshold=white_threshold,
-                min_area=min_area,
-                offset_ratio=offset_ratio
-            )
-            
-            return jsonify({'status': 'ok', 'params': line_detector.get_params()})
-        except Exception as e:
-            return jsonify({'error': str(e)}), 400
+        robot_id = data.get('robot_id', 'zumi_1')
 
-    def line_detector_get_params(self):
-        """Retourne les paramètres actuels du détecteur de ligne."""
-        vp = self.vision_pipeline
-        if not vp:
-            return jsonify({'error': 'Vision pipeline not initialized'}), 400
-        
-        # Trouver le détecteur de ligne
-        line_detector = None
-        for detector in vp.get_detectors():
-            if hasattr(detector, 'white_threshold'):
-                line_detector = detector
-                break
-        
-        if not line_detector:
-            return jsonify({'error': 'Line detector not found'}), 404
-        
-        return jsonify(line_detector.get_params())
-    
-    def state_machine_start(self):
-        """Démarre la machine à états."""
-        # Auto-start caméra si nécessaire
-        vp = self.vision_pipeline
-        if vp and not vp.is_running():
-            print("[INFO] state_machine_start: caméra inactive, démarrage automatique...")
-            vp.start()
-            time.sleep(0.3)
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            self._sensor_profiler = SensorProfiler(self.robot)
 
-        # --- Via ControlManager ---
-        if self.control_manager is not None:
-            if self.control_manager.state_machine is None:
-                return jsonify({'error': 'State machine not registered in ControlManager'}), 400
-            if self.control_manager.mode != MODE_IDLE:
-                return jsonify({'error': 'Un autre mode est déjà actif: {}'.format(self.control_manager.mode)}), 400
-            self.control_manager.activate(MODE_STATE_MACHINE)
-            return jsonify({'status': 'started', 'state': self.control_manager.state_machine.get_state().name})
+        self._sensor_profiler.start(robot_id)
+        return jsonify({'status': 'started', 'robot_id': robot_id})
 
-        # --- Fallback legacy ---
-        if not hasattr(self, 'state_machine'):
-            return jsonify({'error': 'State machine not initialized'}), 400
-        self.state_machine.start()
-        return jsonify({'status': 'started', 'state': self.state_machine.get_state().name})
+    def sensor_profile_status(self):
+        """Retourne l'état actuel du profiler."""
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'active': False})
+        return jsonify(self._sensor_profiler.get_status())
 
-    def state_machine_stop(self):
-        """Arrête la machine à états."""
-        # --- Via ControlManager ---
-        if self.control_manager is not None and self.control_manager.mode == MODE_STATE_MACHINE:
-            self.control_manager.deactivate()
-            return jsonify({'status': 'stopped'})
+    def sensor_profile_record(self):
+        """Enregistre les données de la phase statique courante."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+        result = self._sensor_profiler.record_static()
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify({'status': 'recorded', 'phase': result.get('description', ''), 'n_samples': result.get('n_samples', 0)})
 
-        # --- Fallback legacy ---
-        if not hasattr(self, 'state_machine'):
-            return jsonify({'error': 'State machine not initialized'}), 400
-        self.state_machine.stop()
-        return jsonify({'status': 'stopped'})
+    def sensor_profile_run(self):
+        """Lance la manoeuvre auto (non-bloquant).
 
-    def state_machine_status(self):
-        """Retourne le statut de la machine à états."""
-        # --- Via ControlManager ---
-        sm = None
-        if self.control_manager is not None and self.control_manager.state_machine is not None:
-            sm = self.control_manager.state_machine
-        elif hasattr(self, 'state_machine'):
-            sm = self.state_machine
+        Active le CalibrationController et retourne immédiatement.
+        Le UI poll /status pour détecter quand auto_running passe à false,
+        puis appelle /run_complete pour collecter les résultats.
+        """
+        import threading
 
-        if sm is None:
-            return jsonify({'error': 'State machine not initialized'}), 400
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
 
-        return jsonify({
-            'running': sm.is_running(),
-            'state': sm.get_state().name,
-            'photos_taken': len(sm.photos_taken),
-            'rotation_count': sm.rotation_count
-        })
-    
-    # ===== MODE STEP-BY-STEP =====
-    
-    def pid_step_start(self):
-        """Démarre le mode step-by-step."""
-        try:
-            print("[DEBUG] pid_step_start() appelé")
+        result = self._sensor_profiler.run_auto_phase()
+        if 'error' in result:
+            return jsonify(result), 400
 
-            vp = self.vision_pipeline
-            if not vp:
-                return jsonify({'error': 'Vision pipeline not initialized'}), 400
-            # Auto-start caméra si nécessaire
-            if not vp.is_running():
-                print("[INFO] pid_step_start: caméra inactive, démarrage automatique...")
-                vp.start()
-                time.sleep(0.3)
+        action = result.get('action')
+        phase_id = result.get('phase_id', '')
+        duration = result.get('duration', 3.0)
 
-            # --- Via ControlManager ---
-            if self.control_manager is not None:
-                if self.control_manager.mode != MODE_IDLE:
-                    return jsonify({'error': 'Un autre mode est déjà actif: {}'.format(self.control_manager.mode)}), 400
-                self.control_manager.activate(MODE_STEP_BY_STEP)
-                self.step_mode_active = True
-                # Garder une référence locale pour les routes status/approve
-                self.step_machine = self.control_manager.step_machine
-                return jsonify({'status': 'started'})
+        if action == 'activate_calibration_controller':
+            ctrl = self._sensor_profiler.get_controller()
+            if self.control_manager.get_controller('calibration_controller') is None:
+                self.control_manager.register_controller('calibration_controller', ctrl)
+            if self.control_manager._active_controller is not None:
+                self.control_manager.deactivate_controller()
 
-            # --- Fallback legacy ---
-            if self.step_mode_active:
-                return jsonify({'error': 'Step mode already running'}), 400
-            if self.pid_active:
-                return jsonify({'error': 'Normal PID is running. Stop it first.'}), 400
+            self.control_manager.activate_controller('calibration_controller')
 
-            if self.step_machine is None:
-                self.step_machine = StepByStepStateMachine(
-                    robot=self.robot,
-                    vision_pipeline=vp,
-                    pid_controller=self.pid_controller,
-                )
+            # Thread de surveillance: attend la fin, puis cleanup
+            def _wait_and_cleanup():
+                import time as _time
+                timeout = _time.time() + duration + 5.0
+                while not ctrl.is_done and _time.time() < timeout:
+                    _time.sleep(0.1)
+                self.control_manager.deactivate_controller()
+                ctrl.clear_maneuver()
+                self._sensor_profiler.collect_auto_results()
 
-            self.step_machine.start()
-            self.step_mode_active = True
+            threading.Thread(target=_wait_and_cleanup, daemon=True).start()
 
-            import threading
-            def step_loop():
-                while self.step_mode_active:
-                    try:
-                        # Capture directe depuis la caméra pas 
-                        frame = vp.camera.capture()
-                        if frame is None:
-                            time.sleep(0.05)
-                            continue
-                        vp.update_last_frame(frame)
-                        result = self.step_machine.step(frame)
-                        self.last_line_offset = result.get('line_offset', 0)
-                        self.last_left_speed = result.get('left_speed', 0)
-                        self.last_right_speed = result.get('right_speed', 0)
-                        time.sleep(0.05)
-                    except Exception as e:
-                        print("[ERROR] step_loop: {}".format(e))
-                        time.sleep(0.1)
-                self.robot.stop()
+            return jsonify({'status': 'running', 'phase_id': phase_id})
 
-            self.step_mode_thread = threading.Thread(target=step_loop, daemon=True)
-            self.step_mode_thread.start()
-            return jsonify({'status': 'started'})
+        return jsonify(result)
 
-        except Exception as e:
-            print("[ERROR] pid_step_start(): {}".format(e))
-            import traceback
-            traceback.print_exc()
-            self.step_mode_active = False
-            return jsonify({'error': 'Failed to start step mode: {}'.format(str(e))}), 500
-    
-    def pid_step_stop(self):
-        """Arrête le mode step-by-step."""
-        print("[DEBUG] pid_step_stop() appelé")
+    def sensor_profile_run_status(self):
+        """Vérifie si la manoeuvre auto est terminée et retourne les résultats."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
 
-        # --- Via ControlManager ---
-        if self.control_manager is not None and self.control_manager.mode == MODE_STEP_BY_STEP:
-            self.control_manager.deactivate()
-            self.step_mode_active = False
-            self.last_line_offset = 0
-            self.last_correction = 0
-            self.last_left_speed = 0
-            self.last_right_speed = 0
-            return jsonify({'status': 'stopped'})
+        ctrl = self._sensor_profiler.get_controller()
+        running = ctrl._maneuver is not None and not ctrl.is_done
+        n_samples = len(ctrl.get_samples())
+        return jsonify({'running': running, 'n_samples': n_samples})
 
-        # --- Fallback legacy ---
-        if self.step_machine:
-            self.step_machine.stop()
-        self.step_mode_active = False
+    def sensor_profile_manual_start(self):
+        """Démarre l'enregistrement pour une phase manuelle (D).
+        L'utilisateur pilote en WASD pendant que les capteurs sont enregistrés."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+        result = self._sensor_profiler.start_manual_recording()
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify(result)
 
-        if self.step_mode_thread and self.step_mode_thread.is_alive():
-            self.step_mode_thread.join(timeout=2.0)
-        self.step_mode_thread = None
+    def sensor_profile_manual_stop(self):
+        """Arrête l'enregistrement manuel et retourne la validation du run."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
+        result = self._sensor_profiler.stop_manual_recording()
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify(result)
 
-        self.robot.stop()
-        self.last_line_offset = 0
-        self.last_correction = 0
-        self.last_left_speed = 0
-        self.last_right_speed = 0
-        return jsonify({'status': 'stopped'})
-    
-    def pid_step_approve(self):
-        """Approuve la prochaine étape."""
-        # Via ControlManager ou référence locale
-        sm = None
-        if self.control_manager is not None and self.control_manager.step_machine is not None:
-            sm = self.control_manager.step_machine
-        elif self.step_machine:
-            sm = self.step_machine
+    def sensor_profile_next(self):
+        """Passe à la phase suivante."""
+        if not hasattr(self, '_sensor_profiler') or not self._sensor_profiler.is_active:
+            return jsonify({'error': 'Profiler non actif'}), 400
 
-        if sm is None or not (self.step_mode_active or
-                              (self.control_manager and self.control_manager.mode == MODE_STEP_BY_STEP)):
-            return jsonify({'error': 'Step mode not running'}), 400
+        # Finaliser la phase manuelle si c'est une phase D
+        sp = self._sensor_profiler
+        phase_idx = sp.current_phase_idx
+        if phase_idx < len(sp.phases) and sp.phases[phase_idx]["type"] == "manual_sampling":
+            sp.finalize_manual_phase()
 
-        sm.approve_next_step()
-        return jsonify({'status': 'approved'})
+        # Collect auto results if any
+        if hasattr(sp, '_controller') and sp._controller.is_done:
+            sp.collect_auto_results()
 
-    def pid_step_status(self):
-        """Retourne le statut du mode step-by-step."""
-        # Via ControlManager ou référence locale
-        sm = None
-        active = False
-        if self.control_manager is not None and self.control_manager.step_machine is not None:
-            sm = self.control_manager.step_machine
-            active = self.control_manager.mode == MODE_STEP_BY_STEP
-        elif self.step_machine:
-            sm = self.step_machine
-            active = self.step_mode_active
+        # Deactivate any running controller
+        if self.control_manager._active_controller is not None:
+            self.control_manager.deactivate_controller()
 
-        if sm is None:
-            return jsonify({
-                'active': False,
-                'state': 'IDLE',
-                'waiting_approval': False
-            })
+        result = self._sensor_profiler.next_phase()
 
-        # Lire les données depuis le ControlManager si disponible
-        line_offset = self.last_line_offset
-        left_speed = self.last_left_speed
-        right_speed = self.last_right_speed
-        if self.control_manager is not None:
-            with self.control_manager._data_lock:
-                line_offset = self.control_manager.last_line_offset or 0
-                left_speed = self.control_manager.last_left_speed
-                right_speed = self.control_manager.last_right_speed
+        if result.get('completed'):
+            path = self._sensor_profiler.save_profile()
+            return jsonify({'status': 'completed', 'saved': str(path)})
 
-        return jsonify({
-            'active': active,
-            'state': sm.get_state().name,
-            'waiting_approval': sm.is_waiting_approval(),
-            'step_count': sm.step_count,
-            'line_offset': line_offset,
-            'left_speed': left_speed,
-            'right_speed': right_speed
-        })
-    # --- PONT (Nouvelles fonctions) ---
+        return jsonify({'status': 'next', **result})
+
+    def sensor_profile_stop(self):
+        """Arrête le profiling et sauvegarde."""
+        if not hasattr(self, '_sensor_profiler'):
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+
+        # Stop any running controller
+        if self.control_manager._active_controller is not None:
+            self.control_manager.deactivate_controller()
+
+        result = self._sensor_profiler.stop_and_save()
+        return jsonify({'status': 'stopped', **result})
+
+    def sensor_profile_results(self):
+        """Retourne le profil complet."""
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+        return jsonify(self._sensor_profiler.profile_data)
+
+    def sensor_profile_summary(self):
+        """Retourne un résumé des résultats pour l'écran de fin."""
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+        return jsonify(self._sensor_profiler.get_summary())
+
+    def sensor_profile_download(self):
+        """Télécharge le profil JSON + calibration IR en ZIP."""
+        from flask import send_file
+        import zipfile
+        import io
+
+        if not hasattr(self, '_sensor_profiler') or self._sensor_profiler is None:
+            return jsonify({'error': 'Profiler non initialisé'}), 400
+
+        sp = self._sensor_profiler
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Profil complet
+            import json
+            profile_json = json.dumps(sp.profile_data, indent=2, default=str)
+            zf.writestr('sensor_profile_{}.json'.format(sp.robot_id), profile_json)
+
+            # Calibration IR si disponible
+            from pathlib import Path
+            ir_cal_path = Path(__file__).parent.parent / 'core' / 'robot' / 'ir_calibration.json'
+            if ir_cal_path.exists():
+                zf.write(str(ir_cal_path), 'ir_calibration.json')
+
+        buf.seek(0)
+        return send_file(buf, mimetype='application/zip',
+                        as_attachment=True,
+                        download_name='sensor_profile_{}.zip'.format(sp.robot_id))
+
+# ----------------------------------------------------------------------------
+#          Fonctions pour le contrôle du pont
+# ----------------------------------------------------------------------------
     def bridge_open(self):
         try:
             requests.get("{}/ouvrir".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
         except Exception as e:
-            print("Erreur Pont:", e)
+            print("[ERREUR] Pont ouvrir:", e)
             return ("Erreur", 500)
         
 
@@ -1279,21 +1498,25 @@ class controller:
             requests.get("{}/fermer".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
         except Exception as e:
-            print("Erreur Pont:", e)
+            print("[ERREUR] Pont fermer:", e)
             return ("Erreur", 500)
             
     def bridge_green(self):
         try:
             requests.get("{}/vert".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
-        except: return ("", 500)
+        except Exception as e:
+            print("[ERREUR] Pont vert:", e)
+            return ("Erreur", 500)
 
     def bridge_red(self):
         try:
             requests.get("{}/rouge".format(self.BRIDGE_URL), timeout=1)
             return ("", 204)
-        except: return ("", 500)
-   
+        except Exception as e:
+            print("[ERREUR] Pont rouge:", e)
+            return ("Erreur", 500)
+
     def bridge_mode_auto(self, etat):
         # etat doit être '1' (true) ou '0' (false)
         try:
@@ -1301,5 +1524,315 @@ class controller:
             requests.get("{}/majAutoMoteur?etat={}".format(self.BRIDGE_URL, etat), timeout=1)
             return ("", 204)
         except Exception as e:
-            print("Erreur Pont Mode Auto:", e)
+            print("[ERREUR] Pont Mode Auto:", e)
             return ("Erreur", 500)
+
+
+# ----------------------------------------------------------------------------
+#          Fonctions de callback pour l'onglet de contrôle
+# ----------------------------------------------------------------------------
+    def manual_settings(self):
+        """GET/POST des réglages manuels (vitesses, steering_ratio, PID de cap)."""
+        ctrl = self.control_manager.get_controller('manual_controller') if self.control_manager else None
+
+        if request.method == 'GET':
+            payload = {
+                'drive_speed': self.manual_drive_speed,
+                'turn_speed': self.manual_turn_speed,
+                'steering_ratio': ctrl.steering_ratio if ctrl else 0.5,
+                'heading_kp': ctrl.heading_kp if ctrl else 1.5,
+                'heading_max_correction': ctrl.heading_max_correction if ctrl else 15,
+            }
+            return jsonify(payload)
+
+        data = request.get_json(silent=True) or {}
+        if 'drive_speed' in data:
+            self.manual_drive_speed = float(data['drive_speed'])
+        if 'turn_speed' in data:
+            self.manual_turn_speed = float(data['turn_speed'])
+
+        if ctrl:
+            update_kwargs = {'default_speed': self.manual_drive_speed}
+            if 'steering_ratio' in data:
+                update_kwargs['steering_ratio'] = float(data['steering_ratio'])
+            if 'heading_kp' in data:
+                update_kwargs['heading_kp'] = float(data['heading_kp'])
+            if 'heading_max_correction' in data:
+                update_kwargs['heading_max_correction'] = float(data['heading_max_correction'])
+            ctrl.update_params(**update_kwargs)
+
+        return jsonify({
+            'drive_speed': self.manual_drive_speed,
+            'turn_speed': self.manual_turn_speed,
+            'steering_ratio': ctrl.steering_ratio if ctrl else 0.5,
+            'heading_kp': ctrl.heading_kp if ctrl else 1.5,
+            'heading_max_correction': ctrl.heading_max_correction if ctrl else 15,
+        })
+ 
+    def start_sampling(self):
+        """ Démare l'échantillonnage des données des capteurs.
+        Recalibre le gyroscope avant chaque séquence pour éviter
+        l'accumulation d'angles entre les séquences d'échantillonnage.
+        """
+        if self.sampling_active is True:
+            return jsonify({'error': 'Sampling already active'}), 400
+        # Reset gyro avant chaque séquence pour que les angles IMU
+        # repartent de zéro (évite le biais cumulatif de gyro_z)
+        try:
+            self.robot.reset_drive_state()
+        except Exception as e:
+            print("[Sampling] Erreur reset gyro avant echantillonnage: {}".format(e))
+        self.sampling_vectors = []
+        self.sampling_labels = []
+        self.sampling_active = True
+        return jsonify({'status': 'sampling started'})
+    
+    def stop_sampling(self):
+        """ Arrête l'échantillonnage des données des capteurs
+        """
+        if self.sampling_active is True:
+            self.sampling_active = False
+        return jsonify({'status': 'sampling stopped'})
+
+    def sampling_feature_kill(self):
+        """Configure les groupes de features forcés à 0 pendant l'échantillonnage.
+
+        GET  → retourne l'état courant
+        POST → body JSON {"groups": ["haar", "line_camera"]}
+                          [] pour désactiver le kill (revenir au comportement normal)
+
+        Groupes disponibles:
+          "haar"        : detection_flag + class_onehot + bbox (indices 8..12+N)
+          "line_camera" : line_camera_offset + line_camera_detected (indices 24+N, 25+N)
+        """
+        if request.method == 'GET':
+            return jsonify({"zeroed_groups": sorted(self.sampling_zeroed_groups)})
+
+        data = request.get_json(silent=True) or {}
+        groups = set(data.get("groups", []))
+        valid_groups = {"haar", "line_camera"}
+        invalid = groups - valid_groups
+        if invalid:
+            return jsonify({"error": "Groupes invalides: {}. Valides: {}".format(
+                sorted(invalid), sorted(valid_groups))}), 400
+        self.sampling_zeroed_groups = groups
+        return jsonify({"status": "ok", "zeroed_groups": sorted(self.sampling_zeroed_groups)})
+
+    def controller_list(self):
+        """Retourne la liste des contrôleurs enregistrés."""
+        if self.control_manager is None:
+            return jsonify({'controllers': []})
+        return jsonify({'controllers': sorted(self.control_manager._controllers.keys())})
+
+    def download_sampling(self):
+        """Crée un ZIP avec captures.jsonl et labels.jsonl des échantillons."""
+        if not self.sampling_vectors or not self.sampling_labels:
+            return jsonify({'error': 'no samples'}), 404
+
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            captures_lines = [json.dumps(v) for v in self.sampling_vectors]
+            labels_lines = [json.dumps(v) for v in self.sampling_labels]
+            zf.writestr('captures.jsonl', '\n'.join(captures_lines))
+            zf.writestr('labels.jsonl', '\n'.join(labels_lines))
+
+        # Pour des fin de validation on s'attend a un vecteur capteur de 20 et un vecteur de label de 2
+        print("[Exception][ServerController] Dimension vecteur de capteurs {}".format(len(self.sampling_vectors[0]) if self.sampling_vectors else 0))
+        print("[Exception][ServerController] Dimension vecteur de labels {}".format(len(self.sampling_labels[0]) if self.sampling_labels else 0))
+        print("[Exception][ServerController] Nombre d'échantillons capturés: {}".format(len(self.sampling_vectors)))
+
+        buf.seek(0)
+        ts = time.strftime('%Y%m%d_%H%M%S')
+        zip_name = 'sampling_{}.zip'.format(ts)
+
+        return Response(
+            buf.getvalue(),
+            mimetype='application/zip',
+            headers={'Content-Disposition': 'attachment; filename={}'.format(zip_name)}
+        )
+
+    def start_controller(self):
+        """Démarre le contrôleur LineFollower (nouvelle architecture standardisée)."""
+        try:
+            data = request.get_json(silent=True) or {}
+            controller_name = data.get('name') or data.get('controller') or 'line_follower'
+
+            vp = self.vision_pipeline
+            if not vp:
+                return jsonify({'error': 'Vision pipeline non initialisé'}), 400
+            if not vp.is_running():
+                vp.start()
+                time.sleep(0.3)
+            if self.control_manager is None:
+                return jsonify({'error': 'ControlManager non attaché'}), 400
+            if self.control_manager.get_controller(controller_name) is None:
+                return jsonify({'error': 'Contrôleur inconnu : {}'.format(controller_name)}), 400
+
+            active = self.control_manager._active_controller
+            if active is not None:
+                if active.name == controller_name:
+                    return jsonify({'status': 'already_running', 'controller': controller_name})
+                return jsonify({'error': 'Un autre contrôleur est déjà actif : {}'.format(active.name)}), 400
+
+            # Auto-switch: appliquer le profil caméra 'passive' (320x240) pour économiser le CPU
+            self._apply_camera_profile('passive')
+
+            self.robot.reset_drive_state() # reset gyro + PID pour des conditions de contrôle optimales au démarrage
+
+            self.control_manager.activate_controller(controller_name)
+            return jsonify({'status': 'started', 'controller': controller_name})
+        except Exception as e:
+            print("[ERROR] start_controller: {}".format(e))
+            return jsonify({'error': str(e)}), 500
+
+    def stop_controller(self):
+        """Arrête le contrôleur actif (nouvelle architecture)."""
+        try:
+            if self.control_manager is None:
+                return jsonify({'error': 'ControlManager non attaché'}), 400
+            active = self.control_manager._active_controller
+            if active is not None:
+                name = active.name
+                self.control_manager.deactivate_controller()
+
+                # Auto-switch: revenir au profil caméra 'stream' (640x480) pour le streaming
+                self._apply_camera_profile('stream')
+
+                return jsonify({'status': 'stopped', 'controller': name})
+            return jsonify({'status': 'stopped', 'controller': None})
+        except Exception as e:
+            print("[ERROR] stop_controller: {}".format(e))
+            return jsonify({'error': str(e)}), 500
+
+    def controller_status(self):
+        """Retourne l'état courant du contrôleur actif."""
+        try:
+            if self.control_manager is None:
+                return jsonify({'active': False})
+            active = self.control_manager._active_controller
+            payload = {
+                'active': bool(active),
+                'controller': active.name if active else None,
+                'running': self.control_manager._running,
+                'manual_override': self.control_manager.manual_override_active,
+            }
+            if active:
+                payload['controller_debug'] = active.get_debug_info()
+                payload['controller_params'] = active.get_params()
+            return jsonify(payload)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    def controller_params(self):
+        """GET/POST les paramètres d'un contrôleur par nom.
+
+        GET  /controller/params?name=pid_ir  → retourne les params
+        POST /controller/params  {"name": "pid_ir", "kp": 0.2, ...}  → met à jour
+        """
+        if self.control_manager is None:
+            return jsonify({'error': 'ControlManager non attaché'}), 400
+
+        if request.method == 'GET':
+            ctrl_name = request.args.get('name')
+            if not ctrl_name:
+                return jsonify({'error': 'name parameter required'}), 400
+            ctrl = self.control_manager.get_controller(ctrl_name)
+            if ctrl is None:
+                return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
+            return jsonify({'name': ctrl_name, 'params': ctrl.get_params()})
+
+        # POST: mise à jour des paramètres
+        data = request.get_json(silent=True) or {}
+        ctrl_name = data.pop('name', None)
+        if not ctrl_name:
+            return jsonify({'error': 'name field required'}), 400
+        ctrl = self.control_manager.get_controller(ctrl_name)
+        if ctrl is None:
+            return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
+
+        ctrl.update_params(**data)
+        return jsonify({'name': ctrl_name, 'params': ctrl.get_params()})
+
+    def _apply_sampling_kill(self, v_array, adapter):
+        """Force les groupes de features killés à 0 dans le vecteur d'échantillonnage.
+
+        Opère in-place sur v_array. Les indices dépendent du nombre de classes HAAR (N).
+        Les validations restent cohérentes car 0.0 est valide pour tous ces champs.
+        """
+        if not self.sampling_zeroed_groups:
+            return v_array
+        N = len(adapter.classes)
+        if "haar" in self.sampling_zeroed_groups:
+            # detection_flag (8) + class_onehot (9..8+N) + bbox cx,cy,w,h (9+N..12+N)
+            v_array[8 : 13 + N] = 0.0
+        if "line_camera" in self.sampling_zeroed_groups:
+            # line_camera_offset (24+N) + line_camera_detected (25+N)
+            v_array[24 + N] = 0.0
+            v_array[25 + N] = 0.0
+        return v_array
+
+    def _vectorize_state_with_adapter(self, state, adapter):
+        if state is None:
+            return None
+
+        detections = state.detections or []
+        vision_result = {'detections': detections}
+
+        imu_data = {}
+        if state.gyro_angles and len(state.gyro_angles) >= 11:
+            # zumi.update_angles() retourne 11 valeurs:
+            # [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y, Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt_state]
+            a = state.gyro_angles
+            imu_data = {
+                'gyro_x': float(a[0]),
+                'gyro_y': float(a[1]),
+                'gyro_z': float(a[2]),
+                'acc_x':  float(a[3]),
+                'acc_y':  float(a[4]),
+                'comp_x': float(a[5]),
+                'comp_y': float(a[6]),
+                'rot_x':  float(a[7]),
+                'rot_y':  float(a[8]),
+                'rot_z':  float(a[9]),
+                'tilt_state': float(a[10]),
+            }
+
+        ir_data = state.ir_sensors if state.ir_sensors is not None else None
+        line_off = state.line_offset if hasattr(state, 'line_offset') else None
+        vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data, line_offset=line_off)
+        return vector.tolist()
+
+    def _infer_ml_classes(self):
+        """Infère dynamiquement les classes de détection disponibles à partir des détecteurs du pipeline vision."""
+        classes = []
+        vp = self.vision_pipeline
+        if not vp:
+            return classes
+        try:
+            for det in vp.get_passive_detectors():
+                if getattr(det, 'name', '') == 'HaarDetector' and hasattr(det, 'classes'):
+                    for class_name in det.classes:  # Utilise la propriété .classes qui est déjà fournie
+                        if class_name not in classes:
+                            classes.append(class_name)
+        except Exception:
+            pass
+
+        print(f"[DEBUG] ML Classes inférées: {classes}")
+        return classes
+
+    def _get_ml_adapter(self, state):
+        """Crée une instance de VisionAdapter avec les dimensions d'image et les classes de détection actuelles."""
+        if state and state.frame is not None:
+            h, w = state.frame.shape[:2]
+        else:
+            frame = self.vision_pipeline.get_last_frame() if self.vision_pipeline else None
+            if frame is not None:
+                h, w = frame.shape[:2]
+            else:
+                w, h = 640, 480 # résolution par défaut
+        if not self._ml_classes:
+            self._ml_classes = self._infer_ml_classes()
+        return VisionAdapter(image_width=w, image_height=h, classes=self._ml_classes)

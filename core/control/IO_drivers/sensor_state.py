@@ -1,0 +1,72 @@
+﻿#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# sensor_state.py
+# ------------------
+"""DTO standardisé encapsulant toutes les données capteur à un instant t.
+
+Chaque contrôleur reçoit un SensorState en entrée de sa méthode step().
+Cela découple complètement les contrôleurs de la source des données
+(VisionPipeline, MPU Zumi, capteurs IR, etc.).
+"""
+
+import time
+import numpy as np
+from typing import Optional, List
+
+
+
+class SensorState:
+    """État complet des capteurs du robot à un instant donné.
+
+    Attributes:
+        timestamp:        Horodatage UNIX de la lecture.
+        frame:            Frame brute de la caméra (np.ndarray BGR) ou None.
+        line_offset:      Offset de la ligne en pixels (négatif=gauche, positif=droite) ou None.
+        line_detected:    True si la ligne est visible dans la frame.
+        detections:       Liste de détections passives (Haar, etc.) — liste de dicts.
+        gyro_angles:      Angles gyroscope/accéléromètre [x, y, z, acc_x, acc_y, comp_x, comp_y,
+                          rot_x, rot_y, rot_z, tilt_state] — 11 valeurs ou None.
+        orientation:      État d'orientation Zumi (-1 à 7, 5 = roues au sol).
+        ir_sensors:       6 lectures IR [front_r, bottom_r, back_r, bottom_l, back_l, front_l]
+                          valeurs 0-255 ou None.
+        battery_voltage:  Tension batterie en volts (max 4.2V).
+    """
+
+    __slots__ = (
+        'timestamp', 'frame', 'line_offset', 'line_detected', 'detections',
+        'gyro_angles', 'orientation', 'ir_sensors', 'battery_voltage',
+    )
+
+    def __init__(
+        self,
+        timestamp=None,
+        frame=None,
+        line_offset=None,
+        line_detected=False,
+        detections=None,
+        gyro_angles=None,
+        # orientation=-1,
+        ir_sensors=None,
+        # battery_voltage=0.0,
+    ):
+        self.timestamp = timestamp if timestamp is not None else time.time()
+        self.frame = frame
+        self.line_offset = line_offset
+        self.line_detected = line_detected
+        self.detections = detections
+        self.gyro_angles = gyro_angles
+        # self.orientation = orientation
+        self.ir_sensors = ir_sensors
+        # self.battery_voltage = battery_voltage
+
+    def __repr__(self):
+        parts = ["SensorState("]
+        parts.append("  line={}, offset={}".format(self.line_detected, self.line_offset))
+        if self.gyro_angles:
+            parts.append("  gyro=[{:.1f}, {:.1f}, {:.1f}]".format(*self.gyro_angles[:3]))
+        if self.ir_sensors:
+            parts.append("  ir={}".format(self.ir_sensors))
+        # if self.battery_voltage is not None:
+        #     parts.append("  batt={:.2f}V".format(self.battery_voltage))
+        parts.append(")")
+        return "\n".join(parts)

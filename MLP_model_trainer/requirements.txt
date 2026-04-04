@@ -1,0 +1,22 @@
+# Requirements pour l'entraînement du MLP (côté PC/VPS)
+# Installation: pip install -r requirements.txt
+#
+# Python 3.11 ou 3.12 recommandé
+# Setup:  python -m venv venv
+#         source venv/bin/activate        (Linux)
+#         venv\Scripts\activate           (Windows)
+#         pip install -r requirements.txt
+
+# ── Core (entrainement) ──────────────────────────────────────
+torch>=2.0.0
+numpy<=1.26.4
+matplotlib>=3.7.0
+
+# ── Conversion vers TFLite ───────────────────────────────────
+tensorflow>=2.13.0
+
+# ── Analyse & simulation (optionnel) ────────────────────────
+scipy>=1.10.0            # analyze_dataset.py (spearmanr)
+scikit-learn>=1.2.0      # simulate.py, analyze_dataset.py (ablation features)
+pygame>=2.6.0            # simulator_2d.py (visualisation 2D des trajectoires)
+psutil>=5.9.0            # validate_env.py (detection RAM/CPU)

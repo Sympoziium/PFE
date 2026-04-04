@@ -1,0 +1,14 @@
+# Runtime dependencies for robot deployment (Raspberry Pi Zero 2W)
+# Target: Raspberry Pi OS Bookworm 64-bit, Python 3.11
+
+flask>=3.0,<4.0
+requests>=2.31,<3.0
+numpy>=1.26
+opencv-python>=4.8,=<4.10
+zumi
+
+# On Raspberry Pi OS, apt installation (python3-picamera2) is often more reliable.
+picamera2; platform_system == "Linux"
+
+# Optional: only needed when running a TFLite model on the robot.
+# tflite-runtime; platform_system == "Linux" and platform_machine == "aarch64"

@@ -35,9 +35,10 @@ class VisionPipeline:
         # threads pour la détection passive
         self._passive_thread = None         # instance du thread
         self._passive_running = False       # Flag pour contrôler l'exécution du thread
-        self._passive_interval = 0.5          # Intervalle de 1 seconde entre chaque détection passive
+        self._detection_rate = 5          # nombre de frames du livefeed entre chaque détection passive (ex: 5 → une détection toutes les 5 frames)
         self._passive_pause_event = threading.Event() # Event pour contrôler la pause du thread de détection passive
         self._passive_pause_event.clear()     # pause par défaut
+        self._detection_trigger = threading.Event()  # signal "frame prête"
 
         # Buffer résultat détection passive (thread-safe)
         self._passive_detectors = []         # Liste des détecteurs à utiliser pour la détection passive (peut être différente de ceux du pipeline principal)
@@ -50,7 +51,6 @@ class VisionPipeline:
         self._mining_counts = {}              # {object_name: int} — compteur de crops par objet
         self._mining_lock = threading.Lock()  # Protection pour les compteurs
 
-
     def attach_capture_dir(self, capture_dir):
         """Attache le dossier de capture d'images au détecteur."""
         self.CAPTURE_DIR = capture_dir
@@ -60,6 +60,8 @@ class VisionPipeline:
 
     def start(self):
         """ appeler pour démarrer le pipeline de vision """
+        if self.running:
+            return
         try:
             self.camera.start_camera()
             self.running = True
@@ -115,10 +117,10 @@ class VisionPipeline:
         # Signaler l'arrêt AVANT de fermer la caméra
         # pour que le générateur vidéo s'arrête proprement
         self.running = False
-        import time
         time.sleep(0.15)  # Laisser le générateur vidéo terminer son cycle
         try:
             self.camera.close()
+            time.sleep(0.1)  # Laisser un peu de temps pour que la caméra se libère complètement
         except Exception as e:
             if self.debug:
                 print("Erreur lors de l'arret du pipeline de vision: {}".format(e))
@@ -132,15 +134,15 @@ class VisionPipeline:
         """ ajouter un détecteur au pipeline de vision """
         self._passive_detectors.append(detectors)
 
-    def process_frame(self, frame, detetor_index=0, filename=None):
+    def process_frame(self, frame, detector_index=0, filename=None):
         """ traiter un frame spécifique avec un détecteur spécifique """
 
-        if detetor_index < 0 or detetor_index >= len(self.detectors):
+        if detector_index < 0 or detector_index >= len(self.detectors):
             raise IndexError("Index de détecteur invalide.")
 
         start_time = time.time() # pour mesurer le temps de traitement
 
-        detector = self.detectors[detetor_index]
+        detector = self.detectors[detector_index]
 
         try:
             # Vérifier si le détecteur accepte le paramètre filename
@@ -375,9 +377,11 @@ class VisionPipeline:
             normalized_height = object_height_pixels * facteur_M['320x240']
         elif frame_h == 480:
             normalized_height = object_height_pixels * facteur_M['640x480']
+        elif frame_h == 972:
+            normalized_height = object_height_pixels * (facteur_M['640x480'] / 2.025)  # comme la référence est à 480p, on divise le facteur lorsqu'on dépasse cette résolution
         else:
             if debug:
-                print("Résolution non reconnue pour la normalisation: hauteur image = {}".format(frame_h))
+                print("Résolution non reconnue pour la normalisation: hauteur image (approximate_object_distance) = {}".format(frame_h))
             normalized_height = object_height_pixels  # pas de normalisation
         
         if object_name in hauteur_reelle_cm:
@@ -444,6 +448,10 @@ class VisionPipeline:
         """ obtenir la liste des détecteurs ajoutés au pipeline de vision """
         return self.detectors
     
+    def get_passive_detectors(self):
+        """ obtenir la liste des détecteurs passif ajoutés au pipeline de vision """
+        return self._passive_detectors
+    
     def get_camera(self):
         """ obtenir la caméra utilisée dans le pipeline de vision """
         return self.camera
@@ -488,36 +496,41 @@ class VisionPipeline:
             # attend si le mode pause est activé
             self._passive_pause_event.wait()
     
+            # Attendre le signal de la boucle video_feed
+            triggered = self._detection_trigger.wait(timeout=1.0)
+            if not triggered:
+                continue  # timeout — vérifier _passive_running et recommencer
+            self._detection_trigger.clear()  # consommer le signal
+
             # récupération de la dernière frame du livefeed
             frame = self.get_last_frame()
-            if frame is not None and nb_detectors > 0:
-                # faire la détection avec le détecteur courant
-                detector = self._passive_detectors[detector_index]
-                try:
-                    detection_result = detector.process_passive(frame)
-                    with self._result_lock:
-                        self._last_detection_result = detection_result
-                        self._last_detection_result['Detector'] = str(detector)  # ajouter le nom du détecteur au résultat
+            if frame is None or nb_detectors == 0:
+                continue
 
-                    # --- Hard Positive Mining: sauvegarder les crops ---
-                    if self._mining_enabled and detection_result.get('Object_detected'):
-                        self._harvest_crops(frame, detection_result.get('detections', []))
+            # faire la détection avec le détecteur courant
+            detector = self._passive_detectors[detector_index]
+            try:
+                detection_result = detector.process_passive(frame)
+                with self._result_lock:
+                    self._last_detection_result = detection_result
+                    self._last_detection_result['Detector'] = str(detector)  
+                    self._last_detection_result['Timestamp'] = time.time()
 
-                except Exception as e:
-                    if self.debug:
-                        print("Erreur lors de la détection passive avec le détecteur {}: {}".format(detector, e))
+                # --- Hard Positive Mining: sauvegarder les crops ---
+                if self._mining_enabled and detection_result.get('Object_detected'):
+                    self._harvest_crops(frame, detection_result.get('detections', []))
 
-                # passer au détecteur suivant pour la prochaine itération
-                detector_index = (detector_index + 1) % nb_detectors
-        
-            # Interval de détection passive
-            time.sleep(self._passive_interval)
+            except Exception as e:
+                if self.debug:
+                    print("Erreur lors de la détection passive avec le détecteur {}: {}".format(detector, e))
 
-    def start_passive_detection(self, interval=1.0):
+            # passer au détecteur suivant pour la prochaine itération
+            detector_index = (detector_index + 1) % nb_detectors
+
+    def start_passive_detection(self):
         """Démarre le thread de détection passive avec l'intervalle spécifié."""
         if self._passive_thread and self._passive_thread.is_alive():
             return  # déjà actif
-        self._passive_interval = interval
         self._passive_running = True
         self._passive_pause_event.set()
         self._passive_thread = threading.Thread(
@@ -527,7 +540,7 @@ class VisionPipeline:
         )
         self._passive_thread.start()
         if self.debug:
-            print("[PassiveVision] Démarré (intervalle: {}s)".format(interval))
+            print("[PassiveVision] Démarré avec {} détecteurs passifs".format(len(self._passive_detectors)))
 
     def stop_passive_detection(self):
         """Arrête le thread de détection passive."""
@@ -555,6 +568,14 @@ class VisionPipeline:
         """Retourne le dernier résultat de détection passive (thread-safe)."""
         with self._result_lock:
             return self._last_detection_result
+
+    def set_passive_detection_FPS(self, detection_rate):
+        """
+        Définit la fréquence de détection passive en nombre de frames du livefeed.
+        Ex: detection_rate=5 → une détection toutes les 5 frames produites.
+        """
+        self._detection_rate = max(1, int(detection_rate))
+
 
 # ----------------------------------------
 #        Hard Positive Mining

@@ -302,8 +302,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 </div>
                 <button class='primary-btn' data-path="/">Accueil</button>
                 <button class='primary-btn' data-path="/vision">Vision</button>
+        		<button class='primary-btn' data-path="/onglet_control">Contrôle</button>
                 <button class='primary-btn' data-path="/pid">PID</button>
-                                <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
+                <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
                 </div>
             </div>
 
