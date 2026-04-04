@@ -815,6 +815,39 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 stepBtn.style.display = parseInt(stepInput.value) ? 'block' : 'none';
             });
         }
+
+        // Auto-apply: chaque modification déclenche applySettings avec debounce
+        _bindAutoApply(sections);
+    }
+
+    var _autoApplyTimer = null;
+    function _debouncedApply() {
+        if (_autoApplyTimer) clearTimeout(_autoApplyTimer);
+        _autoApplyTimer = setTimeout(function() { applySettings(); }, 300);
+    }
+
+    function _bindAutoApply(sections) {
+        // Bind sur les sections (circuit_fsm)
+        if (sections) {
+            sections.forEach(function(section) {
+                section.params.forEach(function(p) {
+                    var input = document.getElementById('param_' + p.key);
+                    if (!input) return;
+                    input.addEventListener('input', _debouncedApply);
+                    input.addEventListener('change', _debouncedApply);
+                });
+            });
+        }
+    }
+
+    function _bindAutoApplyFlat(paramDefs) {
+        // Bind sur les params plats (manual_controller, pid_ir)
+        paramDefs.forEach(function(p) {
+            var input = document.getElementById('param_' + p.key);
+            if (!input) return;
+            input.addEventListener('input', _debouncedApply);
+            input.addEventListener('change', _debouncedApply);
+        });
     }
 
     function renderParamSliders(container, paramDefs, values) {
@@ -854,6 +887,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     : parseInt(input.value);
             });
         });
+
+        // Auto-apply sur tous les inputs
+        _bindAutoApplyFlat(paramDefs);
     }
 
     function applySettings() {
