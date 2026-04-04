@@ -1,0 +1,226 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 850" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <!-- Styles and Defs -->
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="120%" height="120%">
+      <feDropShadow dx="3" dy="5" stdDeviation="5" flood-opacity="0.15" />
+    </filter>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    
+    <!-- Gradients -->
+    <linearGradient id="gradCore" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E3F2FD" />
+      <stop offset="100%" stop-color="#BBDEFB" />
+    </linearGradient>
+    <linearGradient id="gradInterface" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F3E5F5" />
+      <stop offset="100%" stop-color="#E1BEE7" />
+    </linearGradient>
+    <linearGradient id="gradTrain" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF3E0" />
+      <stop offset="100%" stop-color="#FFE0B2" />
+    </linearGradient>
+    <linearGradient id="gradHard" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8F5E9" />
+      <stop offset="100%" stop-color="#C8E6C9" />
+    </linearGradient>
+    <linearGradient id="gradHardwareBase" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fdfbfb" />
+      <stop offset="100%" stop-color="#ebedee" />
+    </linearGradient>
+
+    <!-- Markers -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#78909C" />
+    </marker>
+    <marker id="arrowDashModel" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#F57C00" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="#F8FAFC" />
+  
+  <!-- Header / Title -->
+  <text x="600" y="50" font-size="34" font-weight="900" text-anchor="middle" fill="#1E293B">Architecture Modulaire du Robot Zumi (PFE)</text>
+  <text x="600" y="80" font-size="16" font-weight="500" text-anchor="middle" fill="#64748B">Mise en évidence du polymorphisme, des points d'extension et du couplage lâche</text>
+
+  <!-- ======================================================= -->
+  <!-- 1. INTERFACE ZONE                                       -->
+  <!-- ======================================================= -->
+  <rect x="250" y="110" width="450" height="100" rx="12" fill="url(#gradInterface)" filter="url(#shadow)" stroke="#CE93D8" stroke-width="2"/>
+  <text x="475" y="140" font-size="20" font-weight="800" text-anchor="middle" fill="#4A148C">Interface Web &amp; API (Serveur Flask)</text>
+  <text x="475" y="165" font-size="14" font-weight="bold" text-anchor="middle" fill="#6A1B9A">flask_router.py / server_controller.py</text>
+  <text x="475" y="185" font-size="13" text-anchor="middle" fill="#7B1FA2">Modules d'onglets découplés: contrôle, pid, vision, accueil</text>
+  
+  <path d="M 475 210 L 475 250" stroke="#78909C" stroke-width="3" stroke-dasharray="5,5" marker-end="url(#arrow)"/>
+  <text x="485" y="235" font-size="12" fill="#78909C" font-weight="bold">Commandes HTTP (API REST / WebSocket)</text>
+
+  <!-- ======================================================= -->
+  <!-- ENTRY POINT                                             -->
+  <!-- ======================================================= -->
+  <rect x="50" y="110" width="160" height="60" rx="10" fill="#ECEFF1" filter="url(#shadow)" stroke="#B0BEC5" stroke-width="2"/>
+  <text x="130" y="145" font-size="16" font-weight="bold" text-anchor="middle" fill="#263238">main.py</text>
+  <text x="130" y="160" font-size="10" text-anchor="middle" fill="#546e7a">Initialisation &amp; Injection</text>
+  
+  <path d="M 210 140 L 250 140" stroke="#78909C" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M 130 170 L 130 250" stroke="#78909C" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- ======================================================= -->
+  <!-- 2. CORE ZONE (Couche métier)                            -->
+  <!-- ======================================================= -->
+  <rect x="30" y="250" width="860" height="420" rx="15" fill="url(#gradCore)" filter="url(#shadow)" stroke="#90CAF9" stroke-width="2"/>
+  <text x="50" y="280" font-size="22" font-weight="900" fill="#0D47A1">Couche Métier Embarquée (core/)</text>
+  
+  <text x="210" y="280" font-size="13" font-weight="bold" fill="#1565C0" opacity="0.8">➔ Injection de dépendances et design pattern Strategy</text>
+
+  <!-- VISION MODULE -->
+  <rect x="50" y="300" width="230" height="350" rx="10" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="165" y="330" font-size="18" font-weight="800" text-anchor="middle" fill="#01579B">Module Vision</text>
+  
+  <rect x="65" y="340" width="200" height="40" rx="6" fill="#E1F5FE" stroke="#81D4FA"/>
+  <text x="165" y="365" font-size="14" font-weight="bold" text-anchor="middle" fill="#0277BD">vision_pipeline.py</text>
+  
+  <!-- Interface & Implementations (Vision) -->
+  <rect x="65" y="390" width="200" height="245" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-dasharray="4"/>
+  <text x="165" y="415" font-size="13" font-style="italic" font-weight="bold" text-anchor="middle" fill="#64748B">&lt;&lt; Abstract Base Class &gt;&gt;</text>
+  <text x="165" y="435" font-size="15" font-weight="800" text-anchor="middle" fill="#334155">detector_base.py</text>
+  
+  <rect x="80" y="450" width="170" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="165" y="469" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">Line_detector.py</text>
+  
+  <rect x="80" y="485" width="170" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="165" y="504" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">Stop_detector_cv.py</text>
+  
+  <rect x="80" y="520" width="170" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="165" y="539" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">Haar_classifier.py</text>
+  
+  <rect x="80" y="555" width="170" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="165" y="574" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">Luminosity.py</text>
+  
+  <rect x="80" y="590" width="170" height="28" rx="4" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="3"/>
+  <text x="165" y="609" font-size="13" font-style="italic" text-anchor="middle" fill="#64748B">+ Nouveaux détecteurs</text>
+
+
+  <!-- CONTROL MODULE -->
+  <rect x="300" y="300" width="290" height="350" rx="10" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="445" y="330" font-size="18" font-weight="800" text-anchor="middle" fill="#01579B">Module Contrôle</text>
+  
+  <rect x="320" y="340" width="250" height="40" rx="6" fill="#E1F5FE" stroke="#81D4FA"/>
+  <text x="445" y="365" font-size="14" font-weight="bold" text-anchor="middle" fill="#0277BD">control_manager.py (Orchestrateur)</text>
+  
+  <!-- Interface & Implementations (Control) -->
+  <rect x="320" y="390" width="250" height="195" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-dasharray="4"/>
+  <text x="445" y="415" font-size="13" font-style="italic" font-weight="bold" text-anchor="middle" fill="#64748B">&lt;&lt; Abstract Base Class &gt;&gt;</text>
+  <text x="445" y="435" font-size="15" font-weight="800" text-anchor="middle" fill="#334155">controller_base.py</text>
+  
+  <rect x="340" y="450" width="210" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="445" y="469" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">manual_controller.py</text>
+  
+  <rect x="340" y="485" width="210" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="445" y="504" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">pid_ir_controller.py</text>
+  
+  <rect x="340" y="520" width="210" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="445" y="539" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">ml_controller.py (TFLite Inference)</text>
+
+  <rect x="340" y="555" width="210" height="28" rx="4" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="3"/>
+  <text x="445" y="574" font-size="13" font-style="italic" text-anchor="middle" fill="#64748B">+ Nouveaux algorithmes</text>
+
+  <rect x="320" y="595" width="250" height="45" rx="6" fill="#FEF08A" stroke="#FDE047"/>
+  <text x="445" y="615" font-size="13" font-weight="bold" text-anchor="middle" fill="#A16207">IO_drivers (DTOs neutres)</text>
+  <text x="445" y="630" font-size="11" text-anchor="middle" fill="#854D0E">motor_command, sensor_state</text>
+
+
+  <!-- HARDWARE ABSTRACTION MODULE -->
+  <rect x="610" y="300" width="260" height="350" rx="10" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="740" y="330" font-size="18" font-weight="800" text-anchor="middle" fill="#01579B">Abstraction Matérielle</text>
+  
+  <!-- Robot Base -->
+  <rect x="630" y="350" width="220" height="130" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-dasharray="4"/>
+  <text x="740" y="375" font-size="13" font-style="italic" font-weight="bold" text-anchor="middle" fill="#64748B">&lt;&lt; Abstract Base Class &gt;&gt;</text>
+  <text x="740" y="395" font-size="15" font-weight="800" text-anchor="middle" fill="#334155">robot_base.py</text>
+  
+  <rect x="650" y="410" width="180" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="740" y="429" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">robot_zumi.py</text>
+  
+  <rect x="650" y="445" width="180" height="28" rx="4" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="740" y="464" font-size="13" font-weight="500" text-anchor="middle" fill="#64748B">mock_zumi.py (Simulation)</text>
+
+  <!-- Camera Base -->
+  <rect x="630" y="495" width="220" height="145" rx="8" fill="#F8FAFC" stroke="#CBD5E1" stroke-dasharray="4"/>
+  <text x="740" y="520" font-size="13" font-style="italic" font-weight="bold" text-anchor="middle" fill="#64748B">&lt;&lt; Abstract Base Class &gt;&gt;</text>
+  <text x="740" y="540" font-size="15" font-weight="800" text-anchor="middle" fill="#334155">camera_base.py</text>
+  
+  <rect x="650" y="555" width="180" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="740" y="574" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">zumi_camera.py</text>
+  
+  <rect x="650" y="590" width="180" height="28" rx="4" fill="#BAE6FD" stroke="#38BDF8" stroke-width="1"/>
+  <text x="740" y="609" font-size="13" font-weight="600" text-anchor="middle" fill="#0369A1">picam2.py (Pi Zero 2W)</text>
+
+
+  <!-- ======================================================= -->
+  <!-- 3. PC-SIDE TRAINING / MODELS ZONE                       -->
+  <!-- ======================================================= -->
+  <rect x="910" y="250" width="260" height="230" rx="12" fill="url(#gradTrain)" filter="url(#shadow)" stroke="#FFB74D" stroke-width="2"/>
+  <text x="1040" y="280" font-size="18" font-weight="800" text-anchor="middle" fill="#E65100">Scripts PC (ML Models)</text>
+  
+  <rect x="925" y="300" width="230" height="75" rx="8" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="1040" y="325" font-size="14" font-weight="800" text-anchor="middle" fill="#D84315">MLP_model_trainer</text>
+  <text x="1040" y="345" font-size="12" text-anchor="middle" fill="#F4511E">PyTorch → ONNX → TFLite</text>
+  <text x="1040" y="360" font-size="11" font-weight="600" text-anchor="middle" fill="#BF360C">models/weights.tflite</text>
+
+  <rect x="925" y="390" width="230" height="75" rx="8" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="1040" y="415" font-size="14" font-weight="800" text-anchor="middle" fill="#D84315">Haar_Classifier_trainer</text>
+  <text x="1040" y="435" font-size="12" text-anchor="middle" fill="#F4511E">Entraînement OpenCV</text>
+  <text x="1040" y="450" font-size="11" font-weight="600" text-anchor="middle" fill="#BF360C">models/cascade.xml</text>
+  
+  <!-- Export Arrows -->
+  <path d="M 925 330 C 830 330 830 535 550 535" fill="none" stroke="#F57C00" stroke-width="3" stroke-dasharray="6,4" marker-end="url(#arrowDashModel)"/>
+  <text x="790" y="525" font-size="12" font-weight="bold" fill="#F57C00" transform="rotate(-30 790,525)">Déploiement TFLite</text>
+  
+  <path d="M 925 430 C 850 430 850 535 250 535" fill="none" stroke="#F57C00" stroke-width="3" stroke-dasharray="6,4" marker-end="url(#arrowDashModel)"/>
+  <text x="210" y="430" font-size="12" font-weight="bold" fill="#F57C00">Fichiers XML</text>
+
+
+  <!-- ======================================================= -->
+  <!-- 4. HARDWARE I/O ZONE                                    -->
+  <!-- ======================================================= -->
+  <rect x="250" y="720" width="620" height="100" rx="15" fill="url(#gradHard)" filter="url(#shadow)" stroke="#81C784" stroke-width="2"/>
+  <text x="560" y="750" font-size="20" font-weight="900" text-anchor="middle" fill="#1B5E20">I/O Physique et Base Matérielle</text>
+  
+  <rect x="280" y="765" width="560" height="40" rx="8" fill="url(#gradHardwareBase)" stroke="#A5D6A7"/>
+  <text x="560" y="790" font-size="14" font-weight="bold" text-anchor="middle" fill="#2E7D32">
+    Moteurs Zumi, Écran OLED SSD1306/SH1106, PiCamera 2, Capteurs Infrarouge (I2C/SPI)
+  </text>
+
+  <!-- Connectors from Core to Hardware -->
+  <path d="M 740 645 L 740 720" stroke="#78909C" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="750" y="690" font-size="12" font-weight="bold" fill="#546E7A">Appels drivers</text>
+  
+  <path d="M 445 640 L 445 720" stroke="#78909C" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="455" y="690" font-size="12" font-weight="bold" fill="#546E7A">Commandes DTO</text>
+
+
+  <!-- ======================================================= -->
+  <!-- 5. SCRIPTS / OS SYSTEM ZONE                             -->
+  <!-- ======================================================= -->
+  <rect x="910" y="500" width="260" height="320" rx="12" fill="#ECEFF1" filter="url(#shadow)" stroke="#B0BEC5" stroke-width="2"/>
+  <text x="1040" y="530" font-size="18" font-weight="800" text-anchor="middle" fill="#37474F">Administration &amp; OS</text>
+  <text x="1040" y="550" font-size="13" font-style="italic" text-anchor="middle" fill="#546E7A">/script</text>
+  
+  <rect x="925" y="570" width="230" height="150" rx="8" fill="#FFFFFF" stroke="#CFD8DC"/>
+  <text x="1040" y="595" font-size="14" font-weight="bold" text-anchor="middle" fill="#455A64">Configuration Système</text>
+  <text x="940" y="620" font-size="12" fill="#607D8B">• zumi_ap_setup.sh</text>
+  <text x="940" y="640" font-size="12" fill="#607D8B">• zumi_ap_sta_start.sh</text>
+  <text x="940" y="660" font-size="12" fill="#607D8B">• zumi_wifi_config.sh</text>
+  <text x="940" y="680" font-size="12" fill="#607D8B">• setup_dns_rpi.sh</text>
+  <text x="940" y="700" font-size="12" fill="#607D8B">• Services systemd</text>
+
+  <rect x="925" y="730" width="230" height="75" rx="8" fill="#FFFFFF" stroke="#CFD8DC"/>
+  <text x="1040" y="755" font-size="14" font-weight="bold" text-anchor="middle" fill="#455A64">Pont Arduino</text>
+  <text x="1040" y="775" font-size="12" text-anchor="middle" fill="#607D8B">/Pont/Pont.ino</text>
+  <text x="1040" y="790" font-size="11" text-anchor="middle" fill="#78909C">(I2C ATmega comms)</text>
+
+</svg>
