@@ -512,36 +512,55 @@ class controller:
                     if frame_counter % vp._detection_rate == 0:
                         vp._detection_trigger.set()  # signal au thread de détection
 
-                # --- Overlay détection de ligne quand circuit_fsm est actif ---
+                # --- Overlay détection multi-zones pour circuit_fsm ---
                 display_frame = frame_bgr
+                
+                # Vérifier si circuit_fsm est actif OU sélectionné (pour le debug visuel)
+                circuit_fsm_active = False
                 if self.control_manager and self.control_manager._active_controller:
                     active_ctrl = self.control_manager._active_controller
                     if active_ctrl.name == "circuit_fsm":
-                        try:
-                            # Trouver le LineDetector dans le pipeline
-                            line_det = None
-                            for det in vp.get_detectors():
-                                if getattr(det, 'name', '') == 'line':
-                                    line_det = det
-                                    break
-                            if line_det is not None:
-                                line_result = line_det.process(frame_bgr.copy())
-                                if line_result and line_result.get('Object_detected'):
-                                    display_frame = line_det.annotate_detection(frame_bgr.copy())
-                                else:
-                                    display_frame = frame_bgr.copy()
-                                    cv2.putText(display_frame, "Ligne non detectee",
-                                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                                                0.6, (0, 0, 255), 2)
-                                # Ajouter l'état FSM en overlay
-                                fsm_debug = active_ctrl.get_debug_info()
-                                fsm_text = "FSM: {}".format(fsm_debug.get('fsm_state', '?'))
-                                cv2.putText(display_frame, fsm_text,
-                                            (10, display_frame.shape[0] - 10),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-                        except Exception as e:
-                            if self.debug:
-                                print("[VideoFeed] Erreur overlay circuit_fsm: {}".format(e))
+                        circuit_fsm_active = True
+
+                # Trouver le LineDetector dans le pipeline
+                line_det = None
+                if vp:
+                    for det in vp.get_detectors():
+                        if getattr(det, 'name', '') == 'line':
+                            line_det = det
+                            break
+
+                if line_det is not None:
+                    try:
+                        # Exécuter la détection multi-zones sur chaque frame
+                        zones_result = line_det.process_zones(frame_bgr.copy())
+                        display_frame = line_det.annotate_zones(frame_bgr.copy(), zones_result)
+
+                        if circuit_fsm_active:
+                            # Ajouter l'état FSM en overlay
+                            active_ctrl = self.control_manager._active_controller
+                            fsm_debug = active_ctrl.get_debug_info()
+                            fsm_text = "FSM: {} | {}".format(
+                                fsm_debug.get('fsm_state', '?'),
+                                fsm_debug.get('last_decision', '?'))
+                            cv2.putText(display_frame, fsm_text,
+                                        (10, display_frame.shape[0] - 10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 0), 1)
+                            # Indicateur mode pas-à-pas
+                            if fsm_debug.get('step_by_step_mode'):
+                                step_text = "PAS-A-PAS: {}".format(
+                                    "EN ATTENTE" if fsm_debug.get('fsm_state') == 'ATTENTE_STEP' else "ACTIF")
+                                cv2.putText(display_frame, step_text,
+                                            (10, display_frame.shape[0] - 30),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 200, 255), 1)
+                        else:
+                            # Pas de contrôleur actif — juste afficher les zones pour le debug
+                            cv2.putText(display_frame, "ZONES DETECTEUR (debug)",
+                                        (10, display_frame.shape[0] - 10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
+                    except Exception as e:
+                        if self.debug:
+                            print("[VideoFeed] Erreur overlay zones: {}".format(e))
 
                 # --- Overlay détection passive sur la frame d'affichage ---
                 if vp._passive_running:
@@ -1519,7 +1538,14 @@ class controller:
             return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
 
         # Séparer les params du LineDetector de ceux du contrôleur
-        line_detector_keys = {'white_threshold', 'min_area', 'offset_ratio'}
+        line_detector_keys = {
+            'white_threshold', 'min_area', 'offset_ratio',
+            'center_zone_width_ratio',
+            'front_zone_x_ratio', 'front_zone_y_start', 'front_zone_y_end',
+            'front_zone_width_ratio', 'front_min_dashes',
+            'corner_zone_width_ratio', 'corner_zone_height_ratio',
+            'corner_zone_y_start',
+        }
         line_params = {}
         ctrl_params = {}
         for k, v in data.items():
@@ -1549,6 +1575,26 @@ class controller:
                     result['line_detector_params'] = det.get_params()
                     break
         return jsonify(result)
+
+    def controller_step(self):
+        """POST /controller/step — Déclenche un pas en mode pas-à-pas.
+        
+        Body JSON: {"name": "circuit_fsm"}
+        """
+        if self.control_manager is None:
+            return jsonify({'error': 'ControlManager non attaché'}), 400
+
+        data = request.get_json(silent=True) or {}
+        ctrl_name = data.get('name', 'circuit_fsm')
+        ctrl = self.control_manager.get_controller(ctrl_name)
+        if ctrl is None:
+            return jsonify({'error': 'Contrôleur inconnu: {}'.format(ctrl_name)}), 404
+
+        if hasattr(ctrl, 'request_step'):
+            ctrl.request_step()
+            return jsonify({'ok': True, 'message': 'Step requested'})
+        else:
+            return jsonify({'error': 'Ce contrôleur ne supporte pas le mode pas-à-pas'}), 400
 
     def _vectorize_state_with_adapter(self, state, adapter):
         if state is None:

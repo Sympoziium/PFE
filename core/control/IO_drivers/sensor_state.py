@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # sensor_state.py
 # ------------------
@@ -30,11 +30,25 @@ class SensorState:
         ir_sensors:       6 lectures IR [front_r, bottom_r, back_r, bottom_l, back_l, front_l]
                           valeurs 0-255 ou None.
         battery_voltage:  Tension batterie en volts (max 4.2V).
+        
+        # Multi-zones (circuit_fsm)
+        front_line_detected:   True si la zone avant voit des pointillés.
+        front_line_confirmed:  True si la zone avant a >= front_min_dashes pointillés.
+        front_offset:          Offset dans la zone avant (pixels).
+        corner_left_detected:  True si la zone coin gauche voit des pointillés.
+        corner_right_detected: True si la zone coin droit voit des pointillés.
+        corner_left_count:     Nombre de pointillés dans la zone coin gauche.
+        corner_right_count:    Nombre de pointillés dans la zone coin droit.
+        zones_result:          Résultat complet de process_zones() (dict).
     """
 
     __slots__ = (
         'timestamp', 'frame', 'line_offset', 'line_detected', 'detections',
         'gyro_angles', 'orientation', 'ir_sensors', 'battery_voltage',
+        'front_line_detected', 'front_line_confirmed', 'front_offset',
+        'corner_left_detected', 'corner_right_detected',
+        'corner_left_count', 'corner_right_count',
+        'zones_result',
     )
 
     def __init__(
@@ -48,6 +62,14 @@ class SensorState:
         # orientation=-1,
         ir_sensors=None,
         # battery_voltage=0.0,
+        front_line_detected=False,
+        front_line_confirmed=False,
+        front_offset=None,
+        corner_left_detected=False,
+        corner_right_detected=False,
+        corner_left_count=0,
+        corner_right_count=0,
+        zones_result=None,
     ):
         self.timestamp = timestamp if timestamp is not None else time.time()
         self.frame = frame
@@ -58,6 +80,14 @@ class SensorState:
         # self.orientation = orientation
         self.ir_sensors = ir_sensors
         # self.battery_voltage = battery_voltage
+        self.front_line_detected = front_line_detected
+        self.front_line_confirmed = front_line_confirmed
+        self.front_offset = front_offset
+        self.corner_left_detected = corner_left_detected
+        self.corner_right_detected = corner_right_detected
+        self.corner_left_count = corner_left_count
+        self.corner_right_count = corner_right_count
+        self.zones_result = zones_result
 
     def __repr__(self):
         parts = ["SensorState("]

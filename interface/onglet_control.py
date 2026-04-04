@@ -590,7 +590,32 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     params: [
                         {key: 'white_threshold', label: 'Seuil blanc (0-255)', min: 0, max: 255, step: 1, type: 'int', input: 'number', source: 'line_detector'},
                         {key: 'min_area', label: 'Aire min pointillé (px)', min: 1, max: 500, step: 1, type: 'int', input: 'number', source: 'line_detector'},
-                        {key: 'offset_ratio', label: 'ROI offset ratio', min: 0, max: 1, step: 0.05, type: 'float', input: 'number', source: 'line_detector'}
+                        {key: 'offset_ratio', label: 'ROI offset ratio (Début zone centre Y)', min: 0, max: 1, step: 0.05, type: 'float', input: 'number', source: 'line_detector'}
+                    ]
+                },
+                {
+                    label: '📐 Zone CENTRE (base)',
+                    params: [
+                        {key: 'center_zone_width_ratio', label: 'Largeur zone centre (ratio)', min: 0.1, max: 1, step: 0.05, type: 'float', input: 'number', source: 'line_detector'}
+                    ]
+                },
+                {
+                    label: '📏 Zone AVANT (alignement)',
+                    params: [
+                        {key: 'front_zone_x_ratio', label: 'Position X centre (ratio)', min: 0.1, max: 0.9, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_y_start', label: 'Début Y (ratio, 0=haut)', min: 0, max: 0.5, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_y_end', label: 'Fin Y (ratio)', min: 0.2, max: 0.8, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_width_ratio', label: 'Largeur (ratio)', min: 0.02, max: 0.5, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_min_dashes', label: 'Min pointillés pour confirmer', min: 1, max: 10, step: 1, type: 'int', input: 'number', source: 'line_detector'}
+                    ]
+                },
+                {
+                    label: '↗️ Zones COINS (virages)',
+                    params: [
+                        {key: 'corner_zone_width_ratio', label: 'Largeur chaque coin (ratio)', min: 0.05, max: 0.5, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_height_ratio', label: 'Hauteur chaque coin (ratio)', min: 0.1, max: 0.6, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_y_start', label: 'Début Y coins (ratio)', min: 0, max: 0.5, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_slowdown_factor', label: 'Facteur ralentissement virage (0-1)', min: 0.1, max: 1, step: 0.05, type: 'float', input: 'number'}
                     ]
                 },
                 {
@@ -624,6 +649,13 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         {key: 'forward_speed', label: 'Vitesse avance aveugle', min: 1, max: 50, step: 1, type: 'int', input: 'number'},
                         {key: 'cm_per_second', label: 'Calibration cm/s', min: 1, max: 50, step: 0.5, type: 'float', input: 'number'}
                     ]
+                },
+                {
+                    label: '👣 Mode pas-à-pas',
+                    params: [
+                        {key: 'step_by_step_mode', label: 'Activer mode pas-à-pas', min: 0, max: 1, step: 1, type: 'int', input: 'number'}
+                    ],
+                    extra_html: '<button id="stepNextBtn" class="step-next-btn" onclick="requestNextStep()" style="margin-top:8px; width:100%; padding:10px; font-size:16px; background:#4CAF50; color:white; border:none; border-radius:8px; cursor:pointer; display:none;">⏭️ Prochain pas</button>'
                 }
             ]
         }
@@ -751,6 +783,10 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 }
                 html += '</div>';
             });
+            // Extra HTML (ex: bouton pas-à-pas)
+            if (section.extra_html) {
+                html += section.extra_html;
+            }
             html += '</div>';
         });
         container.innerHTML = html;
@@ -769,6 +805,16 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 });
             });
         });
+
+        // Afficher/masquer le bouton pas-à-pas selon la valeur
+        var stepBtn = document.getElementById('stepNextBtn');
+        var stepInput = document.getElementById('param_step_by_step_mode');
+        if (stepBtn && stepInput) {
+            stepBtn.style.display = parseInt(stepInput.value) ? 'block' : 'none';
+            stepInput.addEventListener('change', function() {
+                stepBtn.style.display = parseInt(stepInput.value) ? 'block' : 'none';
+            });
+        }
     }
 
     function renderParamSliders(container, paramDefs, values) {
@@ -857,6 +903,18 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 body: JSON.stringify(payload)
             }).catch(function(e) { console.error('apply controller params error:', e); });
         }
+    }
+
+    function requestNextStep() {
+        fetch('/controller/step', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: 'circuit_fsm'})
+        }).then(function(r) { return r.json(); })
+          .then(function(data) {
+              console.log('Step response:', data);
+          })
+          .catch(function(e) { console.error('step error:', e); });
     }
 
     // --- CONTRÔLE WASD (clavier) ---

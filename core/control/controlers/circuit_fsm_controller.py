@@ -4,22 +4,33 @@
 # ------------------
 """Contrôleur FSM pour la navigation autonome sur circuit (Zumi Driving School).
 
-Implémente ControllerBase. Utilise la caméra (LineDetector) pour détecter
-les pointillés blancs et naviguer le circuit via une machine à états finis.
+Implémente ControllerBase. Utilise la caméra (LineDetector) avec 3 zones de
+détection pour naviguer le circuit via une machine à états finis.
+
+Zones de détection :
+    - CENTRE : Rectangle en bas de l'image (largeur modulable).
+      → Détecte l'offset latéral du robot par rapport à la ligne.
+    - AVANT : Rectangle vertical fin et long au milieu.
+      → Confirme que la ligne continue droit devant (alignement).
+    - COINS (gauche + droit) : Rectangles dans les coins.
+      → Anticipent les virages en détectant la ligne qui s'en va sur le côté.
 
 Navigation step-by-step :
-    Le robot s'arrête pour capturer une frame stable, calcule la correction
-    nécessaire, avance d'un petit pas, puis s'arrête à nouveau pour recapturer.
-    Cela évite les problèmes de vibration caméra pendant le mouvement.
+    Le robot s'arrête pour capturer une frame stable, analyse les 3 zones,
+    prend une décision éclairée, avance d'un petit pas, puis s'arrête à nouveau.
+
+Mode pas-à-pas interactif :
+    Quand activé, le robot attend un signal explicite (bouton UI) avant
+    chaque mouvement. Permet de vérifier visuellement ce que le robot voit.
 
 États de l'automate :
     INIT → CHERCHER_POINTILLES → SUIVRE_POINTILLES → PREVOIR_MANOEUVRE
     → EXECUTER_MANOEUVRE → CHERCHER_POINTILLES (boucle)
     CHERCHER_POINTILLES → RECUPERATION_ECHOUEE → ARRET (sécurité)
+    + ATTENTE_STEP (mode pas-à-pas)
 
 Contexte physique :
     Route NOIRE, pointillés BLANCS.
-    LineDetector fournit line_offset (pixels du centre, négatif=gauche, positif=droite).
 """
 
 import time
@@ -29,7 +40,7 @@ from core.control.IO_drivers.motor_command import MotorCommand
 
 
 # ──────────────────────────────────────────────────────────────
-#  Enum des états (compatible Python 3.5 sans StrEnum)
+#  Enum des états
 # ──────────────────────────────────────────────────────────────
 class FSMState:
     """États de l'automate du circuit."""
@@ -40,6 +51,7 @@ class FSMState:
     EXECUTER_MANOEUVRE = "EXECUTER_MANOEUVRE"
     RECUPERATION_ECHOUEE = "RECUPERATION_ECHOUEE"
     ARRET = "ARRET"
+    ATTENTE_STEP = "ATTENTE_STEP"  # Mode pas-à-pas
 
 
 # ──────────────────────────────────────────────────────────────
@@ -52,13 +64,15 @@ class StepPhase:
 
 
 class CircuitFSMController(ControllerBase):
-    """Contrôleur FSM pour navigation autonome sur circuit avec pointillés.
+    """Contrôleur FSM pour navigation autonome avec détection multi-zones.
 
-    Utilise le LineDetector (caméra) pour la détection de ligne.
-    Navigation step-by-step :
-        1. Arrêt → capture frame → lire offset
-        2. Si offset grand → rotation en place (make_turn) pour se centrer → retour 1
-        3. Si offset petit → avance d'un pas avec correction PID → retour 1
+    Utilise le LineDetector (caméra) avec 3 zones pour la détection de ligne.
+    
+    Logique de décision :
+        1. CENTRE détecte → on sait où on est
+        2. AVANT confirme → la ligne continue droit, on peut avancer
+        3. COINS détectent → un virage approche, on ralentit/prépare
+        4. Combinaison → décision éclairée avant chaque mouvement
 
     Args:
         base_speed (int): Vitesse de base pour les pas [1-50].
@@ -79,6 +93,9 @@ class CircuitFSMController(ControllerBase):
         cm_per_second (float): Calibration vitesse → distance (cm/s).
         step_duration (float): Durée d'un pas en secondes.
         pause_duration (float): Durée de pause entre les pas (pour capture).
+        front_min_dashes (int): Pointillés min dans zone AVANT pour confirmer.
+        corner_slowdown_factor (float): Facteur de ralentissement quand coin détecté (0-1).
+        step_by_step_mode (bool): Mode pas-à-pas interactif.
     """
 
     MOTOR_SPEED_MAX = 50
@@ -103,6 +120,9 @@ class CircuitFSMController(ControllerBase):
         cm_per_second=10.0,
         step_duration=0.3,
         pause_duration=0.2,
+        front_min_dashes=2,
+        corner_slowdown_factor=0.5,
+        step_by_step_mode=False,
     ):
         # PID (correction step-by-step)
         self._base_speed = base_speed
@@ -130,6 +150,14 @@ class CircuitFSMController(ControllerBase):
         self._step_duration = step_duration
         self._pause_duration = pause_duration
 
+        # Multi-zones
+        self._front_min_dashes = front_min_dashes
+        self._corner_slowdown_factor = corner_slowdown_factor
+
+        # Mode pas-à-pas interactif
+        self._step_by_step_mode = step_by_step_mode
+        self._step_requested = False  # Signal du frontend
+
         # ── État interne ──
         self._state = FSMState.INIT
         self._prev_state = None
@@ -156,6 +184,10 @@ class CircuitFSMController(ControllerBase):
 
         # Flag post-manœuvre (pour distinguer CHERCHER après manœuvre)
         self._post_maneuver = False
+
+        # Multi-zone state (dernière décision)
+        self._last_decision = "none"
+        self._corner_detected_side = None  # "left", "right", ou None
 
         # Debug
         self._last_command_type = "none"
@@ -185,7 +217,11 @@ class CircuitFSMController(ControllerBase):
         self._maneuver_start_time = 0.0
         self._post_maneuver = False
         self._last_command_type = "none"
-        print("[CIRCUIT_FSM] Démarré — état: INIT")
+        self._last_decision = "none"
+        self._corner_detected_side = None
+        self._step_requested = False
+        print("[CIRCUIT_FSM] Démarré — état: INIT (pas-à-pas: {})".format(
+            "OUI" if self._step_by_step_mode else "NON"))
 
     def stop(self):
         """Appelé à la désactivation."""
@@ -220,11 +256,22 @@ class CircuitFSMController(ControllerBase):
             return self._handle_executer(state)
         elif self._state == FSMState.RECUPERATION_ECHOUEE:
             return self._handle_recuperation(state)
+        elif self._state == FSMState.ATTENTE_STEP:
+            return self._handle_attente_step(state)
         elif self._state == FSMState.ARRET:
             return self._handle_arret(state)
         else:
             print("[CIRCUIT_FSM] État inconnu: {}".format(self._state))
             return MotorCommand.stop()
+
+    # ------------------------------------------------------------------
+    #  Mode pas-à-pas
+    # ------------------------------------------------------------------
+
+    def request_step(self):
+        """Appelé par le frontend pour autoriser un pas en mode pas-à-pas."""
+        self._step_requested = True
+        print("[CIRCUIT_FSM] Step demandé par l'utilisateur")
 
     # ------------------------------------------------------------------
     #  Handlers d'état
@@ -258,7 +305,7 @@ class CircuitFSMController(ControllerBase):
             self._state = FSMState.RECUPERATION_ECHOUEE
             return MotorCommand.stop()
 
-        # Vérifier si la ligne est détectée
+        # Vérifier si la ligne est détectée (zone centre)
         if state.line_detected and state.line_offset is not None:
             print("[CIRCUIT_FSM] Ligne trouvée! offset={:.1f}px".format(
                 state.line_offset))
@@ -282,15 +329,16 @@ class CircuitFSMController(ControllerBase):
         )
 
     def _handle_suivre(self, state):
-        """SUIVRE_POINTILLES : Navigation step-by-step.
+        """SUIVRE_POINTILLES : Navigation step-by-step avec multi-zones.
 
         Cycle :
-          1. PAUSE_CAPTURE — robot à l'arrêt, capture frame, lit l'offset
-          2. Décision :
-             - |offset| > turn_threshold → make_turn() pour se centrer,
-               puis retour en PAUSE_CAPTURE pour re-vérifier
-             - |offset| <= turn_threshold → avance d'un pas avec correction PID
-          3. MOVING — avance pendant step_duration, puis retour en PAUSE_CAPTURE
+          1. PAUSE_CAPTURE — robot à l'arrêt, capture frame, analyse 3 zones
+          2. Décision multi-zones :
+             a. Zone AVANT confirme la ligne droit devant → confiance haute
+             b. Zones COINS détectent un virage → ralentir / anticiper
+             c. Zone CENTRE donne l'offset → correction PID
+          3. Si mode pas-à-pas → ATTENTE_STEP
+          4. MOVING — avance pendant step_duration, puis retour en PAUSE_CAPTURE
         """
         now = time.time()
 
@@ -308,6 +356,9 @@ class CircuitFSMController(ControllerBase):
                 self._state = FSMState.PREVOIR_MANOEUVRE
                 return MotorCommand.stop()
 
+        # ── Analyser les zones pour la décision ──
+        self._analyze_zones(state)
+
         # ── Phase PAUSE_CAPTURE : à l'arrêt, capturer et décider ──
         if self._step_phase == StepPhase.PAUSE_CAPTURE:
             elapsed = now - self._phase_start_time
@@ -321,11 +372,23 @@ class CircuitFSMController(ControllerBase):
             if state.line_detected and state.line_offset is not None:
                 self._last_line_offset = state.line_offset
                 self._step_correction = self._compute_pid_correction(state.line_offset)
-                print("[CIRCUIT_FSM] CAPTURE: offset={:.1f}px correction={:.1f}".format(
-                    state.line_offset, self._step_correction))
+                
+                # Log enrichi avec les 3 zones
+                print("[CIRCUIT_FSM] CAPTURE: offset={:.1f}px correction={:.1f} | "
+                      "front={} coins=L:{} R:{} | décision={}".format(
+                    state.line_offset, self._step_correction,
+                    "OUI" if state.front_line_confirmed else "non",
+                    state.corner_left_count, state.corner_right_count,
+                    self._last_decision))
             else:
                 # Pas de détection, avancer droit
                 self._step_correction = 0.0
+
+            # Mode pas-à-pas : attendre le signal
+            if self._step_by_step_mode:
+                self._state = FSMState.ATTENTE_STEP
+                self._last_command_type = "waiting_step"
+                return MotorCommand.stop()
 
             self._step_phase = StepPhase.MOVING
             self._phase_start_time = now
@@ -347,17 +410,23 @@ class CircuitFSMController(ControllerBase):
             # Vérifier si l'offset capturé nécessite une rotation pure
             if abs(self._last_line_offset) > self._turn_threshold:
                 # Rotation proportionnelle à l'offset
-                angle = -self._last_line_offset * 0.25  # scale factor
-                angle = max(-30.0, min(30.0, angle))
+                angle = -self._last_line_offset * self._turn_angle_scale
+                angle = max(-self._max_turn_angle, min(self._max_turn_angle, angle))
                 self._last_command_type = "step_turn"
                 print("[CIRCUIT_FSM] TURN: offset={:.1f} → angle={:.1f}°".format(
                     self._last_line_offset, angle))
                 return MotorCommand.make_turn(angle)
 
+            # Calculer la vitesse effective (ralentir si virage détecté dans les coins)
+            effective_speed = self._base_speed
+            if self._corner_detected_side is not None:
+                effective_speed = int(self._base_speed * self._corner_slowdown_factor)
+                effective_speed = max(1, effective_speed)
+
             # Avance différentielle avec correction
             correction = self._step_correction
-            left_speed = self._base_speed + correction
-            right_speed = self._base_speed - correction
+            left_speed = effective_speed + correction
+            right_speed = effective_speed - correction
 
             # Clamp aux limites
             left_speed = max(-self.MOTOR_SPEED_MAX, min(self.MOTOR_SPEED_MAX, left_speed))
@@ -369,19 +438,46 @@ class CircuitFSMController(ControllerBase):
         # Fallback
         return MotorCommand.stop()
 
+    def _handle_attente_step(self, state):
+        """ATTENTE_STEP : Mode pas-à-pas — attendre le signal utilisateur."""
+        if self._step_requested:
+            self._step_requested = False
+            # Reprendre le mouvement
+            self._state = FSMState.SUIVRE_POINTILLES
+            self._step_phase = StepPhase.MOVING
+            self._phase_start_time = time.time()
+            self._last_command_type = "step_resume"
+            print("[CIRCUIT_FSM] Pas autorisé par l'utilisateur → MOVING")
+            return MotorCommand.stop()
+
+        # En attente — rester immobile
+        self._last_command_type = "waiting_user"
+        return MotorCommand.stop()
+
     def _handle_prevoir(self, state):
         """PREVOIR_MANOEUVRE : Calculer la manœuvre aveugle."""
+        # Utiliser les coins pour décider la direction du virage
+        turn_angle = self._maneuver_turn_angle
+        if self._corner_detected_side == "left":
+            turn_angle = abs(turn_angle)  # Virage à gauche (angle positif)
+        elif self._corner_detected_side == "right":
+            turn_angle = -abs(turn_angle)  # Virage à droite (angle négatif)
+        # else: utiliser l'angle par défaut
+
         # Calculer la durée de l'avance en fonction de la distance
         if self._cm_per_second > 0:
             self._maneuver_forward_duration = self._maneuver_forward_cm / self._cm_per_second
         else:
             self._maneuver_forward_duration = 1.0
 
-        print("[CIRCUIT_FSM] Manœuvre planifiée: avancer {:.1f}cm ({:.2f}s) puis tourner {:.1f}°".format(
+        print("[CIRCUIT_FSM] Manœuvre planifiée: avancer {:.1f}cm ({:.2f}s) puis tourner {:.1f}° "
+              "(coin détecté: {})".format(
             self._maneuver_forward_cm,
             self._maneuver_forward_duration,
-            self._maneuver_turn_angle))
+            turn_angle,
+            self._corner_detected_side or "aucun"))
 
+        self._maneuver_turn_angle_effective = turn_angle
         self._maneuver_phase = "forward"
         self._maneuver_start_time = time.time()
         self._state = FSMState.EXECUTER_MANOEUVRE
@@ -401,8 +497,8 @@ class CircuitFSMController(ControllerBase):
                 print("[CIRCUIT_FSM] Avance terminée ({:.2f}s) → rotation".format(elapsed))
                 self._maneuver_phase = "turn"
                 self._last_command_type = "maneuver_turn"
-                # Retourner la commande de rotation (bloquante côté MotorDriver)
-                return MotorCommand.make_turn(self._maneuver_turn_angle)
+                turn_angle = getattr(self, '_maneuver_turn_angle_effective', self._maneuver_turn_angle)
+                return MotorCommand.make_turn(turn_angle)
 
             # Avancer tout droit
             self._last_command_type = "maneuver_forward"
@@ -416,6 +512,7 @@ class CircuitFSMController(ControllerBase):
             self._search_start_time = time.time()
             self._post_maneuver = True
             self._last_command_type = "maneuver_done"
+            self._corner_detected_side = None
             return MotorCommand.stop()
 
         return MotorCommand.stop()
@@ -425,13 +522,50 @@ class CircuitFSMController(ControllerBase):
         print("[CIRCUIT_FSM] RÉCUPÉRATION ÉCHOUÉE — arrêt de sécurité")
         self._state = FSMState.ARRET
         self._last_command_type = "recovery_fail"
-        # TODO: Clignoter les LEDs si l'API est disponible
         return MotorCommand.stop()
 
     def _handle_arret(self, state):
         """ARRET : État terminal."""
         self._last_command_type = "stopped"
         return MotorCommand.stop()
+
+    # ------------------------------------------------------------------
+    #  Analyse multi-zones
+    # ------------------------------------------------------------------
+
+    def _analyze_zones(self, state):
+        """Analyse les zones et met à jour la dernière décision.
+        
+        Décisions possibles :
+            - "avance_confiant" : AVANT confirmé, ligne droit devant
+            - "avance_prudent" : CENTRE détecté mais AVANT pas confirmé
+            - "virage_gauche" : Coin gauche détecté
+            - "virage_droit" : Coin droit détecté
+            - "virage_imminent" : Les deux coins détectés
+            - "perdu" : Rien détecté
+        """
+        center_ok = state.line_detected
+        front_ok = state.front_line_confirmed
+        corner_l = state.corner_left_detected
+        corner_r = state.corner_right_detected
+
+        if corner_l and corner_r:
+            self._last_decision = "virage_imminent"
+            self._corner_detected_side = "left" if state.corner_left_count > state.corner_right_count else "right"
+        elif corner_l:
+            self._last_decision = "virage_gauche"
+            self._corner_detected_side = "left"
+        elif corner_r:
+            self._last_decision = "virage_droit"
+            self._corner_detected_side = "right"
+        elif center_ok and front_ok:
+            self._last_decision = "avance_confiant"
+            self._corner_detected_side = None
+        elif center_ok:
+            self._last_decision = "avance_prudent"
+            self._corner_detected_side = None
+        else:
+            self._last_decision = "perdu"
 
     # ------------------------------------------------------------------
     #  PID (correction step-by-step)
@@ -478,9 +612,13 @@ class CircuitFSMController(ControllerBase):
             "last_line_offset": self._last_line_offset,
             "last_correction": self._step_correction,
             "last_command_type": self._last_command_type,
+            "last_decision": self._last_decision,
+            "corner_detected_side": self._corner_detected_side,
             "integral": self._integral,
             "post_maneuver": self._post_maneuver,
             "maneuver_phase": self._maneuver_phase if self._state == FSMState.EXECUTER_MANOEUVRE else "N/A",
+            "step_by_step_mode": self._step_by_step_mode,
+            "step_requested": self._step_requested,
         }
 
     def get_params(self):
@@ -504,6 +642,9 @@ class CircuitFSMController(ControllerBase):
             "cm_per_second": self._cm_per_second,
             "step_duration": self._step_duration,
             "pause_duration": self._pause_duration,
+            "front_min_dashes": self._front_min_dashes,
+            "corner_slowdown_factor": self._corner_slowdown_factor,
+            "step_by_step_mode": self._step_by_step_mode,
         }
 
     def update_params(self, **kwargs):
@@ -563,5 +704,14 @@ class CircuitFSMController(ControllerBase):
         if "pause_duration" in kwargs:
             self._pause_duration = float(kwargs["pause_duration"])
             updated.append("pause_duration={}".format(self._pause_duration))
+        if "front_min_dashes" in kwargs:
+            self._front_min_dashes = int(kwargs["front_min_dashes"])
+            updated.append("front_min_dashes={}".format(self._front_min_dashes))
+        if "corner_slowdown_factor" in kwargs:
+            self._corner_slowdown_factor = float(kwargs["corner_slowdown_factor"])
+            updated.append("corner_slowdown_factor={}".format(self._corner_slowdown_factor))
+        if "step_by_step_mode" in kwargs:
+            self._step_by_step_mode = bool(int(kwargs["step_by_step_mode"]))
+            updated.append("step_by_step_mode={}".format(self._step_by_step_mode))
         if updated:
             print("[CIRCUIT_FSM] Params mis à jour: {}".format(", ".join(updated)))

@@ -53,19 +53,37 @@ class SensorDriver:
         line_offset = None
         line_detected = False
         detections = None
+        
+        # Multi-zones
+        front_line_detected = False
+        front_line_confirmed = False
+        front_offset = None
+        corner_left_detected = False
+        corner_right_detected = False
+        corner_left_count = 0
+        corner_right_count = 0
+        zones_result = None
 
         if self.vision_pipeline is not None:
             frame = self.vision_pipeline.get_last_frame()
 
-            # Détection de ligne
+            # Détection de ligne (multi-zones)
             if Line_detection and frame is not None and self._line_detector_index is not None:
                 try:
-                    result = self.vision_pipeline.process_frame(
-                        frame.copy(), self._line_detector_index
-                    )
-                    if result:
-                        line_offset = result.get('line_offset')
+                    # Utiliser process_zones() pour la détection multi-zones
+                    line_det = self.vision_pipeline.detectors[self._line_detector_index]
+                    zones_result = line_det.process_zones(frame.copy())
+                    
+                    if zones_result:
+                        line_offset = zones_result.get('line_offset')
                         line_detected = line_offset is not None
+                        front_line_detected = zones_result.get('front_line_detected', False)
+                        front_line_confirmed = zones_result.get('front_line_confirmed', False)
+                        front_offset = zones_result.get('front_offset')
+                        corner_left_detected = zones_result.get('corner_left_detected', False)
+                        corner_right_detected = zones_result.get('corner_right_detected', False)
+                        corner_left_count = zones_result.get('corner_left_count', 0)
+                        corner_right_count = zones_result.get('corner_right_count', 0)
                 except Exception:
                     pass
 
@@ -86,14 +104,6 @@ class SensorDriver:
             except Exception:
                 pass
 
-        # ── Orientation ─────────────────────────────
-        # orientation = -1
-        # if hasattr(self.robot, 'get_orientation'):
-        #     try:
-        #         orientation = self.robot.get_orientation()
-        #     except Exception:
-        #         pass
-
         # ── Capteurs IR ─────────────────────────────
         ir_sensors = None
         if hasattr(self.robot, 'get_ir_data'):
@@ -102,14 +112,6 @@ class SensorDriver:
             except Exception:
                 pass
 
-        # ── Batterie ────────────────────────────────
-        # battery_voltage = 0.0
-        # if hasattr(self.robot, 'get_battery_voltage'):
-        #     try:
-        #         battery_voltage = self.robot.get_battery_voltage()
-        #     except Exception:
-        #         pass
-
         return SensorState(
             timestamp=now,
             frame=frame,
@@ -117,7 +119,14 @@ class SensorDriver:
             line_detected=line_detected,
             detections=detections,
             gyro_angles=gyro_angles,
-            # orientation=orientation,
             ir_sensors=ir_sensors,
-            # battery_voltage=battery_voltage,
+            front_line_detected=front_line_detected,
+            front_line_confirmed=front_line_confirmed,
+            front_offset=front_offset,
+            corner_left_detected=corner_left_detected,
+            corner_right_detected=corner_right_detected,
+            corner_left_count=corner_left_count,
+            corner_right_count=corner_right_count,
+            zones_result=zones_result,
         )
+
