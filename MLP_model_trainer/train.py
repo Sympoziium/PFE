@@ -144,7 +144,8 @@ class Trainer:
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=10
+            patience=10,
+            min_lr=1e-5
         )
 
         # Historique
@@ -1031,8 +1032,9 @@ def run_training(script_dir: Path, state: dict):
         batch_size=config.get('batch_size', 32),
         seed=seed,
         deduplicate=True,
-        balanced_sampling=False,
-        window_size=window_size
+        balanced_sampling=True,
+        window_size=window_size,
+        trim_stops=5
     )
 
     # Creation du modele avec la configuration custom

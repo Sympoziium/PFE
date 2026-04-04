@@ -234,6 +234,44 @@ class ZumiControlDataset(Dataset):
         print(f"[Dataset] Deduplication: {n_removed} doublons retires "
               f"(groupes >= {min_run_length} samples, {len(self)} restants)")
 
+    def trim_stops(self, max_consecutive: int = 5, stop_thresh: float = 0.02):
+        """Retire les sequences d'arret excessives (temps morts de collecte).
+
+        Detecte les runs consecutifs ou les deux moteurs sont proches de zero
+        et ne garde que les max_consecutive premiers de chaque run.
+
+        Args:
+            max_consecutive: Nombre max d'echantillons d'arret consecutifs a garder.
+            stop_thresh: Seuil de commande moteur pour detecter un arret.
+        """
+        if len(self.labels) < 2:
+            return
+
+        left = self.labels[:, 0]
+        right = self.labels[:, 1]
+        is_stop = (np.abs(left) < stop_thresh) & (np.abs(right) < stop_thresh)
+
+        keep = np.ones(len(self.labels), dtype=bool)
+        run_length = 0
+        n_removed = 0
+
+        for i in range(len(is_stop)):
+            if is_stop[i]:
+                run_length += 1
+                if run_length > max_consecutive:
+                    keep[i] = False
+                    n_removed += 1
+            else:
+                run_length = 0
+
+        self.captures = self.captures[keep]
+        self.labels = self.labels[keep]
+
+        n_stops_remaining = int(is_stop[keep].sum())
+        print(f"[Dataset] Trim stops: {n_removed} arrets excessifs retires "
+              f"(max {max_consecutive} consecutifs, {n_stops_remaining} arrets restants, "
+              f"{len(self)} total)")
+
     def compute_ir_offset(self) -> float:
         """Estime l'offset IR bottom depuis le dataset (echantillons forward+straight).
 
@@ -529,7 +567,8 @@ def create_data_loaders(
     feature_mask: list = None,
     deduplicate: bool = True,
     balanced_sampling: bool = True,
-    window_size: int = None
+    window_size: int = None,
+    trim_stops: int = None
 ) -> tuple:
     """Crée les DataLoaders pour l'entraînement et la validation.
 
@@ -553,6 +592,7 @@ def create_data_loaders(
         deduplicate: Retirer les doublons consecutifs (defaut: True)
         balanced_sampling: Utiliser WeightedRandomSampler pour equilibrer les categories (defaut: True)
         window_size: Taille de la fenetre glissante (defaut: WINDOW_SIZE=20)
+        trim_stops: Nombre max d'arrets consecutifs a garder (None = pas de trim)
 
     Returns:
         tuple: (train_loader, val_loader, dataset)
@@ -562,6 +602,10 @@ def create_data_loaders(
     # 1. Deduplication (avant tout traitement)
     if deduplicate:
         dataset.deduplicate()
+
+    # 1b. Trim des arrets excessifs (temps morts de collecte)
+    if trim_stops is not None:
+        dataset.trim_stops(max_consecutive=trim_stops)
 
     # 2. Features engineered (29-dim -> 34-dim)
     dataset.compute_engineered_features()
