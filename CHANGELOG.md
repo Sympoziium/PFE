@@ -5,6 +5,36 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publie] — Migration simulateur + refonte evaluations (2026-04-04)
+
+### Contexte
+Le simulateur 2D et le module d'evaluation referençaient encore l'ancien systeme de deltas
+temporels supprime le 2026-04-02. Le vecteur de base 29-dim (ajout line_offset/line_detected)
+n'etait pas reflete dans le simulateur. Les tests d'evaluation etaient obsoletes.
+
+### Changed
+- **simulator_2d.py**: migration deltas -> fenetre glissante (20x34=680-dim), vecteur 27->29-dim
+  avec zero-padding identique au training pipeline
+- **simulate.py [1]**: tests scenariques synthetiques -> evaluation sur sequences reelles du dataset
+  avec visualisation predictions vs labels (graphique temporel par segment)
+- **simulate.py [2]**: pipeline corrige (compute_engineered_features + compute_sliding_windows),
+  categorisation par gyroscope (classify_actions) au lieu des commandes moteur
+- **simulate.py [3]**: ablation regression lineaire -> permutation importance sur le vrai MLP,
+  par groupe de features (IR, IMU, engineered, etc.) avec bar chart et repetitions pour robustesse
+- **Menu option 5**: "Simulation & evaluation avancee" -> "Evaluation avancee"
+
+### Added
+- **Menu option [7] Importer et convertir un modele (TFLite)**: telecharge un modele depuis
+  le VPS (root@38.69.13.3) via SCP ou copie depuis un chemin local, puis convertit en TFLite.
+  Utile pour recuperer un modele entraine sur le serveur.
+
+### Removed
+- simulate.py [4] "Simulation boucle ouverte" — redondant avec le simulateur 2D (option 6)
+- References aux constantes DELTA_* dans simulator_2d.py et simulate.py
+- Regression lineaire sklearn dans l'ablation (remplacee par permutation importance)
+
+---
+
 ## [Non publié] — Fenetre glissante, Huber Loss et augmentation de donnees (2026-04-02)
 
 ### Contexte

@@ -1,25 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Simulation & evaluation avancee du modele MLP.
+Evaluation avancee du modele MLP.
 
 Sous-menu integre au trainer:
-  [1] Tests scenariques (inputs synthetiques)
+  [1] Evaluation sur sequences reelles (predictions vs labels)
   [2] Metriques par categorie d'action
-  [3] Ablation de features
-  [4] Simulation boucle ouverte (sur sequence reelle)
+  [3] Permutation importance (groupes de features)
 """
 
+import collections
 import json
+import os
+import sys
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from pathlib import Path
 
 from dataset import (
-    ZumiControlDataset, DELTA_FEATURE_INDICES, DELTA_STEPS, DELTA_WEIGHTS,
-    ENGINEERED_FEATURE_NAMES, create_data_loaders,
+    ZumiControlDataset, ENGINEERED_FEATURE_NAMES,
+    WINDOW_SIZE, WINDOW_FEATURE_DIM,
     IR_OFFSET_DEFAULT, GAP_THRESHOLD, GYRO_Z_INDEX,
+    classify_actions, ACTION_NAMES,
 )
 
 
@@ -48,7 +51,6 @@ def load_model_and_stats(checkpoints_dir: Path):
     stats = {
         'feature_mean': np.array(checkpoint.get('feature_mean', [])),
         'feature_std': np.array(checkpoint.get('feature_std', [])),
-        'feature_mask': checkpoint.get('feature_mask'),
         'input_dim': checkpoint['input_dim'],
         'output_dim': checkpoint['output_dim'],
         'hidden_dims': checkpoint['hidden_dims'],
@@ -59,7 +61,7 @@ def load_model_and_stats(checkpoints_dir: Path):
 
 
 def inference(model, vector, stats):
-    """Inference sur un vecteur deja masque. Applique z-score, passe au modele."""
+    """Inference sur un vecteur 680-dim. Applique z-score, passe au modele."""
     mean = stats['feature_mean']
     std = stats['feature_std'].copy()
     std[std < 1e-6] = 1.0
@@ -71,8 +73,24 @@ def inference(model, vector, stats):
     return out  # [left, right] normalise [-1, 1]
 
 
-def compute_engineered_features(raw_vector, prev_vec32=None, ir_offset=IR_OFFSET_DEFAULT):
-    """Calcule les 5 features PID-inspired a partir d'un vecteur 27-dim -> 32-dim."""
+def build_windowed_vector(window_buffer):
+    """Construit le vecteur 680-dim a partir du buffer glissant (20 x 34).
+
+    Le buffer est un deque(maxlen=WINDOW_SIZE) de vecteurs 34-dim.
+    Les positions non encore remplies restent a zero (zero-padding),
+    identique au comportement du training pipeline aux frontieres de sequence.
+    """
+    flat = np.zeros(WINDOW_SIZE * WINDOW_FEATURE_DIM, dtype=np.float32)
+    n = len(window_buffer)
+    start_slot = WINDOW_SIZE - n
+    for i, vec in enumerate(window_buffer):
+        offset = (start_slot + i) * WINDOW_FEATURE_DIM
+        flat[offset:offset + WINDOW_FEATURE_DIM] = vec
+    return flat
+
+
+def compute_engineered_features(raw_vector, prev_vec34=None, ir_offset=IR_OFFSET_DEFAULT):
+    """Calcule les 5 features PID-inspired a partir d'un vecteur 29-dim -> 34-dim."""
     ir_bot_r = raw_vector[1]
     ir_bot_l = raw_vector[3]
     ir_sum = (ir_bot_l + ir_bot_r) / 2.0
@@ -83,8 +101,8 @@ def compute_engineered_features(raw_vector, prev_vec32=None, ir_offset=IR_OFFSET
     cal_error_norm = calibrated_error / (ir_sum + 1e-6)
 
     gyro_z_rate = 0.0
-    if prev_vec32 is not None:
-        rate = gyro_z - prev_vec32[GYRO_Z_INDEX]
+    if prev_vec34 is not None:
+        rate = gyro_z - prev_vec34[GYRO_Z_INDEX]
         if abs(rate) < 150.0:
             gyro_z_rate = rate
 
@@ -98,124 +116,145 @@ def compute_engineered_features(raw_vector, prev_vec32=None, ir_offset=IR_OFFSET
     return np.concatenate([raw_vector, engineered]).astype(np.float32)
 
 
-def build_full_vector(raw_32, prev_vectors, feature_mask=None):
-    """Construit le vecteur complet (32-dim + deltas multi-pas), applique le masque."""
-    all_deltas = []
-    for step, weight in enumerate(DELTA_WEIGHTS):
-        d = np.zeros(len(DELTA_FEATURE_INDICES), dtype=np.float32)
-        if step < len(prev_vectors):
-            prev = prev_vectors[-(step + 1)]
-            d = (raw_32[DELTA_FEATURE_INDICES] - prev[DELTA_FEATURE_INDICES]) * weight
-        all_deltas.append(d)
-
-    full = np.concatenate([raw_32] + all_deltas)
-
-    if feature_mask is not None:
-        full = full[feature_mask]
-
-    return full
-
-
 # ============================================================
-# [1] Tests scenariques
+# [1] Evaluation sur sequences reelles
 # ============================================================
 
-def run_scenario_tests(model, stats, data_dir: Path):
-    """Teste le modele avec des inputs synthetiques representant des situations connues."""
+def run_sequence_evaluation(model, stats, data_dir: Path, save_dir: Path = None):
+    """Evalue le modele sur des segments continus du dataset reel.
+
+    Charge le dataset avec le pipeline complet (engineered + sliding windows),
+    identifie les frontieres de sequence, et compare les predictions du modele
+    aux labels reels avec un graphique temporel.
+    """
 
     print("\n" + "=" * 60)
-    print("  Tests scenariques")
+    print("  Evaluation sur sequences reelles")
     print("=" * 60)
 
-    # Charger les moyennes du dataset pour les features non-testees
-    captures_file = data_dir / "captures.jsonl"
-    if captures_file.exists():
-        captures = []
-        with open(captures_file, 'r') as f:
-            for line in f:
-                if line.strip():
-                    captures.append(json.loads(line))
-        captures = np.array(captures, dtype=np.float32)
-        base_vector = captures.mean(axis=0)  # 27-dim moyennes
+    # Charger le dataset brut (avant pipeline)
+    dataset = ZumiControlDataset(str(data_dir))
+    dataset.deduplicate()
+    raw_captures = dataset.captures.copy()  # 29-dim, avant engineering
+    raw_labels = dataset.labels.copy()
+
+    # Detecter les frontieres de sequence (sauts IR > 150)
+    ir_indices = list(range(min(8, raw_captures.shape[1])))
+    ir_step = np.zeros((len(raw_captures), len(ir_indices)), dtype=np.float32)
+    ir_step[1:] = raw_captures[1:, ir_indices] - raw_captures[:-1, ir_indices]
+    ir_jumps = np.linalg.norm(ir_step, axis=1)
+    boundary_mask = ir_jumps > 150.0
+    boundary_mask[0] = True
+
+    # Construire la liste des segments continus
+    boundary_indices = np.where(boundary_mask)[0]
+    segments = []
+    for i in range(len(boundary_indices)):
+        start = int(boundary_indices[i])
+        end = int(boundary_indices[i + 1]) if i + 1 < len(boundary_indices) else len(raw_captures)
+        length = end - start
+        if length >= 20:  # au moins 1 seconde
+            segments.append((start, end, length))
+
+    if not segments:
+        print("\n  [ERREUR] Aucun segment d'au moins 20 pas trouve.")
+        return
+
+    # Afficher les segments disponibles
+    print(f"\n  {len(segments)} segments trouves (>= 20 pas):")
+    display_max = min(20, len(segments))
+    for i, (start, end, length) in enumerate(segments[:display_max]):
+        dur = length / 20.0  # duree en secondes a 20Hz
+        print(f"    [{i + 1:2d}] Pas {start:6d}-{end:6d} ({length:5d} pas, {dur:.1f}s)")
+    if len(segments) > display_max:
+        print(f"    ... et {len(segments) - display_max} autres")
+
+    # Choix du segment
+    choice = input(f"\n  Segment a evaluer (1-{len(segments)}, A=tous les top-5) : ").strip().upper()
+
+    if choice == 'A':
+        # Prendre les 5 plus longs segments
+        sorted_segs = sorted(segments, key=lambda s: s[2], reverse=True)[:5]
     else:
-        base_vector = np.zeros(27, dtype=np.float32)
-        base_vector[0:6] = [180, 190, 155, 200, 195, 207]  # IR moyennes typiques
+        try:
+            seg_idx = int(choice) - 1
+            sorted_segs = [segments[seg_idx]]
+        except (ValueError, IndexError):
+            print("  Choix invalide.")
+            return
 
-    # Note: les checks utilisent les vitesses denormalisees (l, r en unites moteur -50..50)
-    # pour que les seuils soient intuitifs.
-    scenarios = [
-        {
-            'name': 'Ligne centree',
-            'mods': {1: 190, 3: 190},  # IR_bot_R = IR_bot_L
-            'expect': 'tout droit: |steering| < 3, les deux roues > 0',
-            'check': lambda l, r: abs(l - r) < 3 and l > 0 and r > 0,
-        },
-        {
-            'name': 'Ligne a droite (IR_bot_R bas)',
-            'mods': {1: 100, 3: 220},  # ligne plus proche cote gauche -> tourner droite
-            'expect': 'tourner a droite: steering > +3 (left > right de >3)',
-            'check': lambda l, r: (l - r) > 3,
-        },
-        {
-            'name': 'Ligne a gauche (IR_bot_L bas)',
-            'mods': {1: 220, 3: 100},  # ligne plus proche cote droit -> tourner gauche
-            'expect': 'tourner a gauche: steering < -3 (right > left de >3)',
-            'check': lambda l, r: (r - l) > 3,
-        },
-        {
-            'name': 'Pas de ligne (IR bas)',
-            'mods': {1: 50, 3: 50},
-            'expect': 'arret ou lent: les deux roues < 5',
-            'check': lambda l, r: abs(l) < 5 and abs(r) < 5,
-        },
-        {
-            'name': 'Correction symetrique (droite vs gauche)',
-            'mods': None,  # traite specialement ci-dessous
-            'expect': 'steering droite et gauche de signes opposes',
-            'check': None,  # traite specialement
-        },
-    ]
+    # Appliquer le pipeline complet pour obtenir les vecteurs 680-dim normalises
+    dataset.compute_engineered_features()
+    dataset.compute_sliding_windows()
+    mean = stats['feature_mean']
+    std = stats['feature_std'].copy()
+    std[std < 1e-6] = 1.0
+    dataset.captures = ((dataset.captures - mean) / std).astype(np.float32)
 
-    def _predict_scenario(base, mods):
-        """Helper: construit un vecteur, infere, retourne les vitesses moteur."""
-        vec = base.copy()
-        for idx, val in mods.items():
-            vec[idx] = val
-        vec[6] = vec[3] - vec[1]  # IR_diff
-        vec[7] = (vec[3] + vec[1]) / 2  # IR_sum
-        ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
-        vec_32 = compute_engineered_features(vec, None, ir_offset)
-        full = build_full_vector(vec_32, [], stats.get('feature_mask'))
-        pred = inference(model, full, stats)
-        return pred[0] * 50, pred[1] * 50  # vitesses moteur denormalisees
+    # Evaluer chaque segment
+    for seg_num, (start, end, length) in enumerate(sorted_segs):
+        print(f"\n  --- Segment {start}-{end} ({length} pas, {length / 20.0:.1f}s) ---")
 
-    n_pass = 0
-    for scenario in scenarios:
-        # Test special: symetrie des corrections
-        if scenario['name'] == 'Correction symetrique (droite vs gauche)':
-            l_right, r_right = _predict_scenario(base_vector, {1: 100, 3: 220})
-            l_left, r_left = _predict_scenario(base_vector, {1: 220, 3: 100})
-            steer_right = l_right - r_right  # devrait etre positif
-            steer_left = l_left - r_left     # devrait etre negatif
-            passed = steer_right > 0 and steer_left < 0
-            status = "PASS" if passed else "FAIL"
-            n_pass += int(passed)
-            print(f"\n  [{status}] {scenario['name']}")
-            print(f"    Attendu: {scenario['expect']}")
-            print(f"    Ligne a droite -> steering={steer_right:+.1f}")
-            print(f"    Ligne a gauche -> steering={steer_left:+.1f}")
-            continue
+        predictions = []
+        model.eval()
+        with torch.no_grad():
+            for t in range(start, end):
+                x = torch.tensor(dataset.captures[t], dtype=torch.float32).unsqueeze(0)
+                pred = model(x).numpy()[0]
+                predictions.append(pred)
+        predictions = np.array(predictions)
+        targets = raw_labels[start:end]
 
-        speed_left, speed_right = _predict_scenario(base_vector, scenario['mods'])
-        passed = scenario['check'](speed_left, speed_right)
-        status = "PASS" if passed else "FAIL"
-        n_pass += int(passed)
+        # Metriques
+        mse = float(((predictions - targets) ** 2).mean())
+        mae = float(np.abs(predictions - targets).mean())
+        ss_res = ((predictions - targets) ** 2).sum()
+        ss_tot = ((targets - targets.mean(axis=0)) ** 2).sum()
+        r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0
 
-        print(f"\n  [{status}] {scenario['name']}")
-        print(f"    Attendu: {scenario['expect']}")
-        print(f"    Predit:  L={speed_left:+.1f}, R={speed_right:+.1f} (steering={speed_left-speed_right:+.1f})")
+        print(f"    MSE: {mse:.4f}  MAE: {mae:.4f}  R2: {r2:.4f}")
 
-    print(f"\n  Resultat: {n_pass}/{len(scenarios)} tests passes")
+        # Graphique
+        timesteps = np.arange(length) / 20.0  # en secondes
+
+        fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
+
+        axes[0].plot(timesteps, targets[:, 0] * 50, 'b-', alpha=0.7, label='Reel')
+        axes[0].plot(timesteps, predictions[:, 0] * 50, 'r--', alpha=0.7, label='Predit')
+        axes[0].set_ylabel('Vitesse Gauche')
+        axes[0].set_title(f'Evaluation sequence reelle — pas {start}-{end} '
+                          f'(MSE={mse:.4f}, R2={r2:.4f})')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
+
+        axes[1].plot(timesteps, targets[:, 1] * 50, 'b-', alpha=0.7, label='Reel')
+        axes[1].plot(timesteps, predictions[:, 1] * 50, 'r--', alpha=0.7, label='Predit')
+        axes[1].set_ylabel('Vitesse Droite')
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
+
+        real_steering = (targets[:, 0] - targets[:, 1]) * 50
+        pred_steering = (predictions[:, 0] - predictions[:, 1]) * 50
+        axes[2].plot(timesteps, real_steering, 'b-', alpha=0.7, label='Reel')
+        axes[2].plot(timesteps, pred_steering, 'r--', alpha=0.7, label='Predit')
+        axes[2].axhline(y=0, color='k', linewidth=0.5)
+        axes[2].set_ylabel('Steering (L-R)')
+        axes[2].set_xlabel('Temps (s)')
+        axes[2].legend()
+        axes[2].grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        if save_dir:
+            save_dir.mkdir(parents=True, exist_ok=True)
+            fname = save_dir / f"eval_seq_{start}_{end}.png"
+            plt.savefig(fname, dpi=150, bbox_inches='tight')
+            print(f"    Graphique sauvegarde: {fname}")
+
+        if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY') or sys.platform == 'win32':
+            plt.show()
+        plt.close()
+
     print()
 
 
@@ -224,21 +263,22 @@ def run_scenario_tests(model, stats, data_dir: Path):
 # ============================================================
 
 def run_per_category_metrics(model, stats, data_dir: Path):
-    """Calcule MSE/MAE par categorie d'action sur le dataset."""
+    """Calcule MSE/MAE/R2 par categorie d'action sur le dataset."""
 
     print("\n" + "=" * 60)
     print("  Metriques par categorie d'action")
     print("=" * 60)
 
-    # Charger et preparer le dataset de la meme facon que l'entrainement
+    # Charger et preparer le dataset
     dataset = ZumiControlDataset(str(data_dir))
     dataset.deduplicate()
-    dataset.compute_line_features()
-    dataset.compute_deltas()
+    dataset.compute_engineered_features()
 
-    mask = stats.get('feature_mask')
-    if mask is not None:
-        dataset.apply_feature_mask(mask)
+    # Categoriser AVANT le windowing (classify_actions a besoin de gyro_z brut a l'index 18)
+    categories = classify_actions(dataset.captures, dataset.labels)
+
+    # Fenetre glissante (34-dim -> 680-dim)
+    dataset.compute_sliding_windows()
 
     # Normaliser avec les stats du modele
     mean = stats['feature_mean']
@@ -257,31 +297,11 @@ def run_per_category_metrics(model, stats, data_dir: Path):
     predictions = np.array(all_preds)
     targets = dataset.labels
 
-    # Categoriser
-    left = targets[:, 0]
-    right = targets[:, 1]
-    turn_threshold = 0.05
-    min_wheel = np.minimum(np.abs(left), np.abs(right))
-
-    is_stop = (np.abs(left) == 0) & (np.abs(right) == 0)
-    is_turning = (min_wheel < turn_threshold) & ~is_stop
-    is_turn_left = is_turning & (left < right)
-    is_turn_right = is_turning & (right < left)
-    is_reverse = ~is_stop & ~is_turning & (left < 0) & (right < 0)
-    is_forward = ~is_stop & ~is_turning & ~is_reverse
-
-    categories = {
-        'Arret': is_stop,
-        'Tout droit': is_forward,
-        'Tourne G': is_turn_left,
-        'Tourne D': is_turn_right,
-        'Recule': is_reverse,
-    }
-
     print(f"\n  {'Categorie':15s} {'MSE':>8s} {'MAE':>8s} {'R2':>8s} {'N':>6s}")
     print(f"  {'-'*47}")
 
-    for cat_name, mask_cat in categories.items():
+    for cat_idx, cat_name in enumerate(ACTION_NAMES):
+        mask_cat = categories == cat_idx
         n = int(mask_cat.sum())
         if n == 0:
             continue
@@ -306,210 +326,144 @@ def run_per_category_metrics(model, stats, data_dir: Path):
 
 
 # ============================================================
-# [3] Ablation de features
+# [3] Permutation importance
 # ============================================================
 
-def run_feature_ablation(data_dir: Path):
-    """Evalue l'impact de chaque groupe de features avec regression lineaire rapide."""
+# Groupes de features dans le vecteur 34-dim (par pas de fenetre)
+FEATURE_GROUPS = {
+    'IR bruts (0-5)':     list(range(0, 6)),
+    'IR diff/sum (6-7)':  list(range(6, 8)),
+    'Detection (8-15)':   list(range(8, 16)),
+    'IMU (16-26)':        list(range(16, 27)),
+    'Camera (27-28)':     list(range(27, 29)),
+    'Engineered (29-33)': list(range(29, 34)),
+}
+
+
+def run_permutation_importance(model, stats, data_dir: Path, save_dir: Path = None):
+    """Mesure l'importance de chaque groupe de features par permutation.
+
+    Principe:
+      1. Evaluer le modele normalement sur le dataset -> MSE de base.
+      2. Pour chaque groupe de features, melanger aleatoirement les valeurs
+         de ce groupe entre les echantillons (casse la relation feature-sortie
+         tout en conservant la distribution statistique).
+      3. Re-evaluer le modele. Si le MSE augmente beaucoup, le modele
+         depend fortement de ce groupe.
+
+    Interpretation des resultats:
+      - Importance = (MSE_brouille - MSE_base) / MSE_base x 100%
+      - Importance elevee (ex: +150%): le modele depend fortement de ces features
+      - Importance faible (ex: +2%): le modele ignore pratiquement ces features
+      - Importance ~0%: features mortes / inutiles pour le modele
+
+    Chaque groupe est teste sur les 20 pas de la fenetre glissante simultanement.
+    Le test est repete 5 fois par groupe pour obtenir une estimation robuste
+    (moyenne +/- ecart-type).
+    """
 
     print("\n" + "=" * 60)
-    print("  Ablation de features (regression lineaire, cross-validation)")
+    print("  Permutation importance (groupes de features)")
     print("=" * 60)
 
-    try:
-        from sklearn.linear_model import LinearRegression
-        from sklearn.model_selection import cross_val_score
-    except ImportError:
-        print("\n  [ERREUR] sklearn requis. pip install scikit-learn")
-        return
+    N_REPEATS = 5
 
-    # Charger le dataset brut
+    # Charger et preparer le dataset (meme pipeline que l'entrainement)
     dataset = ZumiControlDataset(str(data_dir))
     dataset.deduplicate()
-    captures = dataset.captures  # 27-dim
-    labels = dataset.labels
+    dataset.compute_engineered_features()
+    dataset.compute_sliding_windows()
 
-    # Calculer les features engineered
-    ir_bot_r = captures[:, 1]
-    ir_bot_l = captures[:, 3]
-    line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
-    line_conf = np.abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
+    mean = stats['feature_mean']
+    std = stats['feature_std'].copy()
+    std[std < 1e-6] = 1.0
+    dataset.captures = ((dataset.captures - mean) / std).astype(np.float32)
 
-    # Calculer deltas pas 1 pour tester leur apport
-    delta_cols = [1, 3, 6, 7, 18]  # IR base deltas
-    selected = captures[:, delta_cols]
-    deltas_t1 = np.zeros_like(selected)
-    deltas_t1[1:] = selected[1:] - selected[:-1]
+    X = dataset.captures  # (N, 680)
+    Y = dataset.labels     # (N, 2)
 
-    # Groupes de features a tester
-    ir_raw = captures[:, [0, 1, 2, 3, 4, 5]]
-    ir_eng = captures[:, [0, 1, 2, 3, 4, 5, 6, 7]]
-    ir_enriched = np.column_stack([ir_eng, line_pos, line_conf])
-    ir_enriched_deltas = np.column_stack([ir_enriched, deltas_t1])
-    imu = captures[:, 16:27]
-    ir_imu = np.column_stack([ir_eng, imu])
-    all_features = np.column_stack([ir_enriched, deltas_t1, imu])
+    # MSE de base
+    model.eval()
+    with torch.no_grad():
+        X_tensor = torch.tensor(X, dtype=torch.float32)
+        preds_base = model(X_tensor).numpy()
+    mse_base = float(((preds_base - Y) ** 2).mean())
+    print(f"\n  MSE de base: {mse_base:.6f}")
 
-    groups = [
-        ("IR bruts (6 feat)", ir_raw),
-        ("IR + IR_diff/sum (8 feat)", ir_eng),
-        ("IR + engineered (10 feat)", ir_enriched),
-        ("IR + eng + deltas_t1 (15 feat)", ir_enriched_deltas),
-        ("IR + IMU (19 feat)", ir_imu),
-        ("Toutes features (26 feat)", all_features),
-    ]
+    # Pour chaque groupe, calculer les indices dans le vecteur 680-dim
+    # (le groupe couvre les 20 pas de la fenetre)
+    results = {}
+    print(f"\n  {'Groupe':25s} {'Importance':>12s} {'MSE brouille':>14s}")
+    print(f"  {'-'*55}")
 
-    print(f"\n  {'Groupe':40s} {'R2':>10s} {'+/-':>8s}")
-    print(f"  {'-'*58}")
+    for group_name, step_indices in FEATURE_GROUPS.items():
+        # Indices dans le vecteur 680-dim: pour chaque pas w, offset = w * 34 + idx
+        windowed_indices = []
+        for w in range(WINDOW_SIZE):
+            for idx in step_indices:
+                windowed_indices.append(w * WINDOW_FEATURE_DIM + idx)
+        windowed_indices = np.array(windowed_indices)
 
-    for name, X in groups:
-        scores = cross_val_score(LinearRegression(), X, labels, cv=5, scoring='r2')
-        print(f"  {name:40s} {scores.mean():10.4f} {scores.std():8.4f}")
+        importances = []
+        for _ in range(N_REPEATS):
+            X_perm = X.copy()
+            # Melanger les colonnes du groupe entre les echantillons
+            perm_order = np.random.permutation(len(X_perm))
+            X_perm[:, windowed_indices] = X_perm[perm_order][:, windowed_indices]
 
-    print()
+            with torch.no_grad():
+                preds_perm = model(torch.tensor(X_perm, dtype=torch.float32)).numpy()
+            mse_perm = float(((preds_perm - Y) ** 2).mean())
+            importance_pct = (mse_perm - mse_base) / mse_base * 100.0
+            importances.append(importance_pct)
 
+        mean_imp = np.mean(importances)
+        std_imp = np.std(importances)
+        results[group_name] = (mean_imp, std_imp)
+        print(f"  {group_name:25s} {mean_imp:+10.1f}% +/-{std_imp:4.1f}%  "
+              f"({mse_base * (1 + mean_imp / 100):.6f})")
 
-# ============================================================
-# [4] Simulation boucle ouverte
-# ============================================================
+    # Tri par importance decroissante
+    sorted_results = sorted(results.items(), key=lambda x: x[1][0], reverse=True)
 
-def run_open_loop_simulation(model, stats, sequences_dir: Path, save_dir: Path = None):
-    """Simulation boucle ouverte sur une sequence reelle."""
+    print(f"\n  Classement (plus important en premier):")
+    for rank, (name, (imp, std_imp)) in enumerate(sorted_results, 1):
+        bar = '#' * max(0, int(imp / 5))  # 1 # pour chaque 5%
+        print(f"    {rank}. {name:25s} {imp:+8.1f}% {bar}")
 
-    print("\n" + "=" * 60)
-    print("  Simulation boucle ouverte")
-    print("=" * 60)
+    # Bar chart
+    names = [name for name, _ in sorted_results]
+    means = [imp for _, (imp, _) in sorted_results]
+    stds = [std_imp for _, (_, std_imp) in sorted_results]
 
-    # Lister les scenarios et sequences
-    if not sequences_dir.exists():
-        print("\n  [ERREUR] Repertoire sequences/ non trouve")
-        return
+    fig, ax = plt.subplots(figsize=(10, 6))
+    y_pos = np.arange(len(names))
+    colors = ['#d32f2f' if m > 50 else '#f57c00' if m > 10 else '#388e3c' if m > 1 else '#9e9e9e'
+              for m in means]
+    ax.barh(y_pos, means, xerr=stds, color=colors, capsize=4, edgecolor='black', linewidth=0.5)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(names)
+    ax.set_xlabel('Importance (% augmentation MSE)')
+    ax.set_title('Permutation Importance par groupe de features')
+    ax.axvline(x=0, color='black', linewidth=0.5)
+    ax.invert_yaxis()
+    ax.grid(axis='x', alpha=0.3)
 
-    scenarios = []
-    for item in sorted(sequences_dir.iterdir()):
-        if item.is_dir():
-            seqs = sorted([d for d in item.iterdir() if d.is_dir() and d.name.startswith('sampling')])
-            if seqs:
-                scenarios.append((item.name, seqs))
-
-    if not scenarios:
-        print("\n  [ERREUR] Aucune sequence trouvee")
-        return
-
-    # Afficher les scenarios
-    print("\n  Scenarios disponibles:")
-    all_seqs = []
-    idx = 1
-    for scenario_name, seqs in scenarios:
-        print(f"\n    {scenario_name}:")
-        for seq_dir in seqs[:10]:  # limiter l'affichage
-            cap_file = seq_dir / "captures.jsonl"
-            if cap_file.exists():
-                with open(cap_file) as f:
-                    n = sum(1 for line in f if line.strip())
-                print(f"      [{idx}] {seq_dir.name} ({n} samples)")
-                all_seqs.append(seq_dir)
-                idx += 1
-        if len(seqs) > 10:
-            print(f"      ... et {len(seqs) - 10} autres")
-            for seq_dir in seqs[10:]:
-                all_seqs.append(seq_dir)
-
-    choice = input(f"\n  Sequence a simuler (1-{len(all_seqs)}) : ").strip()
-    try:
-        seq_idx = int(choice) - 1
-        seq_dir = all_seqs[seq_idx]
-    except (ValueError, IndexError):
-        print("  Choix invalide.")
-        return
-
-    # Charger la sequence
-    captures = []
-    labels = []
-    with open(seq_dir / "captures.jsonl") as f:
-        for line in f:
-            if line.strip():
-                captures.append(json.loads(line))
-    with open(seq_dir / "labels.jsonl") as f:
-        for line in f:
-            if line.strip():
-                labels.append(json.loads(line))
-
-    captures = np.array(captures, dtype=np.float32)
-    labels = np.array(labels, dtype=np.float32)
-
-    print(f"\n  Sequence: {seq_dir.name} ({len(captures)} samples)")
-    print(f"  Simulation en cours...")
-
-    # Simuler: pour chaque timestep, construire le vecteur complet et inferer
-    import collections
-    prev_vectors = collections.deque(maxlen=DELTA_STEPS)
-    predictions = []
-    feature_mask = stats.get('feature_mask')
-
-    ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
-    for t in range(len(captures)):
-        raw_27 = captures[t]
-        prev_32 = prev_vectors[-1] if len(prev_vectors) > 0 else None
-        raw_32 = compute_engineered_features(raw_27, prev_32, ir_offset)
-
-        full = build_full_vector(raw_32, prev_vectors, feature_mask)
-        pred = inference(model, full, stats)
-        predictions.append(pred)
-        prev_vectors.append(raw_32.copy())
-
-    predictions = np.array(predictions)
-
-    # Metriques
-    mse = float(((predictions - labels) ** 2).mean())
-    mae = float(np.abs(predictions - labels).mean())
-    ss_res = ((predictions - labels) ** 2).sum()
-    ss_tot = ((labels - labels.mean(axis=0)) ** 2).sum()
-    r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0
-
-    print(f"\n  Resultats sur la sequence:")
-    print(f"    MSE:  {mse:.4f}")
-    print(f"    MAE:  {mae:.4f}")
-    print(f"    R2:   {r2:.4f}")
-
-    # Visualiser
-    timesteps = np.arange(len(captures))
-
-    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
-
-    axes[0].plot(timesteps, labels[:, 0] * 50, 'b-', alpha=0.7, label='Reel')
-    axes[0].plot(timesteps, predictions[:, 0] * 50, 'r--', alpha=0.7, label='Predit')
-    axes[0].set_ylabel('Vitesse Gauche')
-    axes[0].set_title(f'Simulation boucle ouverte - {seq_dir.name}')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-
-    axes[1].plot(timesteps, labels[:, 1] * 50, 'b-', alpha=0.7, label='Reel')
-    axes[1].plot(timesteps, predictions[:, 1] * 50, 'r--', alpha=0.7, label='Predit')
-    axes[1].set_ylabel('Vitesse Droite')
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
-
-    real_steering = (labels[:, 0] - labels[:, 1]) * 50
-    pred_steering = (predictions[:, 0] - predictions[:, 1]) * 50
-    axes[2].plot(timesteps, real_steering, 'b-', alpha=0.7, label='Reel')
-    axes[2].plot(timesteps, pred_steering, 'r--', alpha=0.7, label='Predit')
-    axes[2].axhline(y=0, color='k', linewidth=0.5)
-    axes[2].set_ylabel('Steering (L-R)')
-    axes[2].set_xlabel('Timestep')
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.3)
+    # Legende des couleurs
+    ax.text(0.98, 0.02,
+            'Rouge: critique (>50%)  Orange: important (>10%)\n'
+            'Vert: utile (>1%)  Gris: negligeable (<1%)',
+            transform=ax.transAxes, fontsize=8, ha='right', va='bottom',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     plt.tight_layout()
 
     if save_dir:
         save_dir.mkdir(parents=True, exist_ok=True)
-        fname = save_dir / f"simulation_{seq_dir.name.replace(' ', '_')}.png"
+        fname = save_dir / "permutation_importance.png"
         plt.savefig(fname, dpi=150, bbox_inches='tight')
-        print(f"  Graphique sauvegarde: {fname}")
+        print(f"\n  Graphique sauvegarde: {fname}")
 
-    # plt.show() uniquement si un display est disponible (pas en headless/VPS)
-    import os
     if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY') or sys.platform == 'win32':
         plt.show()
     plt.close()
@@ -521,16 +475,15 @@ def run_open_loop_simulation(model, stats, sequences_dir: Path, save_dir: Path =
 # ============================================================
 
 def run_simulation_menu(script_dir: Path, state: dict):
-    """Menu interactif de simulation et evaluation avancee."""
+    """Menu interactif d'evaluation avancee."""
 
     checkpoints_dir = script_dir / "checkpoints"
     data_dir = script_dir / "data"
-    sequences_dir = script_dir / "sequences"
-    sim_output_dir = script_dir / "simulation_results"
+    eval_output_dir = script_dir / "evaluation_results"
 
     # Verifier le modele
     if not state.get('has_model'):
-        print("\n  [ERREUR] Aucun modele entraine. Entrainez d'abord un modele (option 3).")
+        print("\n  [ERREUR] Aucun modele entraine. Entrainez d'abord un modele (option 4).")
         return
 
     model, stats = load_model_and_stats(checkpoints_dir)
@@ -543,21 +496,20 @@ def run_simulation_menu(script_dir: Path, state: dict):
 
     while True:
         print("\n" + "=" * 60)
-        print("  Simulation & Evaluation avancee")
+        print("  Evaluation avancee")
         print("=" * 60)
         print(f"  Modele: {info.get('input_dim', '?')} -> [{arch}] -> {info.get('output_dim', '?')} "
               f"(val_loss: {val_loss:.6f})")
         print()
-        print("  [1] Tests scenariques (inputs synthetiques)")
+        print("  [1] Evaluation sur sequences reelles (predictions vs labels)")
         print("  [2] Metriques par categorie d'action")
-        print("  [3] Ablation de features")
-        print("  [4] Simulation boucle ouverte (sur sequence reelle)")
+        print("  [3] Permutation importance (groupes de features)")
         print("  [R] Retour au menu principal")
 
         choice = input("\n  Choix : ").strip().upper()
 
         if choice == '1':
-            run_scenario_tests(model, stats, data_dir)
+            run_sequence_evaluation(model, stats, data_dir, eval_output_dir)
             input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == '2':
@@ -565,11 +517,7 @@ def run_simulation_menu(script_dir: Path, state: dict):
             input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == '3':
-            run_feature_ablation(data_dir)
-            input("\n  Appuyez sur Entree pour continuer...")
-
-        elif choice == '4':
-            run_open_loop_simulation(model, stats, sequences_dir, sim_output_dir)
+            run_permutation_importance(model, stats, data_dir, eval_output_dir)
             input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == 'R':

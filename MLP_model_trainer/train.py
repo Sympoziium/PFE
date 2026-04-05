@@ -611,12 +611,13 @@ def show_main_menu(script_dir: Path) -> tuple:
     print(f"    [2] Analyser le dataset (statistiques + graphiques)")
     print(f"    [3] Augmenter les donnees (bruit IR, scaling, dropout)")
     print(f"    [4] Entrainer un modele")
-    print(f"    [5] Simulation & evaluation avancee")
+    print(f"    [5] Evaluation avancee")
     print(f"    [6] Simulateur 2D (circuit virtuel temps reel)")
+    print(f"    [7] Importer et convertir un modele (TFLite)")
     print(f"    [Q] Quitter")
 
     # Validation du choix
-    valid_choices = {'1', '2', '3', '4', '5', '6', 'Q'}
+    valid_choices = {'1', '2', '3', '4', '5', '6', '7', 'Q'}
 
     while True:
         choice = input(f"\n  Choix : ").strip().upper()
@@ -673,6 +674,9 @@ def suggest_training_profile(dataset) -> dict:
         [128, 64],
         [128, 64, 32],
         [256, 128, 64],
+        [256, 128, 64, 32],
+        [512, 256, 128],
+        [512, 256, 128, 64],
     ]
 
     best_dims = [32, 16]  # defaut conservateur
@@ -1222,6 +1226,87 @@ def run_convert_to_tflite(script_dir: Path, quantize: bool = False):
 
 
 # ══════════════════════════════════════════════════════════════
+#  Importation et conversion de modele externe
+# ══════════════════════════════════════════════════════════════
+
+VPS_DEFAULT = "root@38.69.13.3"
+VPS_MODEL_PATH = "/root/PFE/MLP_model_trainer/checkpoints/best_model.pt"
+
+
+def run_import_and_convert(script_dir: Path):
+    """Importe un modele depuis le VPS ou un chemin local et le convertit en TFLite."""
+
+    print(f"\n{'='*60}")
+    print("  Importer et convertir un modele")
+    print(f"{'='*60}")
+
+    checkpoints_dir = script_dir / "checkpoints"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    local_model = checkpoints_dir / "best_model.pt"
+
+    print(f"\n  Sources disponibles:")
+    print(f"    [1] VPS ({VPS_DEFAULT}:{VPS_MODEL_PATH})")
+    print(f"    [2] Chemin local (copier un fichier .pt)")
+    print(f"    [3] Convertir le modele local existant en TFLite")
+    print(f"    [R] Retour")
+
+    choice = input("\n  Choix : ").strip().upper()
+
+    if choice == '1':
+        # Import depuis VPS via SCP
+        print(f"\n  Telechargement depuis {VPS_DEFAULT}...")
+        import subprocess
+        cmd = ["scp", f"{VPS_DEFAULT}:{VPS_MODEL_PATH}", str(local_model)]
+        print(f"  > {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"  ERREUR SCP: {result.stderr.strip()}")
+            return
+        print(f"  Modele telecharge: {local_model}")
+
+    elif choice == '2':
+        # Import depuis chemin local
+        src = input("\n  Chemin du fichier .pt : ").strip().strip('"')
+        src_path = Path(src)
+        if not src_path.exists():
+            print(f"  ERREUR: Fichier non trouve: {src_path}")
+            return
+        import shutil
+        shutil.copy2(src_path, local_model)
+        print(f"  Modele copie: {src_path} -> {local_model}")
+
+    elif choice == '3':
+        if not local_model.exists():
+            print(f"  ERREUR: Aucun modele local: {local_model}")
+            return
+
+    elif choice == 'R':
+        return
+    else:
+        print("  Choix invalide.")
+        return
+
+    # Verifier le modele importe
+    if not local_model.exists():
+        print(f"  ERREUR: Modele non trouve apres import: {local_model}")
+        return
+
+    checkpoint = torch.load(local_model, map_location='cpu', weights_only=False)
+    input_dim = checkpoint.get('input_dim', '?')
+    hidden_dims = checkpoint.get('hidden_dims', [])
+    output_dim = checkpoint.get('output_dim', '?')
+    val_loss = checkpoint.get('val_loss', 0)
+    arch = ' -> '.join(map(str, hidden_dims))
+    print(f"\n  Modele: {input_dim} -> [{arch}] -> {output_dim} (val_loss: {val_loss:.6f})")
+
+    # Proposer la conversion TFLite
+    convert = input("\n  Convertir en TFLite? (O/N) : ").strip().upper()
+    if convert == 'O':
+        quantize = input("  Quantiser (int8, plus compact)? (O/N) : ").strip().upper() == 'O'
+        run_convert_to_tflite(script_dir, quantize=quantize)
+
+
+# ══════════════════════════════════════════════════════════════
 #  Point d'entree
 # ══════════════════════════════════════════════════════════════
 
@@ -1272,6 +1357,10 @@ def main():
         elif choice == '6':
             from simulator_2d import run_simulator_menu
             run_simulator_menu(script_dir, state)
+
+        elif choice == '7':
+            run_import_and_convert(script_dir)
+            input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == 'Q':
             print("\n  Au revoir!")
