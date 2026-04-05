@@ -30,51 +30,9 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from dataset import ZumiControlDataset, create_data_loaders
-from model import create_model, ZumiMLP
+from model import ZumiMLP
 
-EARLY_STOPPING_PATIENCE = 55 # Nombre d'epochs sans amelioration avant arret (ajuste pour les profils plus longs)
-
-# ══════════════════════════════════════════════════════════════
-#  Profils d'entrainement par defaut
-# ══════════════════════════════════════════════════════════════
-
-TRAINING_PROFILES = {
-    'rapide': {
-        'name': 'Rapide',
-        'description': 'Test rapide, petit modele',
-        'model_size': 'small',
-        'hidden_dims': [32, 16],
-        'epochs': 200,
-        'batch_size': 64,
-        'lr': 1e-3,
-        'weight_decay': 1e-4,
-    },
-    'equilibre': {
-        'name': 'Equilibre',
-        'description': 'Bon compromis qualite/temps',
-        'model_size': 'medium',
-        'hidden_dims': [64, 32],
-        'epochs': 250,
-        'batch_size': 32,
-        'lr': 1e-3,
-        'weight_decay': 1e-4,
-    },
-    'precision': {
-        'name': 'Precision',
-        'description': 'Meilleure qualite, plus long',
-        'model_size': 'large',
-        'hidden_dims': [128, 64, 32],
-        'epochs': 300,
-        'batch_size': 16,
-        'lr': 5e-4,
-        'weight_decay': 1e-5,
-    },
-}
-
-
-# ══════════════════════════════════════════════════════════════
-#  Classe Trainer (inchangee)
-# ══════════════════════════════════════════════════════════════
+EARLY_STOPPING_PATIENCE = 20 # Nombre d'epochs sans amelioration avant arret (ajuste pour les profils plus longs)
 
 def load_environment_config(script_dir: Path) -> dict:
     """Charge la configuration d'environnement generee par validate_env.py.
@@ -114,6 +72,9 @@ def load_environment_config(script_dir: Path) -> dict:
 
     return config
 
+# ══════════════════════════════════════════════════════════════
+#  Classe Trainer
+# ══════════════════════════════════════════════════════════════
 
 class Trainer:
     """Classe d'entraînement du modèle MLP."""
@@ -637,6 +598,10 @@ def _count_params(input_dim, hidden_dims, output_dim=2):
     return total
 
 
+# ══════════════════════════════════════════════════════════════
+#  Suggestion de profil en fonction du dataset
+# ══════════════════════════════════════════════════════════════
+
 def suggest_training_profile(dataset) -> dict:
     """Analyse le dataset et propose un profil d'entrainement adapte a la fenetre glissante.
 
@@ -661,8 +626,8 @@ def suggest_training_profile(dataset) -> dict:
     step_dim = (n_active if feature_mask else raw_dim) + n_engineered
     effective_dim = step_dim * WINDOW_SIZE
 
-    # Budget: ratio samples/params >= 2.5 (adapte aux entrees correlees de la fenetre)
-    target_ratio = 2.5
+    # Budget: ratio samples/params >= 5 (normalement on voudrais un ratio de 10:1 ou plus mais 5 est un bon équilibre pour les petits datasets)
+    target_ratio = 5
     param_budget = int(n_samples / target_ratio)
 
     # Architectures candidates (triees par taille croissante)
@@ -679,7 +644,7 @@ def suggest_training_profile(dataset) -> dict:
         [512, 256, 128, 64],
     ]
 
-    best_dims = [32, 16]  # defaut conservateur
+    best_dims = [64, 32]  # defaut conservateur
     for dims in candidates:
         n_params = _count_params(effective_dim, dims)
         if n_params <= param_budget:
@@ -699,7 +664,7 @@ def suggest_training_profile(dataset) -> dict:
         fits = "  <--" if dims == best_dims else ""
         arch_table.append(f"      {str(dims):20s} {p:>8,} params  ({needed:>9,} samples requis){fits}")
 
-    if len(best_dims) < 2 or actual_ratio < 2.5:
+    if len(best_dims) < 2 or actual_ratio < 5:
         min_dims = [64, 32]
         min_params = _count_params(effective_dim, min_dims)
         min_samples = int(min_params * target_ratio)
@@ -708,7 +673,7 @@ def suggest_training_profile(dataset) -> dict:
             f"           Echantillons: {n_samples:,}, Budget: {param_budget:,} params\n"
             f"           Architecture recommandee: {min_dims} = {min_params:,} params\n"
             f"           Echantillons necessaires: ~{min_samples:,}\n"
-            f"           -> Utilisez l'option [3] Augmenter les donnees (x4-6 avec combine)"
+            f"           -> Utilisez l'option [3] Augmenter les donnees (x4-10 avec combine)"
         )
 
     # Hyperparametres adaptes
@@ -718,8 +683,12 @@ def suggest_training_profile(dataset) -> dict:
         epochs, batch_size, lr, wd = 300, 64, 1e-3, 1e-4
     elif n_samples < 200000:
         epochs, batch_size, lr, wd = 200, 64, 1e-3, 1e-4
+    elif n_samples < 500000:
+        epochs, batch_size, lr, wd = 150, 128, 1e-3, 1e-4
+    elif n_samples < 1500000:
+        epochs, batch_size, lr, wd = 150, 128, 1e-3, 1e-4
     else:
-        epochs, batch_size, lr, wd = 300, 64, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 100, 128, 1e-3, 1e-4
 
     profile = {
         'name': 'Adaptatif',
@@ -1041,20 +1010,12 @@ def run_training(script_dir: Path, state: dict):
         trim_stops=5
     )
 
-    # Creation du modele avec la configuration custom
-    hidden_dims = config.get('hidden_dims')
-    if hidden_dims:
-        model = ZumiMLP(
-            input_dim=dataset.input_dim,
-            output_dim=dataset.output_dim,
-            hidden_dims=hidden_dims
-        )
-    else:
-        model = create_model(
-            input_dim=dataset.input_dim,
-            output_dim=dataset.output_dim,
-            model_size=config.get('model_size', 'medium')
-        )
+    # Creation du modele
+    model = ZumiMLP(
+        input_dim=dataset.input_dim,
+        output_dim=dataset.output_dim,
+        hidden_dims=config.get('hidden_dims', [64, 32])
+    )
 
     print(f"\n{model.summary()}\n")
 
@@ -1119,19 +1080,66 @@ def run_training(script_dir: Path, state: dict):
     print(f"  R²:   {metrics['r2']:.6f}")
     print()
 
+    # Interprétation du MSE
+    mse_value = metrics['mse']
+    if mse_value < 0.01:
+        mse_status = "✅ Excellent"
+    elif mse_value < 0.04:
+        mse_status = "✓ Bon"
+    elif mse_value < 0.09:
+        mse_status = "⚠️ Acceptable"
+    else:
+        mse_status = "❌ À améliorer"
+
+    print(f"Interprétation MSE: {mse_status}")
+    print("Le MSE identifie l'erreur moyenne au carré des commandes de sorties. l'erreur carré sert a déterminer la variance de l'erreur, et penalise plus fortement les erreurs importantes (ex: 0.1^2 = 0.01, 0.2^2 = 0.04).")
+    print()
+    
+    # Interprétation du MAE
+    mae_value = metrics['mae']
+    if mae_value < 0.01:
+        mae_status = "✅ Excellent"
+    elif mae_value < 0.04:
+        mae_status = "✓ Bon"
+    elif mae_value < 0.09:
+        mae_status = "⚠️ Acceptable"
+    else:
+        mae_status = "❌ À améliorer"
+
+    print(f"Interprétation MAE: {mae_status}")
+    print("Le MAE identifie l'erreur moyenne des commandes de sorties. Il est moins sensible aux valeurs extrêmes que le MSE.")
+    print()
+
     # Interprétation RMSE
     rmse_value = metrics['rmse']
-    if rmse_value < 0.1:
+    if rmse_value < 0.01: # erreur de 1% sur les commandes de sortie
         rmse_status = "✅ Excellent"
-    elif rmse_value < 0.2:
+    elif rmse_value < 0.05: # erreur de 5% sur les commandes de sortie
         rmse_status = "✓ Bon"
-    elif rmse_value < 0.3:
+    elif rmse_value < 0.1: # erreur de 10% sur les commandes de sortie
         rmse_status = "⚠️ Acceptable"
     else:
         rmse_status = "❌ À améliorer"
 
     print(f"Interprétation RMSE: {rmse_status}")
+    print("Le RMSE identifie l'erreur moyenne quadratique, ces la racine carrée de l'erreur MSE. Elle possède l'avantage d' être sur la même échelle que les unités de sortie et non au carré, ce qui la rend plus interpretable.")
     print()
+
+    # Interprétation du R2
+    r2_value = metrics['r2']
+    if r2_value > 0.9:
+        r2_status = "✅ Excellent"
+    elif r2_value > 0.8:
+        r2_status = "✓ Bon"
+    elif r2_value > 0.7:
+        r2_status = "⚠️ Acceptable"
+    else:
+        r2_status = "❌ À améliorer"
+
+    print(f"Interprétation R²: {r2_status}")
+    print("Le R² identifie la proportion de la variance de la variable dépendante qui est expliquée par le modèle. Elle permet de mesurer la qualité de l'ajustement du modèle aux données. Un R² de 1 indique un ajustement parfait, tandis qu'un R² de 0 indique que le modèle n'explique aucune variance.")
+    print()
+
 
     # Création des visualisations
     print("📈 Génération des visualisations...")
@@ -1313,19 +1321,15 @@ def run_import_and_convert(script_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="Entrainement interactif du MLP Zumi")
     parser.add_argument("--headless", action="store_true",
-                        help="Mode automatique (sans menu interactif)")
-    parser.add_argument("--profile", type=str, default="equilibre",
-                        choices=["rapide", "equilibre", "precision"],
-                        help="Profil d'entrainement (mode headless)")
+                        help="Mode automatique (sans menu interactif, utilise le profil adaptatif)")
 
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
 
-    # Mode headless (automatique)
+    # Mode headless (automatique) — utilise le profil adaptatif
     if args.headless:
-        print("\n  Mode automatique active")
-        config = TRAINING_PROFILES.get(args.profile, TRAINING_PROFILES['equilibre'])
+        print("\n  Mode automatique active (profil adaptatif)")
         # ... implementation mode headless si necessaire
         return
 

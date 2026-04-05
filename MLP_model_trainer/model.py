@@ -3,9 +3,11 @@
 """
 Modèle MLP pour le contrôle du robot Zumi.
 
-Architecture simple mais efficace pour l'apprentissage par imitation:
-- Entrée: vecteur d'état normalisé (17 + N dimensions)
+Architecture configurable pour l'apprentissage par imitation:
+- Entrée: vecteur d'état normalisé (fenêtre glissante, typiquement 680 dimensions)
 - Sortie: commandes moteur normalisées [left, right] dans [-1, 1]
+- Les couches cachées sont configurées dynamiquement par le profil adaptatif
+  ou manuellement via le mode custom.
 """
 
 import torch
@@ -102,85 +104,16 @@ class ZumiMLP(nn.Module):
         return "\n".join(lines)
 
 
-class ZumiMLPLarge(ZumiMLP):
-    """Version plus large du MLP pour des tâches plus complexes."""
-
-    def __init__(self, input_dim: int, output_dim: int = 2, dropout: float = 0.2):
-        super().__init__(
-            input_dim=input_dim,
-            output_dim=output_dim,
-            hidden_dims=[128, 64, 32],
-            dropout=dropout
-        )
-
-
-class ZumiMLPSmall(ZumiMLP):
-    """Version compacte du MLP optimisée pour le déploiement sur Pi Zero."""
-
-    def __init__(self, input_dim: int, output_dim: int = 2, dropout: float = 0.05):
-        super().__init__(
-            input_dim=input_dim,
-            output_dim=output_dim,
-            hidden_dims=[32, 16],
-            dropout=dropout
-        )
-
-
-class ZumiMLPWindow(ZumiMLP):
-    """Version large du MLP pour entree en fenetre glissante (~680 dims).
-
-    Dimensionnee pour traiter des vecteurs d'etat concatenes sur plusieurs pas
-    temporels (ex: 34 features x 20 pas = 680 dims). Le reseau est plus large
-    que le MLP standard pour exploiter la richesse du contexte temporel.
-    """
-
-    def __init__(self, input_dim: int, output_dim: int = 2, dropout: float = 0.15):
-        super().__init__(
-            input_dim=input_dim,
-            output_dim=output_dim,
-            hidden_dims=[256, 128, 64],
-            dropout=dropout
-        )
-
-
-def create_model(
-    input_dim: int,
-    output_dim: int = 2,
-    model_size: str = "medium"
-) -> ZumiMLP:
-    """Factory function pour créer le modèle approprié.
-
-    Args:
-        input_dim: Dimension d'entrée
-        output_dim: Dimension de sortie
-        model_size: "small", "medium", "large" ou "window"
-
-    Returns:
-        Instance de ZumiMLP
-    """
-    if model_size == "small":
-        return ZumiMLPSmall(input_dim, output_dim)
-    elif model_size == "large":
-        return ZumiMLPLarge(input_dim, output_dim)
-    elif model_size == "window":
-        return ZumiMLPWindow(input_dim, output_dim)
-    else:  # medium (default)
-        return ZumiMLP(input_dim, output_dim)
-
-
 if __name__ == "__main__":
-    # Test des différentes architectures
-    input_dim = 21  # 6 IR + 1 flag + 4 classes + 4 bbox + 6 IMU
+    # Test de l'architecture MLP avec differentes configurations
+    print("=== Test ZumiMLP ===\n")
 
-    print("=== Test des architectures MLP ===\n")
-
-    for size in ["small", "medium", "large"]:
-        model = create_model(input_dim, model_size=size)
-        print(f"--- {size.upper()} ---")
+    for hidden_dims in [[64, 32], [128, 64, 32], [256, 128, 64, 32]]:
+        model = ZumiMLP(input_dim=680, hidden_dims=hidden_dims)
         print(model.summary())
 
         # Test forward pass
-        batch = torch.randn(4, input_dim)
+        batch = torch.randn(4, 680)
         output = model(batch)
         print(f"  Test output shape: {output.shape}")
         print(f"  Output range: [{output.min().item():.3f}, {output.max().item():.3f}]")
