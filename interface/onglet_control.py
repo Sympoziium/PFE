@@ -603,18 +603,18 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     label: '📏 Zone AVANT (alignement)',
                     params: [
                         {key: 'front_zone_x_ratio', label: 'Position X centre (ratio)', min: 0.1, max: 0.9, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
-                        {key: 'front_zone_y_start', label: 'Début Y (ratio, 0=haut)', min: 0, max: 0.5, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
-                        {key: 'front_zone_y_end', label: 'Fin Y (ratio)', min: 0.2, max: 0.8, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
-                        {key: 'front_zone_width_ratio', label: 'Largeur (ratio)', min: 0.02, max: 0.5, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_y_start', label: 'Début Y (ratio, 0=haut)', min: 0.1, max: 0.9, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_y_end', label: 'Fin Y (ratio)', min: 0.2, max: 0.95, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_width_ratio', label: 'Largeur (ratio)', min: 0.02, max: 0.3, step: 0.01, type: 'float', input: 'number', source: 'line_detector'},
                         {key: 'front_min_dashes', label: 'Min pointillés pour confirmer', min: 1, max: 10, step: 1, type: 'int', input: 'number', source: 'line_detector'}
                     ]
                 },
                 {
                     label: '↗️ Zones COINS (virages)',
                     params: [
-                        {key: 'corner_zone_width_ratio', label: 'Largeur chaque coin (ratio)', min: 0.05, max: 0.5, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
-                        {key: 'corner_zone_height_ratio', label: 'Hauteur chaque coin (ratio)', min: 0.1, max: 0.6, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
-                        {key: 'corner_zone_y_start', label: 'Début Y coins (ratio)', min: 0, max: 0.5, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_width_ratio', label: 'Largeur chaque coin (ratio)', min: 0.05, max: 0.4, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_height_ratio', label: 'Hauteur chaque coin (ratio)', min: 0.05, max: 0.4, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_y_start', label: 'Début Y coins (ratio)', min: 0.1, max: 0.8, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
                         {key: 'corner_slowdown_factor', label: 'Facteur ralentissement virage (0-1)', min: 0.1, max: 1, step: 0.05, type: 'float', input: 'number'}
                     ]
                 },
@@ -821,9 +821,14 @@ def render_control_tab(title: str = "Contrôle") -> str:
     }
 
     var _autoApplyTimer = null;
+    var _lastAppliedValues = {};
+
     function _debouncedApply() {
         if (_autoApplyTimer) clearTimeout(_autoApplyTimer);
-        _autoApplyTimer = setTimeout(function() { applySettings(); }, 300);
+        _autoApplyTimer = setTimeout(function() {
+            console.log('[AutoApply] Envoi des paramètres…');
+            applySettings();
+        }, 250);
     }
 
     function _bindAutoApply(sections) {
@@ -835,6 +840,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     if (!input) return;
                     input.addEventListener('input', _debouncedApply);
                     input.addEventListener('change', _debouncedApply);
+                    // Pour type="number": forcer le change sur blur
+                    input.addEventListener('blur', _debouncedApply);
                 });
             });
         }
@@ -847,6 +854,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
             if (!input) return;
             input.addEventListener('input', _debouncedApply);
             input.addEventListener('change', _debouncedApply);
+            input.addEventListener('blur', _debouncedApply);
         });
     }
 
@@ -906,7 +914,12 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
-            }).catch(function(e) { console.error('apply settings error:', e); });
+            }).then(function(r) {
+                if (!r.ok) console.error('[ApplySettings] manual error HTTP', r.status);
+                return r.json();
+            }).then(function(data) {
+                console.log('[ApplySettings] manual OK:', data);
+            }).catch(function(e) { console.error('[ApplySettings] manual fetch error:', e); });
         } else {
             // Contrôleur générique via /controller/params
             var payload = {name: ctrlName};
@@ -933,11 +946,17 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 });
             }
 
+            console.log('[ApplySettings] POST payload:', JSON.stringify(payload));
             fetch('/controller/params', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
-            }).catch(function(e) { console.error('apply controller params error:', e); });
+            }).then(function(r) {
+                if (!r.ok) console.error('[ApplySettings] controller error HTTP', r.status);
+                return r.json();
+            }).then(function(data) {
+                console.log('[ApplySettings] controller response:', data);
+            }).catch(function(e) { console.error('[ApplySettings] controller fetch error:', e); });
         }
     }
 

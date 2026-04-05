@@ -1558,15 +1558,33 @@ class controller:
             ctrl_name, ctrl_params, line_params))
 
         # Mettre à jour les params du contrôleur
-        if ctrl_params:
-            ctrl.update_params(**ctrl_params)
+        try:
+            if ctrl_params:
+                ctrl.update_params(**ctrl_params)
+                print("[DEBUG] ctrl.update_params OK")
+        except Exception as e:
+            print("[ERROR] ctrl.update_params failed: {}".format(e))
+            return jsonify({'error': 'ctrl update_params error: {}'.format(str(e))}), 500
 
         # Mettre à jour les params du LineDetector si applicable
-        if line_params and ctrl_name == 'circuit_fsm' and self.vision_pipeline:
-            for det in self.vision_pipeline.get_detectors():
-                if getattr(det, 'name', '') == 'line' and hasattr(det, 'update_params'):
-                    det.update_params(**line_params)
-                    break
+        try:
+            if line_params and ctrl_name == 'circuit_fsm':
+                vp = self.vision_pipeline
+                if vp:
+                    found_det = False
+                    for det in vp.get_detectors():
+                        if getattr(det, 'name', '') == 'line' and hasattr(det, 'update_params'):
+                            det.update_params(**line_params)
+                            found_det = True
+                            print("[DEBUG] line_detector.update_params OK: {}".format(line_params))
+                            break
+                    if not found_det:
+                        print("[WARNING] LineDetector introuvable dans le pipeline!")
+                else:
+                    print("[WARNING] vision_pipeline est None, line_params ignorés!")
+        except Exception as e:
+            print("[ERROR] line_detector.update_params failed: {}".format(e))
+            return jsonify({'error': 'line_detector update_params error: {}'.format(str(e))}), 500
 
         result = {'name': ctrl_name, 'params': ctrl.get_params()}
         if ctrl_name == 'circuit_fsm' and self.vision_pipeline:
