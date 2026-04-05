@@ -62,6 +62,8 @@ class SensorDriver:
         corner_right_detected = False
         corner_left_count = 0
         corner_right_count = 0
+        corner_left_area = 0
+        corner_right_area = 0
         zones_result = None
 
         if self.vision_pipeline is not None:
@@ -84,6 +86,8 @@ class SensorDriver:
                         corner_right_detected = zones_result.get('corner_right_detected', False)
                         corner_left_count = zones_result.get('corner_left_count', 0)
                         corner_right_count = zones_result.get('corner_right_count', 0)
+                        corner_left_area = zones_result.get('corner_left_area', 0)
+                        corner_right_area = zones_result.get('corner_right_area', 0)
                 except Exception:
                     pass
 
@@ -127,6 +131,8 @@ class SensorDriver:
             corner_right_detected=corner_right_detected,
             corner_left_count=corner_left_count,
             corner_right_count=corner_right_count,
+            corner_left_area=corner_left_area,
+            corner_right_area=corner_right_area,
             zones_result=zones_result,
         )
 

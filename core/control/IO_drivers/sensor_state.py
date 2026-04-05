@@ -48,6 +48,7 @@ class SensorState:
         'front_line_detected', 'front_line_confirmed', 'front_offset',
         'corner_left_detected', 'corner_right_detected',
         'corner_left_count', 'corner_right_count',
+        'corner_left_area', 'corner_right_area',
         'zones_result',
     )
 
@@ -69,6 +70,8 @@ class SensorState:
         corner_right_detected=False,
         corner_left_count=0,
         corner_right_count=0,
+        corner_left_area=0,
+        corner_right_area=0,
         zones_result=None,
     ):
         self.timestamp = timestamp if timestamp is not None else time.time()
@@ -87,6 +90,8 @@ class SensorState:
         self.corner_right_detected = corner_right_detected
         self.corner_left_count = corner_left_count
         self.corner_right_count = corner_right_count
+        self.corner_left_area = corner_left_area
+        self.corner_right_area = corner_right_area
         self.zones_result = zones_result
 
     def __repr__(self):

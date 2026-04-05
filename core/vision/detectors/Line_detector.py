@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 
 class LineDetector(BaseDetector):
-    def __init__(self, white_threshold=150, min_area=100, offset_ratio=0.5,
+    def __init__(self, white_threshold=150, min_area=300, offset_ratio=0.5,
                  # Zone CENTRE (base) — rectangle au bas de l'image
                  center_zone_width_ratio=0.70,
                  # Zone AVANT — rectangle vertical fin et long
@@ -324,6 +324,7 @@ class LineDetector(BaseDetector):
         
         # Filtrer les contours (pointillés valides)
         valid_dashes = []
+        total_area = 0
         for cnt in contours:
             area = cv2.contourArea(cnt)
             x, y, w, h = cv2.boundingRect(cnt)
@@ -333,15 +334,26 @@ class LineDetector(BaseDetector):
             if w > zone_w * 0.8 or h > zone_h * 0.8:
                 continue
             
-            aspect_ratio = float(h) / float(w) if w > 0 else 0
-            if aspect_ratio < 0.3 or aspect_ratio > 10:
+            # Filtre de solidité : accepte les formes non-rectangulaires
+            # (lignes de virage vues en perspective)
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            solidity = area / hull_area if hull_area > 0 else 0
+            if solidity < 0.4:
                 continue
             
+            # Aspect ratio large (garde seulement les cas extrêmes)
+            aspect_ratio = float(h) / float(w) if w > 0 else 0
+            if aspect_ratio < 0.1 or aspect_ratio > 15:
+                continue
+            
+            total_area += area
             valid_dashes.append({
                 'x': x + x1,  # Coordonnées dans l'image complète
                 'y': y + y1,
                 'w': w,
                 'h': h,
+                'area': area,
                 'cx': x + x1 + w / 2,
                 'cy': y + y1 + h / 2,
             })
@@ -358,6 +370,7 @@ class LineDetector(BaseDetector):
             'dashes': valid_dashes,
             'count': len(valid_dashes),
             'offset': offset,
+            'total_area': total_area,
         }
 
     def process_zones(self, frame):
@@ -419,6 +432,8 @@ class LineDetector(BaseDetector):
             'corner_right_detected': corner_right_result['detected'],
             'corner_left_count': corner_left_result['count'],
             'corner_right_count': corner_right_result['count'],
+            'corner_left_area': corner_left_result.get('total_area', 0),
+            'corner_right_area': corner_right_result.get('total_area', 0),
         }
         
         self._last_zones_result = result
@@ -768,7 +783,7 @@ class LineDetector(BaseDetector):
         
         # 4. Filtrer les contours pour trouver les POINTILLÉS
         valid_dashes = []
-        rejected_count = {'too_small': 0, 'too_large': 0, 'bad_ratio': 0}
+        rejected_count = {'too_small': 0, 'too_large': 0, 'bad_solidity': 0, 'bad_ratio': 0}
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
@@ -781,9 +796,19 @@ class LineDetector(BaseDetector):
             if w > image_stats['width'] * 0.4 or h > image_stats['roi_height'] * 0.5:
                 rejected_count['too_large'] += 1
                 continue
-                
+            
+            # Filtre de solidité : accepte les formes non-rectangulaires
+            # (lignes de virage vues en perspective = trapézoïdales)
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            solidity = area / hull_area if hull_area > 0 else 0
+            if solidity < 0.4:
+                rejected_count['bad_solidity'] += 1
+                continue
+            
+            # Aspect ratio large (garde seulement les cas extrêmes)
             aspect_ratio = float(h) / float(w) if w > 0 else 0
-            if aspect_ratio < 0.3 or aspect_ratio > 10:
+            if aspect_ratio < 0.1 or aspect_ratio > 15:
                 rejected_count['bad_ratio'] += 1
                 continue
             
@@ -793,6 +818,7 @@ class LineDetector(BaseDetector):
                 'y': y,
                 'w': w,
                 'h': h,
+                'area': area,
                 'cx': x + w / 2,
                 'cy': y + h / 2
             })
@@ -800,8 +826,9 @@ class LineDetector(BaseDetector):
         self.logs.append("[LINE_DETECTOR] Contours valides après filtrage: {}".format(len(valid_dashes))) 
         
         if self.debug:
-            print("[LINE_DETECTOR] Contours rejetés: trop petits={}, trop grands={}, mauvais ratio={}".format(
-                rejected_count['too_small'], rejected_count['too_large'], rejected_count['bad_ratio']
+            print("[LINE_DETECTOR] Contours rejetés: trop petits={}, trop grands={}, solidité={}, ratio={}".format(
+                rejected_count['too_small'], rejected_count['too_large'],
+                rejected_count['bad_solidity'], rejected_count['bad_ratio']
             ))
             print("[LINE_DETECTOR] Contours valides après filtrage: {}".format(len(valid_dashes)))
         

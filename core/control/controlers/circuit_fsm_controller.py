@@ -93,8 +93,8 @@ class CircuitFSMController(ControllerBase):
         cm_per_second (float): Calibration vitesse → distance (cm/s).
         step_duration (float): Durée d'un pas en secondes.
         pause_duration (float): Durée de pause entre les pas (pour capture).
-        front_min_dashes (int): Pointillés min dans zone AVANT pour confirmer.
         corner_slowdown_factor (float): Facteur de ralentissement quand coin détecté (0-1).
+        turn_min_area (int): Superficie min dans un coin pour confirmer un vrai virage.
         step_by_step_mode (bool): Mode pas-à-pas interactif.
     """
 
@@ -120,8 +120,8 @@ class CircuitFSMController(ControllerBase):
         cm_per_second=10.0,
         step_duration=0.3,
         pause_duration=0.2,
-        front_min_dashes=2,
         corner_slowdown_factor=0.5,
+        turn_min_area=800,
         step_by_step_mode=False,
     ):
         # PID (correction step-by-step)
@@ -151,8 +151,8 @@ class CircuitFSMController(ControllerBase):
         self._pause_duration = pause_duration
 
         # Multi-zones
-        self._front_min_dashes = front_min_dashes
         self._corner_slowdown_factor = corner_slowdown_factor
+        self._turn_min_area = turn_min_area
 
         # Mode pas-à-pas interactif
         self._step_by_step_mode = step_by_step_mode
@@ -188,6 +188,8 @@ class CircuitFSMController(ControllerBase):
         # Multi-zone state (dernière décision)
         self._last_decision = "none"
         self._corner_detected_side = None  # "left", "right", ou None
+        self._turn_detected = False        # Virage confirmé (aire suffisante)
+        self._turn_direction = None        # "left" ou "right"
 
         # Debug
         self._last_command_type = "none"
@@ -219,6 +221,8 @@ class CircuitFSMController(ControllerBase):
         self._last_command_type = "none"
         self._last_decision = "none"
         self._corner_detected_side = None
+        self._turn_detected = False
+        self._turn_direction = None
         self._step_requested = False
         print("[CIRCUIT_FSM] Démarré — état: INIT (pas-à-pas: {})".format(
             "OUI" if self._step_by_step_mode else "NON"))
@@ -390,6 +394,14 @@ class CircuitFSMController(ControllerBase):
                 self._last_command_type = "waiting_step"
                 return MotorCommand.stop()
 
+            # Virage détecté → transition immédiate vers PREVOIR_MANOEUVRE
+            if self._turn_detected:
+                print("[CIRCUIT_FSM] VIRAGE DÉTECTÉ: direction={} → PREVOIR_MANOEUVRE".format(
+                    self._turn_direction))
+                self._corner_detected_side = self._turn_direction
+                self._state = FSMState.PREVOIR_MANOEUVRE
+                return MotorCommand.stop()
+
             self._step_phase = StepPhase.MOVING
             self._phase_start_time = now
             self._last_command_type = "step_start"
@@ -539,25 +551,49 @@ class CircuitFSMController(ControllerBase):
         Décisions possibles :
             - "avance_confiant" : AVANT confirmé, ligne droit devant
             - "avance_prudent" : CENTRE détecté mais AVANT pas confirmé
-            - "virage_gauche" : Coin gauche détecté
-            - "virage_droit" : Coin droit détecté
+            - "virage_gauche" : Coin gauche détecté avec aire suffisante
+            - "virage_droit" : Coin droit détecté avec aire suffisante
             - "virage_imminent" : Les deux coins détectés
+            - "coin_gauche" : Coin gauche détecté (aire insuffisante pour virage)
+            - "coin_droit" : Coin droit détecté (aire insuffisante pour virage)
             - "perdu" : Rien détecté
         """
         center_ok = state.line_detected
         front_ok = state.front_line_confirmed
         corner_l = state.corner_left_detected
         corner_r = state.corner_right_detected
+        corner_l_area = getattr(state, 'corner_left_area', 0)
+        corner_r_area = getattr(state, 'corner_right_area', 0)
+
+        # Reset virage
+        self._turn_detected = False
+        self._turn_direction = None
 
         if corner_l and corner_r:
             self._last_decision = "virage_imminent"
             self._corner_detected_side = "left" if state.corner_left_count > state.corner_right_count else "right"
+            # Vérifier si c'est un vrai virage (aire suffisante)
+            if corner_l_area >= self._turn_min_area or corner_r_area >= self._turn_min_area:
+                self._turn_detected = True
+                self._turn_direction = "left" if corner_l_area > corner_r_area else "right"
         elif corner_l:
-            self._last_decision = "virage_gauche"
-            self._corner_detected_side = "left"
+            if corner_l_area >= self._turn_min_area and not front_ok:
+                self._last_decision = "virage_gauche"
+                self._corner_detected_side = "left"
+                self._turn_detected = True
+                self._turn_direction = "left"
+            else:
+                self._last_decision = "coin_gauche"
+                self._corner_detected_side = "left"
         elif corner_r:
-            self._last_decision = "virage_droit"
-            self._corner_detected_side = "right"
+            if corner_r_area >= self._turn_min_area and not front_ok:
+                self._last_decision = "virage_droit"
+                self._corner_detected_side = "right"
+                self._turn_detected = True
+                self._turn_direction = "right"
+            else:
+                self._last_decision = "coin_droit"
+                self._corner_detected_side = "right"
         elif center_ok and front_ok:
             self._last_decision = "avance_confiant"
             self._corner_detected_side = None
@@ -614,6 +650,8 @@ class CircuitFSMController(ControllerBase):
             "last_command_type": self._last_command_type,
             "last_decision": self._last_decision,
             "corner_detected_side": self._corner_detected_side,
+            "turn_detected": self._turn_detected,
+            "turn_direction": self._turn_direction,
             "integral": self._integral,
             "post_maneuver": self._post_maneuver,
             "maneuver_phase": self._maneuver_phase if self._state == FSMState.EXECUTER_MANOEUVRE else "N/A",
@@ -642,8 +680,8 @@ class CircuitFSMController(ControllerBase):
             "cm_per_second": self._cm_per_second,
             "step_duration": self._step_duration,
             "pause_duration": self._pause_duration,
-            "front_min_dashes": self._front_min_dashes,
             "corner_slowdown_factor": self._corner_slowdown_factor,
+            "turn_min_area": self._turn_min_area,
             "step_by_step_mode": self._step_by_step_mode,
         }
 
@@ -710,6 +748,9 @@ class CircuitFSMController(ControllerBase):
         if "corner_slowdown_factor" in kwargs:
             self._corner_slowdown_factor = float(kwargs["corner_slowdown_factor"])
             updated.append("corner_slowdown_factor={}".format(self._corner_slowdown_factor))
+        if "turn_min_area" in kwargs:
+            self._turn_min_area = int(kwargs["turn_min_area"])
+            updated.append("turn_min_area={}".format(self._turn_min_area))
         if "step_by_step_mode" in kwargs:
             self._step_by_step_mode = bool(int(kwargs["step_by_step_mode"]))
             updated.append("step_by_step_mode={}".format(self._step_by_step_mode))
