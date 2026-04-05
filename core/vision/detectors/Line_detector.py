@@ -21,8 +21,8 @@ class LineDetector(BaseDetector):
                  front_zone_y_end=1, front_zone_width_ratio=0.1,
                  front_min_dashes=1,
                  # Zones COINS — rectangles dans les coins gauche et droit
-                 corner_zone_width_ratio=0.18, corner_zone_height_ratio=0.18,
-                 corner_zone_y_start=0.60):
+                 corner_zone_width_ratio=0.25, corner_zone_height_ratio=0.25,
+                 corner_zone_y_start=0.50):
         """
         Initialise le détecteur de ligne.
         
@@ -309,10 +309,21 @@ class LineDetector(BaseDetector):
         
         roi = frame[y1:y2, x1:x2]
         
-        # Prétraitement identique au pipeline existant
+        # Prétraitement : filtrer le VRAI blanc (gris clair) en excluant les couleurs
+        # 1. Seuil de luminosité en niveaux de gris
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
-        _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        _, bright_mask = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        
+        # 2. Filtre de saturation HSV : rejeter les pixels colorés (vert, jaune, etc.)
+        #    Le blanc/gris a une saturation très basse (< 60)
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        _, sat, _ = cv2.split(hsv)
+        _, sat_mask = cv2.threshold(sat, 60, 255, cv2.THRESH_BINARY_INV)  # Garder saturation < 60
+        
+        # 3. Combiner : pixel doit être BRIGHT ET NON-COLORÉ
+        thresh = cv2.bitwise_and(bright_mask, sat_mask)
+        
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
         
@@ -742,8 +753,16 @@ class LineDetector(BaseDetector):
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # Utiliser le seuil configurable pour détecter les lignes BLANCHES sur fond noir
-        _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        # Seuil de luminosité pour détecter les lignes BLANCHES sur fond noir
+        _, bright_mask = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        
+        # Filtre de saturation HSV : rejeter les pixels colorés (vert, jaune, etc.)
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        _, sat, _ = cv2.split(hsv)
+        _, sat_mask = cv2.threshold(sat, 60, 255, cv2.THRESH_BINARY_INV)
+        
+        # Combiner : pixel doit être BRIGHT ET NON-COLORÉ
+        thresh = cv2.bitwise_and(bright_mask, sat_mask)
         
         # Morphologie légère
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))

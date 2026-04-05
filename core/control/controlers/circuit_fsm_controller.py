@@ -379,27 +379,32 @@ class CircuitFSMController(ControllerBase):
                 
                 # Log enrichi avec les 3 zones
                 print("[CIRCUIT_FSM] CAPTURE: offset={:.1f}px correction={:.1f} | "
-                      "front={} coins=L:{} R:{} | décision={}".format(
+                      "front={} coins=L:{} R:{} | décision={} | areaL={} areaR={}".format(
                     state.line_offset, self._step_correction,
                     "OUI" if state.front_line_confirmed else "non",
                     state.corner_left_count, state.corner_right_count,
-                    self._last_decision))
+                    self._last_decision,
+                    getattr(state, 'corner_left_area', 0),
+                    getattr(state, 'corner_right_area', 0)))
             else:
                 # Pas de détection, avancer droit
                 self._step_correction = 0.0
+
+            # Virage détecté → transition immédiate vers PREVOIR_MANOEUVRE
+            # (vérifié AVANT le mode pas-à-pas pour ne pas rater de virage)
+            if self._turn_detected:
+                print("[CIRCUIT_FSM] VIRAGE DÉTECTÉ: direction={} area_L={} area_R={} → PREVOIR_MANOEUVRE".format(
+                    self._turn_direction,
+                    getattr(state, 'corner_left_area', 0),
+                    getattr(state, 'corner_right_area', 0)))
+                self._corner_detected_side = self._turn_direction
+                self._state = FSMState.PREVOIR_MANOEUVRE
+                return MotorCommand.stop()
 
             # Mode pas-à-pas : attendre le signal
             if self._step_by_step_mode:
                 self._state = FSMState.ATTENTE_STEP
                 self._last_command_type = "waiting_step"
-                return MotorCommand.stop()
-
-            # Virage détecté → transition immédiate vers PREVOIR_MANOEUVRE
-            if self._turn_detected:
-                print("[CIRCUIT_FSM] VIRAGE DÉTECTÉ: direction={} → PREVOIR_MANOEUVRE".format(
-                    self._turn_direction))
-                self._corner_detected_side = self._turn_direction
-                self._state = FSMState.PREVOIR_MANOEUVRE
                 return MotorCommand.stop()
 
             self._step_phase = StepPhase.MOVING
@@ -742,9 +747,7 @@ class CircuitFSMController(ControllerBase):
         if "pause_duration" in kwargs:
             self._pause_duration = float(kwargs["pause_duration"])
             updated.append("pause_duration={}".format(self._pause_duration))
-        if "front_min_dashes" in kwargs:
-            self._front_min_dashes = int(kwargs["front_min_dashes"])
-            updated.append("front_min_dashes={}".format(self._front_min_dashes))
+
         if "corner_slowdown_factor" in kwargs:
             self._corner_slowdown_factor = float(kwargs["corner_slowdown_factor"])
             updated.append("corner_slowdown_factor={}".format(self._corner_slowdown_factor))

@@ -612,10 +612,11 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 {
                     label: '↗️ Zones COINS (virages)',
                     params: [
-                        {key: 'corner_zone_width_ratio', label: 'Largeur chaque coin (ratio)', min: 0.05, max: 0.4, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
-                        {key: 'corner_zone_height_ratio', label: 'Hauteur chaque coin (ratio)', min: 0.05, max: 0.4, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_width_ratio', label: 'Largeur chaque coin (ratio)', min: 0.05, max: 0.5, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_height_ratio', label: 'Hauteur chaque coin (ratio)', min: 0.05, max: 0.5, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
                         {key: 'corner_zone_y_start', label: 'Début Y coins (ratio)', min: 0.1, max: 0.8, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
-                        {key: 'corner_slowdown_factor', label: 'Facteur ralentissement virage (0-1)', min: 0.1, max: 1, step: 0.05, type: 'float', input: 'number'}
+                        {key: 'corner_slowdown_factor', label: 'Facteur ralentissement virage (0-1)', min: 0.1, max: 1, step: 0.05, type: 'float', input: 'number'},
+                        {key: 'turn_min_area', label: 'Aire min virage (px²)', min: 100, max: 5000, step: 50, type: 'int', input: 'number'}
                     ]
                 },
                 {
@@ -956,6 +957,23 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 return r.json();
             }).then(function(data) {
                 console.log('[ApplySettings] controller response:', data);
+                // Re-synchroniser les inputs avec les valeurs retournées par le serveur
+                if (data) {
+                    var serverParams = data.params || {};
+                    var lineParams = data.line_detector_params || {};
+                    var merged = {};
+                    Object.keys(serverParams).forEach(function(k) { merged[k] = serverParams[k]; });
+                    Object.keys(lineParams).forEach(function(k) { merged[k] = lineParams[k]; });
+                    Object.keys(merged).forEach(function(k) {
+                        var input = document.getElementById('param_' + k);
+                        if (input && merged[k] !== undefined) {
+                            input.value = merged[k];
+                            // Mettre à jour aussi le label de valeur pour les sliders
+                            var valEl = document.getElementById('param_' + k + '_val');
+                            if (valEl) valEl.textContent = merged[k];
+                        }
+                    });
+                }
             }).catch(function(e) { console.error('[ApplySettings] controller fetch error:', e); });
         }
     }
