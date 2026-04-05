@@ -13,13 +13,13 @@ import cv2
 import numpy as np
 
 class LineDetector(BaseDetector):
-    def __init__(self, white_threshold=150, min_area=100, offset_ratio=0.75,
+    def __init__(self, white_threshold=150, min_area=100, offset_ratio=0.25,
                  # Zone CENTRE (base) — rectangle au bas de l'image
                  center_zone_width_ratio=0.20,
                  # Zone AVANT — rectangle vertical fin et long
                  front_zone_x_ratio=0.5, front_zone_y_start=0.50,
-                 front_zone_y_end=0.50, front_zone_width_ratio=0.1,
-                 front_min_dashes=2,
+                 front_zone_y_end=1, front_zone_width_ratio=0.1,
+                 front_min_dashes=1,
                  # Zones COINS — rectangles dans les coins gauche et droit
                  corner_zone_width_ratio=0.18, corner_zone_height_ratio=0.18,
                  corner_zone_y_start=0.60):
