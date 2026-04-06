@@ -1355,7 +1355,7 @@ def main():
             input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == '5':
-            from MLP_model_trainer.evaluate import run_simulation_menu
+            from evaluate import run_simulation_menu
             run_simulation_menu(script_dir, state)
 
         elif choice == '6':
