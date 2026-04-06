@@ -678,17 +678,17 @@ def suggest_training_profile(dataset) -> dict:
 
     # Hyperparametres adaptes
     if n_samples < 5000:
-        epochs, batch_size, lr, wd = 400, 32, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 400, 32, 1e-2, 1e-4
     elif n_samples < 50000:
-        epochs, batch_size, lr, wd = 300, 64, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 300, 64, 1e-2, 1e-4
     elif n_samples < 200000:
         epochs, batch_size, lr, wd = 200, 64, 1e-3, 1e-4
     elif n_samples < 500000:
         epochs, batch_size, lr, wd = 150, 128, 1e-3, 1e-4
     elif n_samples < 1500000:
-        epochs, batch_size, lr, wd = 150, 128, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 150, 128, 1e-2, 1e-4
     else:
-        epochs, batch_size, lr, wd = 100, 128, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 100, 128, 1e-2, 1e-4
 
     profile = {
         'name': 'Adaptatif',
@@ -1355,7 +1355,7 @@ def main():
             input("\n  Appuyez sur Entree pour continuer...")
 
         elif choice == '5':
-            from simulate import run_simulation_menu
+            from MLP_model_trainer.evaluate import run_simulation_menu
             run_simulation_menu(script_dir, state)
 
         elif choice == '6':

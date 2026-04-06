@@ -1038,7 +1038,7 @@ def run_simulator(script_dir, state, track_mode='loop'):
 
     # Charger le modele
     checkpoints_dir = script_dir / "checkpoints"
-    from simulate import load_model_and_stats
+    from MLP_model_trainer.evaluate import load_model_and_stats
     model, stats = load_model_and_stats(checkpoints_dir)
     if model is None:
         return
