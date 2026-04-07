@@ -20,8 +20,9 @@ from pathlib import Path
 
 from dataset import (
     ZumiControlDataset, ENGINEERED_FEATURE_NAMES,
-    WINDOW_SIZE, WINDOW_FEATURE_DIM,
+    WINDOW_SIZE, WINDOW_FEATURE_DIM, TEMPORAL_DECAY,
     IR_OFFSET_DEFAULT, GAP_THRESHOLD, GYRO_Z_INDEX,
+    DETECTION_INDICES,
     classify_actions, ACTION_NAMES,
 )
 
@@ -40,10 +41,12 @@ def load_model_and_stats(checkpoints_dir: Path):
         return None, None
 
     checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
+    use_batchnorm = checkpoint.get('use_batchnorm', False)
     model = ZumiMLP(
         input_dim=checkpoint['input_dim'],
         output_dim=checkpoint['output_dim'],
         hidden_dims=checkpoint['hidden_dims'],
+        use_batchnorm=use_batchnorm,
     )
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
@@ -56,6 +59,9 @@ def load_model_and_stats(checkpoints_dir: Path):
         'hidden_dims': checkpoint['hidden_dims'],
         'val_loss': checkpoint.get('val_loss', 0),
         'motor_efficiency_left': checkpoint.get('motor_efficiency_left', 0.927),
+        'exclude_detection': checkpoint.get('exclude_detection', False),
+        'temporal_decay': checkpoint.get('temporal_decay', 1.0),
+        'window_size': checkpoint.get('window_size', WINDOW_SIZE),
     }
     return model, stats
 
@@ -132,10 +138,16 @@ def run_sequence_evaluation(model, stats, data_dir: Path, save_dir: Path = None)
     print("  Evaluation sur sequences reelles")
     print("=" * 60)
 
+    exclude_det = stats.get('exclude_detection', True)
+    decay = stats.get('temporal_decay', TEMPORAL_DECAY)
+    ws = stats.get('window_size', WINDOW_SIZE)
+
     # Charger le dataset brut (avant pipeline)
     dataset = ZumiControlDataset(str(data_dir))
     dataset.deduplicate()
-    raw_captures = dataset.captures.copy()  # 29-dim, avant engineering
+    if exclude_det:
+        dataset.exclude_detection_features()
+    raw_captures = dataset.captures.copy()
     raw_labels = dataset.labels.copy()
 
     # Detecter les frontieres de sequence (sauts IR > 150)
@@ -183,9 +195,9 @@ def run_sequence_evaluation(model, stats, data_dir: Path, save_dir: Path = None)
             print("  Choix invalide.")
             return
 
-    # Appliquer le pipeline complet pour obtenir les vecteurs 680-dim normalises
+    # Appliquer le pipeline complet
     dataset.compute_engineered_features()
-    dataset.compute_sliding_windows()
+    dataset.compute_sliding_windows(window_size=ws, temporal_decay=decay)
     mean = stats['feature_mean']
     std = stats['feature_std'].copy()
     std[std < 1e-6] = 1.0
@@ -262,6 +274,23 @@ def run_sequence_evaluation(model, stats, data_dir: Path, save_dir: Path = None)
 # [2] Metriques par categorie
 # ============================================================
 
+def _prepare_eval_dataset(data_dir: Path, stats: dict):
+    """Prepare le dataset pour l'evaluation avec le meme pipeline que l'entrainement.
+
+    Lit exclude_detection et temporal_decay depuis les stats du modele.
+    """
+    exclude_det = stats.get('exclude_detection', True)
+    decay = stats.get('temporal_decay', TEMPORAL_DECAY)
+    ws = stats.get('window_size', WINDOW_SIZE)
+
+    dataset = ZumiControlDataset(str(data_dir))
+    dataset.deduplicate()
+    if exclude_det:
+        dataset.exclude_detection_features()
+    dataset.compute_engineered_features()
+    return dataset, exclude_det, decay, ws
+
+
 def run_per_category_metrics(model, stats, data_dir: Path):
     """Calcule MSE/MAE/R2 par categorie d'action sur le dataset."""
 
@@ -269,16 +298,13 @@ def run_per_category_metrics(model, stats, data_dir: Path):
     print("  Metriques par categorie d'action")
     print("=" * 60)
 
-    # Charger et preparer le dataset
-    dataset = ZumiControlDataset(str(data_dir))
-    dataset.deduplicate()
-    dataset.compute_engineered_features()
+    dataset, exclude_det, decay, ws = _prepare_eval_dataset(data_dir, stats)
 
-    # Categoriser AVANT le windowing (classify_actions a besoin de gyro_z brut a l'index 18)
+    # Categoriser AVANT le windowing (classify_actions a besoin de gyro_z brut)
     categories = classify_actions(dataset.captures, dataset.labels)
 
-    # Fenetre glissante (34-dim -> 680-dim)
-    dataset.compute_sliding_windows()
+    # Fenetre glissante
+    dataset.compute_sliding_windows(window_size=ws, temporal_decay=decay)
 
     # Normaliser avec les stats du modele
     mean = stats['feature_mean']
@@ -329,15 +355,34 @@ def run_per_category_metrics(model, stats, data_dir: Path):
 # [3] Permutation importance
 # ============================================================
 
-# Groupes de features dans le vecteur 34-dim (par pas de fenetre)
-FEATURE_GROUPS = {
-    'IR bruts (0-5)':     list(range(0, 6)),
-    'IR diff/sum (6-7)':  list(range(6, 8)),
-    'Detection (8-15)':   list(range(8, 16)),
-    'IMU (16-26)':        list(range(16, 27)),
-    'Camera (27-28)':     list(range(27, 29)),
-    'Engineered (29-33)': list(range(29, 34)),
-}
+def get_feature_groups(exclude_detection: bool = True) -> dict:
+    """Retourne les groupes de features selon que Detection est exclue ou non.
+
+    Avec Detection (34-dim/pas):
+        IR bruts 0-5, IR diff/sum 6-7, Detection 8-15, IMU 16-26, Camera 27-28, Engineered 29-33
+    Sans Detection (26-dim/pas):
+        IR bruts 0-5, IR diff/sum 6-7, IMU 8-18, Camera 19-20, Engineered 21-25
+    """
+    if exclude_detection:
+        return {
+            'IR bruts (0-5)':     list(range(0, 6)),
+            'IR diff/sum (6-7)':  list(range(6, 8)),
+            'IMU (8-18)':         list(range(8, 19)),
+            'Camera (19-20)':     list(range(19, 21)),
+            'Engineered (21-25)': list(range(21, 26)),
+        }
+    else:
+        return {
+            'IR bruts (0-5)':     list(range(0, 6)),
+            'IR diff/sum (6-7)':  list(range(6, 8)),
+            'Detection (8-15)':   list(range(8, 16)),
+            'IMU (16-26)':        list(range(16, 27)),
+            'Camera (27-28)':     list(range(27, 29)),
+            'Engineered (29-33)': list(range(29, 34)),
+        }
+
+# Defaut: detection exclue (coherent avec WINDOW_FEATURE_DIM=26)
+FEATURE_GROUPS = get_feature_groups(exclude_detection=True)
 
 
 def run_permutation_importance(model, stats, data_dir: Path, save_dir: Path = None):
@@ -369,10 +414,19 @@ def run_permutation_importance(model, stats, data_dir: Path, save_dir: Path = No
     N_REPEATS = 5
 
     # Charger et preparer le dataset (meme pipeline que l'entrainement)
+    exclude_det = stats.get('exclude_detection', True)
+    decay = stats.get('temporal_decay', TEMPORAL_DECAY)
+    ws = stats.get('window_size', WINDOW_SIZE)
+
     dataset = ZumiControlDataset(str(data_dir))
     dataset.deduplicate()
+    if exclude_det:
+        dataset.exclude_detection_features()
     dataset.compute_engineered_features()
-    dataset.compute_sliding_windows()
+    dataset.compute_sliding_windows(window_size=ws, temporal_decay=decay)
+
+    # Utiliser les bons groupes de features
+    feature_groups = get_feature_groups(exclude_detection=exclude_det)
 
     mean = stats['feature_mean']
     std = stats['feature_std'].copy()
@@ -396,12 +450,14 @@ def run_permutation_importance(model, stats, data_dir: Path, save_dir: Path = No
     print(f"\n  {'Groupe':25s} {'Importance':>12s} {'MSE brouille':>14s}")
     print(f"  {'-'*55}")
 
-    for group_name, step_indices in FEATURE_GROUPS.items():
-        # Indices dans le vecteur 680-dim: pour chaque pas w, offset = w * 34 + idx
+    step_dim = WINDOW_FEATURE_DIM  # 26 si detection exclue, 34 sinon
+
+    for group_name, step_indices in feature_groups.items():
+        # Indices dans le vecteur plat: pour chaque pas w, offset = w * step_dim + idx
         windowed_indices = []
-        for w in range(WINDOW_SIZE):
+        for w in range(ws):
             for idx in step_indices:
-                windowed_indices.append(w * WINDOW_FEATURE_DIM + idx)
+                windowed_indices.append(w * step_dim + idx)
         windowed_indices = np.array(windowed_indices)
 
         importances = []

@@ -87,13 +87,16 @@ class Trainer:
         device: torch.device,
         lr: float = 1e-3,
         weight_decay: float = 1e-4,
-        norm_stats: dict = None
+        norm_stats: dict = None,
+        warmup_epochs: int = 5
     ):
         self.model = model.to(device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.device = device
         self.norm_stats = norm_stats or {}
+        self.base_lr = lr
+        self.warmup_epochs = warmup_epochs
 
         self.criterion = nn.SmoothL1Loss(beta=0.1)
         self.optimizer = optim.AdamW(
@@ -105,8 +108,8 @@ class Trainer:
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=10,
-            min_lr=1e-5
+            patience=8,
+            min_lr=1e-6
         )
 
         # Historique
@@ -331,13 +334,20 @@ class Trainer:
         for epoch in range(1, epochs + 1):
             epoch_start = time.time()
 
+            # LR Warmup: rampe lineaire de base_lr/10 a base_lr sur les premieres epoques
+            if epoch <= self.warmup_epochs:
+                warmup_lr = self.base_lr * (epoch / self.warmup_epochs)
+                for pg in self.optimizer.param_groups:
+                    pg['lr'] = warmup_lr
+
             # Entraînement et validation
             train_loss = self.train_epoch()
             val_loss = self.validate()
 
-            # Mise à jour du scheduler
+            # Mise à jour du scheduler (apres le warmup uniquement)
             current_lr = self.optimizer.param_groups[0]['lr']
-            self.scheduler.step(val_loss)
+            if epoch > self.warmup_epochs:
+                self.scheduler.step(val_loss)
 
             # Enregistrement historique
             self.history["train_loss"].append(train_loss)
@@ -357,6 +367,7 @@ class Trainer:
                     'input_dim': self.model.input_dim,
                     'output_dim': self.model.output_dim,
                     'hidden_dims': self.model.hidden_dims,
+                    'use_batchnorm': getattr(self.model, 'use_batchnorm', False),
                 }
                 if self.norm_stats:
                     for key in self.norm_stats:
@@ -640,6 +651,8 @@ def suggest_training_profile(dataset) -> dict:
         [128, 64, 32],
         [256, 128, 64],
         [256, 128, 64, 32],
+        [384, 192, 96],
+        [384, 192, 96, 48],
         [512, 256, 128],
         [512, 256, 128, 64],
     ]
@@ -676,19 +689,19 @@ def suggest_training_profile(dataset) -> dict:
             f"           -> Utilisez l'option [3] Augmenter les donnees (x4-10 avec combine)"
         )
 
-    # Hyperparametres adaptes
+    # Hyperparametres adaptes (batch/LR scales pour gros datasets)
     if n_samples < 5000:
         epochs, batch_size, lr, wd = 400, 32, 1e-2, 1e-4
     elif n_samples < 50000:
-        epochs, batch_size, lr, wd = 300, 64, 1e-2, 1e-4
+        epochs, batch_size, lr, wd = 300, 64, 5e-3, 1e-4
     elif n_samples < 200000:
-        epochs, batch_size, lr, wd = 200, 64, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 200, 128, 3e-3, 1e-4
     elif n_samples < 500000:
-        epochs, batch_size, lr, wd = 150, 128, 1e-3, 1e-4
+        epochs, batch_size, lr, wd = 150, 256, 3e-3, 1e-4
     elif n_samples < 1500000:
-        epochs, batch_size, lr, wd = 150, 128, 1e-2, 1e-4
+        epochs, batch_size, lr, wd = 150, 512, 3e-3, 1e-4
     else:
-        epochs, batch_size, lr, wd = 100, 128, 1e-2, 1e-4
+        epochs, batch_size, lr, wd = 100, 512, 3e-3, 1e-4
 
     profile = {
         'name': 'Adaptatif',
@@ -812,11 +825,11 @@ def configure_custom_profile() -> dict:
     # Batch size
     while True:
         try:
-            batch = int(input("    Batch size (8-256, defaut: 32) : ").strip() or "32")
-            if 8 <= batch <= 256:
+            batch = int(input("    Batch size (8-1024, defaut: 512) : ").strip() or "512")
+            if 8 <= batch <= 1024:
                 config['batch_size'] = batch
                 break
-            print("    Doit etre entre 8 et 256.")
+            print("    Doit etre entre 8 et 1024.")
         except ValueError:
             print("    Valeur invalide.")
 
@@ -1010,21 +1023,46 @@ def run_training(script_dir: Path, state: dict):
         trim_stops=5
     )
 
-    # Creation du modele
+    # Creation du modele (avec BatchNorm par defaut)
     model = ZumiMLP(
         input_dim=dataset.input_dim,
         output_dim=dataset.output_dim,
-        hidden_dims=config.get('hidden_dims', [64, 32])
+        hidden_dims=config.get('hidden_dims', [64, 32]),
+        use_batchnorm=True
     )
 
     print(f"\n{model.summary()}\n")
+
+    # Transfer learning: proposer de charger les poids d'un modele precedent
+    pretrained_path = save_dir / "best_model.pt"
+    if pretrained_path.exists():
+        try:
+            prev_checkpoint = torch.load(pretrained_path, map_location=device, weights_only=False)
+            prev_input = prev_checkpoint.get('input_dim')
+            prev_hidden = prev_checkpoint.get('hidden_dims')
+            prev_bn = prev_checkpoint.get('use_batchnorm', False)
+
+            if (prev_input == dataset.input_dim and
+                    prev_hidden == config.get('hidden_dims') and
+                    prev_bn == True):
+                print(f"  Modele precedent compatible detecte (val_loss={prev_checkpoint.get('val_loss', '?'):.6f})")
+                transfer = input("  Charger les poids pour fine-tuning? (O/N) : ").strip().upper()
+                if transfer == 'O':
+                    model.load_state_dict(prev_checkpoint['model_state_dict'])
+                    print("  Poids charges avec succes (fine-tuning)")
+            else:
+                print(f"  Modele precedent incompatible (input={prev_input}, hidden={prev_hidden}, bn={prev_bn})")
+                print(f"  Entrainement from scratch.")
+        except Exception as e:
+            print(f"  Erreur lecture modele precedent: {e}")
 
     # Stats de normalisation (calculees par create_data_loaders sur le train set)
     norm_stats = {}
     if hasattr(dataset, 'feature_mean'):
         from dataset import (IR_OFFSET_DEFAULT, GAP_THRESHOLD,
                              OFF_ROAD_THRESHOLD, GRASS_THRESHOLD,
-                             WINDOW_SIZE, WINDOW_FEATURE_DIM)
+                             WINDOW_SIZE, WINDOW_FEATURE_DIM,
+                             TEMPORAL_DECAY, DETECTION_INDICES)
         norm_stats = {
             'feature_mean': dataset.feature_mean.tolist(),
             'feature_std': dataset.feature_std.tolist(),
@@ -1041,6 +1079,10 @@ def run_training(script_dir: Path, state: dict):
             'mode': 'sliding_window',
             'window_size': getattr(dataset, 'window_size', WINDOW_SIZE),
             'window_feature_dim': WINDOW_FEATURE_DIM,
+            'temporal_decay': getattr(dataset, 'temporal_decay', TEMPORAL_DECAY),
+            # Exclusion detection
+            'exclude_detection': getattr(dataset, 'exclude_detection', False),
+            'detection_indices': DETECTION_INDICES,
         }
 
     # Entraînement
@@ -1051,7 +1093,8 @@ def run_training(script_dir: Path, state: dict):
         device=device,
         lr=config.get('lr', 1e-3),
         weight_decay=config.get('weight_decay', 1e-4),
-        norm_stats=norm_stats
+        norm_stats=norm_stats,
+        warmup_epochs=5
     )
 
     history = trainer.train(

@@ -30,8 +30,9 @@ class MLController(ControllerBase):
     GAP_THRESHOLD = 195.0
 
     # Fenetre glissante (defauts, ecrases par normalization_stats.json)
-    WINDOW_SIZE = 20           # Nombre de pas dans la fenetre (1s a 20Hz)
-    WINDOW_FEATURE_DIM = 34    # 29 raw + 5 engineered par pas
+    WINDOW_SIZE = 25           # Nombre de pas dans la fenetre (1.25s a 20Hz)
+    WINDOW_FEATURE_DIM = 26    # 21 raw + 5 engineered par pas (detection exclue)
+    TEMPORAL_DECAY = 0.95      # Decay exponentiel (1.0 = pas de decay)
 
     def __init__(self, vision_adapter, model_path=None):
         """
@@ -53,9 +54,13 @@ class MLController(ControllerBase):
         self._feature_version = 1  # 1=ancien (2 features), 2=PID-inspired (5 features)
 
         # Buffer circulaire pour la fenetre glissante
-        # Stocke les vecteurs 34-dim (29 raw + 5 engineered) des WINDOW_SIZE derniers pas
         self._window_buffer = collections.deque(maxlen=self.WINDOW_SIZE)
         self._prev_gyro_z = None  # Pour le calcul du gyro_z_rate
+
+        # Exclusion des features Detection (indices 8-15 dans le vecteur brut 29-dim)
+        self._exclude_detection = False
+        self._detection_indices = list(range(8, 16))
+        self._decay_weights = None  # Precalcule apres chargement des stats
 
         # Debug info
         self._last_input = None
@@ -172,14 +177,30 @@ class MLController(ControllerBase):
                       f"gap={self.GAP_THRESHOLD}")
 
             # Charger les parametres de la fenetre glissante
-            self.WINDOW_SIZE = stats.get('window_size', 20)
-            self.WINDOW_FEATURE_DIM = stats.get('window_feature_dim', 34)
+            self.WINDOW_SIZE = stats.get('window_size', 25)
+            self.WINDOW_FEATURE_DIM = stats.get('window_feature_dim', 26)
+            self.TEMPORAL_DECAY = stats.get('temporal_decay', 0.95)
             # Reinitialiser le buffer avec la bonne taille
             self._window_buffer = collections.deque(maxlen=self.WINDOW_SIZE)
 
+            # Charger les parametres d'exclusion Detection
+            self._exclude_detection = stats.get('exclude_detection', False)
+            self._detection_indices = stats.get('detection_indices', list(range(8, 16)))
+
+            # Precalculer les poids de decay temporel
+            if self.TEMPORAL_DECAY < 1.0:
+                self._decay_weights = np.array([
+                    self.TEMPORAL_DECAY ** (self.WINDOW_SIZE - 1 - w)
+                    for w in range(self.WINDOW_SIZE)
+                ], dtype=np.float32)
+            else:
+                self._decay_weights = None
+
             print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features "
                   f"(version={self._feature_version}, "
-                  f"fenetre={self.WINDOW_SIZE}x{self.WINDOW_FEATURE_DIM})")
+                  f"fenetre={self.WINDOW_SIZE}x{self.WINDOW_FEATURE_DIM}, "
+                  f"decay={self.TEMPORAL_DECAY}, "
+                  f"exclude_det={self._exclude_detection})")
 
         except Exception as e:
             print(f"[MLController] Erreur chargement normalization_stats: {e}")
@@ -201,15 +222,16 @@ class MLController(ControllerBase):
         return (vector - self._feature_mean) / self._feature_std
 
     def _build_step_vector(self, state) -> np.ndarray:
-        """Construit le vecteur d'etat 34-dim pour un seul pas temporel.
+        """Construit le vecteur d'etat pour un seul pas temporel.
 
-        Pipeline: VisionAdapter (29-dim) -> engineered features (34-dim)
+        Pipeline: VisionAdapter (29-dim) -> exclusion Detection (21-dim)
+                  -> engineered features (26-dim)
 
         Args:
             state: SensorState contenant les donnees des capteurs.
 
         Returns:
-            np.ndarray: Vecteur 34-dim (29 raw + 5 engineered).
+            np.ndarray: Vecteur 26-dim (21 raw + 5 engineered) ou 34-dim si detection incluse.
         """
         vision_result = {"detections": state.detections or []}
 
@@ -234,12 +256,18 @@ class MLController(ControllerBase):
         line_off = state.line_offset if hasattr(state, 'line_offset') else None
         raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data, line_offset=line_off)
 
-        # Features engineered PID-inspired (5 features)
+        # Extraire les valeurs avant l'exclusion (indices stables dans le vecteur 29-dim)
         ir_bot_r = raw_vector[1]   # IR_bottom_right
         ir_bot_l = raw_vector[3]   # IR_bottom_left
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
-        gyro_z = raw_vector[18]    # gyro_z cumulatif
+        gyro_z = raw_vector[18]    # gyro_z cumulatif (toujours index 18 dans le 29-dim)
 
+        # Appliquer le masque d'exclusion Detection
+        if self._exclude_detection:
+            keep_mask = [i for i in range(len(raw_vector)) if i not in self._detection_indices]
+            raw_vector = raw_vector[keep_mask]
+
+        # Features engineered PID-inspired (5 features)
         calibrated_error = (ir_bot_r - ir_bot_l) - (-self.IR_OFFSET_BOTTOM)
         line_visible = 1.0 if ir_sum < self.GAP_THRESHOLD else 0.0
         cal_error_norm = calibrated_error / (ir_sum + 1e-6)
@@ -264,16 +292,16 @@ class MLController(ControllerBase):
     def _build_state_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'etat complet via fenetre glissante.
 
-        Pipeline: step vector (34-dim) -> window buffer -> concatenation
-                  (34 x 20 = 680-dim) -> z-score
+        Pipeline: step vector -> window buffer -> decay temporel
+                  -> concatenation -> z-score
 
         Args:
             state: SensorState contenant les donnees des capteurs.
 
         Returns:
-            np.ndarray: Vecteur 680-dim normalise pret pour l'inference.
+            np.ndarray: Vecteur normalise pret pour l'inference.
         """
-        # 1. Construire le vecteur du pas actuel (34-dim)
+        # 1. Construire le vecteur du pas actuel
         step_vector = self._build_step_vector(state)
 
         # 2. Ajouter au buffer de fenetre
@@ -289,9 +317,15 @@ class MLController(ControllerBase):
         offset = window_size - n_available  # nombre de pas zero-paddes
 
         for i, vec in enumerate(self._window_buffer):
-            start = (offset + i) * feature_dim
+            slot = offset + i  # position dans la fenetre (0=plus ancien)
+            start = slot * feature_dim
             end = start + feature_dim
-            full_vector[start:end] = vec
+
+            # Appliquer le decay temporel
+            if self._decay_weights is not None:
+                full_vector[start:end] = vec * self._decay_weights[slot]
+            else:
+                full_vector[start:end] = vec
 
         # 4. Appliquer la normalisation z-score
         return self._apply_zscore(full_vector)

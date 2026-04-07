@@ -25,29 +25,48 @@ GAP_THRESHOLD = 210.8        # ir_sum sous lequel la ligne blanche est visible
 OFF_ROAD_THRESHOLD = 165.9   # ir_sum sous lequel on est hors piste (gazon)
 GRASS_THRESHOLD = 140.0      # capteurs front sous ce seuil = gazon devant
 
-# Features engineered ajoutees au vecteur de base (29-dim -> 34-dim)
-# Le vecteur de base est maintenant 29-dim (27 + 2 features camera: line_offset, line_detected)
-# Les indices des features engineered commencent a 29
+# Features engineered ajoutees au vecteur de base
+# Le vecteur de base est 29-dim (27 + 2 features camera: line_offset, line_detected)
+# ou 21-dim si les features Detection (8-15) sont exclues.
+# Les features engineered sont toujours ajoutees a la fin.
 ENGINEERED_FEATURE_NAMES = [
-    'calibrated_error',   # 29: (ir_bot_r - ir_bot_l) - ir_offset
-    'line_visible',       # 30: 1.0 si ir_sum < GAP_THRESHOLD (IR)
-    'cal_error_norm',     # 31: calibrated_error / (ir_sum + eps)
-    'gyro_z_rate',        # 32: delta gyro_z (vitesse angulaire par tick)
-    'heading_drift',      # 33: gyro_z_rate * (1 - line_visible)
+    'calibrated_error',   # (ir_bot_r - ir_bot_l) - ir_offset
+    'line_visible',       # 1.0 si ir_sum < GAP_THRESHOLD (IR)
+    'cal_error_norm',     # calibrated_error / (ir_sum + eps)
+    'gyro_z_rate',        # delta gyro_z (vitesse angulaire par tick)
+    'heading_drift',      # gyro_z_rate * (1 - line_visible)
 ]
 
-# Fenetre glissante: 20 pas d'historique (1 seconde a 20Hz)
-WINDOW_SIZE = 20
-WINDOW_FEATURE_DIM = 34  # 29 raw + 5 engineered (par pas de fenetre)
+# Indices des features Detection (Haar) dans le vecteur brut 29-dim.
+# Ces features sont inutilisees tant que les detecteurs Haar ne sont pas integres
+# et peuvent etre exclues de facon reversible (exclude_detection=True).
+DETECTION_INDICES = list(range(8, 16))  # 8 features: flag + 3 one-hot + 4 bbox
 
-# Indice du gyro_z dans le vecteur de base
-GYRO_Z_INDEX = 18
+# Fenetre glissante: 25 pas d'historique (1.25 seconde a 20Hz)
+WINDOW_SIZE = 25
+
+# Dimension par pas de fenetre (calculee dynamiquement selon exclude_detection)
+# 34 = 29 raw + 5 engineered (detection incluse)
+# 26 = 21 raw + 5 engineered (detection exclue)
+WINDOW_FEATURE_DIM = 26  # defaut: detection exclue
+
+# Ponderation temporelle exponentielle de la fenetre glissante.
+# Chaque frame t est multiplie par alpha^(window_size - 1 - t):
+#   frame le plus recent (t=window_size-1) = 1.0
+#   frame le plus ancien (t=0) = alpha^(window_size-1)
+# alpha=1.0 desactive le decay. alpha=0.95 avec 25 frames: ancien=0.29, milieu=0.54.
+TEMPORAL_DECAY = 0.95
+
+# Indice du gyro_z dans le vecteur de base (29-dim complet)
+# Si exclude_detection=True, l'indice effectif est recalcule dynamiquement.
+GYRO_Z_INDEX_RAW = 18  # indice dans le vecteur brut 29-dim (toujours valide)
+GYRO_Z_INDEX = 18       # indice effectif (mis a jour si detection exclue)
 
 # Noms des categories d'actions
 ACTION_NAMES = ["Arret", "Tout droit", "Tourne G", "Tourne D", "Recule"]
 
 
-def classify_actions(captures, labels, gyro_z_index=GYRO_Z_INDEX,
+def classify_actions(captures, labels, gyro_z_index=None,
                      rotation_thresh=3.0, stop_thresh=0.02,
                      boundary_thresh=150.0):
     """Categorise les echantillons par action reelle via IMU.
@@ -76,6 +95,11 @@ def classify_actions(captures, labels, gyro_z_index=GYRO_Z_INDEX,
         categories: array int (N,) — 0=arret, 1=forward, 2=turn_left,
                     3=turn_right, 4=reverse
     """
+    # Resoudre l'index gyro_z au runtime (pas au chargement du module)
+    # car GYRO_Z_INDEX est modifie dynamiquement par exclude_detection_features()
+    if gyro_z_index is None:
+        gyro_z_index = GYRO_Z_INDEX
+
     gyro_z_raw = captures[:, gyro_z_index]
 
     # Calculer le delta gyro_z (vitesse angulaire par tick)
@@ -307,20 +331,48 @@ class ZumiControlDataset(Dataset):
               f"(n_straight={int(straight_mask.sum()) if straight_mask.sum() >= 10 else len(ir_diff_straight)})")
         return offset
 
-    def compute_engineered_features(self, ir_offset: float = None):
-        """Ajoute 8 features PID-inspired au vecteur de base (27-dim -> 35-dim).
+    def exclude_detection_features(self):
+        """Retire les features Detection (indices 8-15) du vecteur brut.
 
-        Features ajoutees (indices 27-34):
-          27: calibrated_error  - signal d'erreur PID zero-centre
-          28: line_visible      - 1.0 si ligne blanche detectee
-          29: cal_error_norm    - erreur normalisee par luminosite
-          30: approaching_line  - +1 si on se rapproche de la ligne, -1 sinon
-          31: on_road           - 1.0 si sur la route (pas sur gazon)
-          32: grass_detect      - 1.0 si gazon detecte devant
-          33: gyro_z_rate       - vitesse angulaire (delta gyro_z par tick)
-          34: heading_drift     - derive de cap dans les gaps entre tirets
+        Doit etre appelee AVANT compute_engineered_features().
+        Re-mappe les indices pour que les features suivantes gardent
+        leur semantique (IR 0-7 inchanges, IMU 16-26 -> 8-18, Camera 27-28 -> 19-20).
+
+        Reversible: ne pas appeler cette methode pour garder les 29 features.
+        """
+        global GYRO_Z_INDEX, WINDOW_FEATURE_DIM
+
+        original_dim = self.captures.shape[1]
+        keep_mask = [i for i in range(original_dim) if i not in DETECTION_INDICES]
+        self.captures = self.captures[:, keep_mask]
+        self._detection_excluded = True
+        self._detection_keep_mask = keep_mask
+
+        # Mettre a jour l'indice gyro_z effectif
+        # Dans le vecteur 29-dim, gyro_z est a l'index 18.
+        # Apres suppression des indices 8-15 (8 features), il passe a 18-8=10.
+        GYRO_Z_INDEX = GYRO_Z_INDEX_RAW - len(DETECTION_INDICES)
+
+        # Mettre a jour la dimension par pas de fenetre
+        new_raw_dim = self.captures.shape[1]
+        WINDOW_FEATURE_DIM = new_raw_dim + len(ENGINEERED_FEATURE_NAMES)
+
+        print(f"[Dataset] Detection exclue: {original_dim}-dim -> {new_raw_dim}-dim "
+              f"(indices {DETECTION_INDICES[0]}-{DETECTION_INDICES[-1]} retires, "
+              f"gyro_z_index={GYRO_Z_INDEX})")
+
+    def compute_engineered_features(self, ir_offset: float = None):
+        """Ajoute 5 features PID-inspired au vecteur de base.
+
+        Features ajoutees (a la fin du vecteur):
+          calibrated_error  - signal d'erreur PID zero-centre
+          line_visible      - 1.0 si ligne blanche detectee
+          cal_error_norm    - erreur normalisee par luminosite
+          gyro_z_rate       - vitesse angulaire (delta gyro_z par tick)
+          heading_drift     - derive de cap dans les gaps entre tirets
 
         Doit etre appelee AVANT compute_sliding_windows().
+        Fonctionne que Detection soit exclue ou non (utilise GYRO_Z_INDEX dynamique).
 
         Args:
             ir_offset: Offset IR bottom (bot_left - bot_right). Si None, estime depuis le dataset.
@@ -330,27 +382,28 @@ class ZumiControlDataset(Dataset):
         self._ir_offset = ir_offset
 
         n = len(self.captures)
+        # IR indices 0-7 ne bougent pas, meme apres exclusion Detection
         ir_bot_r = self.captures[:, 1]   # IR_bottom_right
         ir_bot_l = self.captures[:, 3]   # IR_bottom_left
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
         gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
 
-        # 29: calibrated_error — signal d'erreur PID zero-centre
+        # calibrated_error — signal d'erreur PID zero-centre
         calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
 
-        # 28: line_visible — la ligne blanche est sous un capteur
+        # line_visible — la ligne blanche est sous un capteur
         line_visible = (ir_sum < GAP_THRESHOLD).astype(np.float32)
 
-        # 29: cal_error_norm — invariant a la luminosite ambiante
+        # cal_error_norm — invariant a la luminosite ambiante
         cal_error_norm = calibrated_error / (ir_sum + 1e-6)
 
-        # 30: gyro_z_rate — vitesse angulaire (delta gyro_z cumulatif)
+        # gyro_z_rate — vitesse angulaire (delta gyro_z cumulatif)
         gyro_z_rate = np.zeros(n, dtype=np.float32)
         gyro_z_rate[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
         gyro_boundaries = np.abs(gyro_z_rate) > 150.0
         gyro_z_rate[gyro_boundaries] = 0.0
 
-        # 31: heading_drift — derive de cap active uniquement dans les gaps
+        # heading_drift — derive de cap active uniquement dans les gaps
         heading_drift = gyro_z_rate * (1.0 - line_visible)
 
         new_features = np.column_stack([
@@ -364,7 +417,7 @@ class ZumiControlDataset(Dataset):
         print(f"[Dataset] Features engineered: {len(ENGINEERED_FEATURE_NAMES)} ajoutees "
               f"({original_dim}-dim -> {self.captures.shape[1]}-dim, ir_offset={ir_offset:.1f})")
 
-    def compute_sliding_windows(self, window_size: int = None):
+    def compute_sliding_windows(self, window_size: int = None, temporal_decay: float = None):
         """Construit des fenetres glissantes a partir des vecteurs d'etat.
 
         Concatene window_size vecteurs d'etat consecutifs en un seul vecteur
@@ -374,22 +427,38 @@ class ZumiControlDataset(Dataset):
         Chaque echantillon t devient: [state(t-W+1), state(t-W+2), ..., state(t)]
         aplatit en vecteur de (feature_dim * window_size) dimensions.
 
+        Un decay exponentiel optionnel est applique: chaque frame w est multiplie
+        par alpha^(window_size - 1 - w), priorisant les frames recents.
+
         Les frontieres de sequence (detectees par sauts IR > 150) sont respectees:
         les pas avant une frontiere sont remplaces par des zeros (zero-padding).
 
         Doit etre appelee APRES compute_engineered_features() et AVANT le shuffle.
 
         Args:
-            window_size: Nombre de pas dans la fenetre (defaut: WINDOW_SIZE = 20)
+            window_size: Nombre de pas dans la fenetre (defaut: WINDOW_SIZE = 25)
+            temporal_decay: Facteur de decay exponentiel (defaut: TEMPORAL_DECAY = 0.95).
+                            1.0 desactive le decay.
         """
         if window_size is None:
             window_size = WINDOW_SIZE
+        if temporal_decay is None:
+            temporal_decay = TEMPORAL_DECAY
 
         n_samples = len(self.captures)
         feature_dim = self.captures.shape[1]
 
         if n_samples < 2:
             return
+
+        # Precalculer les poids temporels
+        # w=0 est le frame le plus ancien, w=window_size-1 est le plus recent
+        if temporal_decay < 1.0:
+            decay_weights = np.array([
+                temporal_decay ** (window_size - 1 - w) for w in range(window_size)
+            ], dtype=np.float32)
+        else:
+            decay_weights = None
 
         # Detecter les frontieres de sequence via sauts IR
         ir_indices = list(range(min(8, feature_dim)))
@@ -404,10 +473,9 @@ class ZumiControlDataset(Dataset):
         n_boundaries = int(np.sum(boundary_mask))
 
         # Assigner un ID de sequence a chaque echantillon
-        # Les echantillons d'une meme sequence partagent le meme ID
         seq_id = np.cumsum(boundary_mask)
 
-        # Construire les fenetres de facon vectorisee (boucle sur window_size, pas sur n_samples)
+        # Construire les fenetres de facon vectorisee
         windowed = np.zeros((n_samples, window_size * feature_dim), dtype=np.float32)
 
         for w in range(window_size):
@@ -415,9 +483,12 @@ class ZumiControlDataset(Dataset):
             col_start = w * feature_dim
             col_end = (w + 1) * feature_dim
 
+            # Poids temporel pour ce slot
+            weight = decay_weights[w] if decay_weights is not None else 1.0
+
             if offset == 0:
                 # Pas actuel — toujours valide
-                windowed[:, col_start:col_end] = self.captures
+                windowed[:, col_start:col_end] = self.captures * weight
             else:
                 # Pas decale — valide uniquement si meme sequence et index >= 0
                 valid_dst = slice(offset, n_samples)
@@ -425,18 +496,18 @@ class ZumiControlDataset(Dataset):
 
                 same_seq = seq_id[valid_dst] == seq_id[valid_src]
 
-                # Remplir seulement les echantillons valides (le reste reste a zero)
                 temp = np.zeros((n_samples, feature_dim), dtype=np.float32)
                 temp_dst = np.arange(offset, n_samples)
-                temp[temp_dst[same_seq]] = self.captures[:n_samples - offset][same_seq]
+                temp[temp_dst[same_seq]] = self.captures[:n_samples - offset][same_seq] * weight
                 windowed[:, col_start:col_end] = temp
 
         original_dim = self.captures.shape[1]
         self.captures = windowed
 
+        decay_str = f", decay={temporal_decay}" if temporal_decay < 1.0 else ""
         print(f"[Dataset] Fenetre glissante: {window_size} pas x {feature_dim} features = "
               f"{window_size * feature_dim}-dim "
-              f"({n_boundaries} frontieres de sequence detectees)")
+              f"({n_boundaries} frontieres de sequence detectees{decay_str})")
 
     def compute_sample_weights(self) -> np.ndarray:
         """Calcule les poids par echantillon pour equilibrer les categories d'actions.
@@ -568,16 +639,20 @@ def create_data_loaders(
     deduplicate: bool = True,
     balanced_sampling: bool = True,
     window_size: int = None,
-    trim_stops: int = None
+    trim_stops: int = None,
+    exclude_detection: bool = True,
+    temporal_decay: float = None,
+    num_workers: int = None
 ) -> tuple:
     """Crée les DataLoaders pour l'entraînement et la validation.
 
     Pipeline complet:
       1. Chargement des donnees
       2. Deduplication des echantillons consecutifs quasi-identiques
-      3. Features engineered PID-inspired (5 features, 29-dim -> 34-dim)
+      2b. Exclusion des features Detection (indices 8-15) si demande
+      3. Features engineered PID-inspired (5 features)
       4. Calcul des poids d'echantillonnage equilibre (avant fenetre glissante)
-      5. Fenetre glissante (34 features x 20 pas = 680 colonnes)
+      5. Fenetre glissante avec decay temporel optionnel
       6. Split train/validation
       7. Normalisation z-score (stats calculees sur train uniquement)
       8. Creation des DataLoaders
@@ -591,12 +666,26 @@ def create_data_loaders(
         feature_mask: Inutilise (conserve pour compatibilite de signature)
         deduplicate: Retirer les doublons consecutifs (defaut: True)
         balanced_sampling: Utiliser WeightedRandomSampler pour equilibrer les categories (defaut: True)
-        window_size: Taille de la fenetre glissante (defaut: WINDOW_SIZE=20)
+        window_size: Taille de la fenetre glissante (defaut: WINDOW_SIZE=25)
         trim_stops: Nombre max d'arrets consecutifs a garder (None = pas de trim)
+        exclude_detection: Retirer les features Detection indices 8-15 (defaut: True)
+        temporal_decay: Facteur de decay exponentiel (defaut: TEMPORAL_DECAY=0.95)
+        num_workers: Nombre de workers pour le DataLoader (defaut: auto)
 
     Returns:
         tuple: (train_loader, val_loader, dataset)
     """
+    import os
+    import sys
+
+    if num_workers is None:
+        # Windows: multiprocessing spawn + gros datasets en memoire = pickle crash.
+        # num_workers>0 n'est fiable que sur Linux (fork).
+        if sys.platform == 'win32':
+            num_workers = 0
+        else:
+            num_workers = min(4, os.cpu_count() or 0)
+
     dataset = ZumiControlDataset(data_dir)
 
     # 1. Deduplication (avant tout traitement)
@@ -607,19 +696,24 @@ def create_data_loaders(
     if trim_stops is not None:
         dataset.trim_stops(max_consecutive=trim_stops)
 
-    # 2. Features engineered (29-dim -> 34-dim)
+    # 2. Exclure les features Detection si demande (AVANT feature engineering)
+    if exclude_detection:
+        dataset.exclude_detection_features()
+
+    # 3. Features engineered
     dataset.compute_engineered_features()
 
-    # 3. Calculer les poids d'echantillonnage AVANT la fenetre glissante
-    #    car classify_actions() a besoin d'acceder aux indices bruts (gyro_z = index 18)
-    #    qui ne sont plus accessibles apres le windowing
+    # 4. Calculer les poids d'echantillonnage AVANT la fenetre glissante
+    #    car classify_actions() a besoin d'acceder aux indices bruts (gyro_z)
     sample_weights = None
     if balanced_sampling:
         sample_weights = dataset.compute_sample_weights()
 
-    # 4. Fenetre glissante (34-dim x window_size = 680-dim)
-    dataset.compute_sliding_windows(window_size=window_size)
+    # 5. Fenetre glissante avec decay temporel
+    dataset.compute_sliding_windows(window_size=window_size, temporal_decay=temporal_decay)
     dataset.window_size = window_size or WINDOW_SIZE
+    dataset.temporal_decay = temporal_decay or TEMPORAL_DECAY
+    dataset.exclude_detection = exclude_detection
     dataset.feature_mask = None
 
     # 6. Split train/validation
@@ -631,7 +725,7 @@ def create_data_loaders(
         dataset, [n_train, n_val], generator=generator
     )
 
-    # 7. Calculer mean/std sur le train set uniquement (apres masque)
+    # 7. Calculer mean/std sur le train set uniquement
     train_indices = train_dataset.indices
     train_captures = dataset.captures[train_indices]
     feature_mean = train_captures.mean(axis=0)
@@ -650,7 +744,6 @@ def create_data_loaders(
 
     # 8. Creer les DataLoaders
     if balanced_sampling and sample_weights is not None:
-        # WeightedRandomSampler pour le train set (equilibre les categories)
         train_weights = torch.from_numpy(sample_weights[train_indices]).double()
         sampler = WeightedRandomSampler(
             weights=train_weights,
@@ -660,8 +753,8 @@ def create_data_loaders(
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            sampler=sampler,    # sampler remplace shuffle
-            num_workers=0,
+            sampler=sampler,
+            num_workers=num_workers,
             pin_memory=True
         )
         print(f"[Dataset] Echantillonnage equilibre active (WeightedRandomSampler)")
@@ -670,7 +763,7 @@ def create_data_loaders(
             train_dataset,
             batch_size=batch_size,
             shuffle=shuffle,
-            num_workers=0,
+            num_workers=num_workers,
             pin_memory=True
         )
 
@@ -678,11 +771,12 @@ def create_data_loaders(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0,
+        num_workers=num_workers,
         pin_memory=True
     )
 
-    print(f"[Dataset] Train: {n_train} samples, Val: {n_val} samples")
+    print(f"[Dataset] Train: {n_train} samples, Val: {n_val} samples "
+          f"(num_workers={num_workers})")
 
     return train_loader, val_loader, dataset
 

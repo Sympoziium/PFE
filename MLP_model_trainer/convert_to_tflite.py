@@ -30,22 +30,34 @@ from model import ZumiMLP
 def load_pytorch_model(model_path: Path) -> tuple:
     """Charge le modèle PyTorch depuis un checkpoint.
 
+    Si le modèle utilise BatchNorm, les couches BN sont automatiquement
+    fusionnées dans les couches Linear pour l'export TFLite.
+
     Returns:
         tuple: (model, checkpoint_data)
     """
     checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
 
+    use_batchnorm = checkpoint.get('use_batchnorm', False)
+
     model = ZumiMLP(
         input_dim=checkpoint['input_dim'],
         output_dim=checkpoint['output_dim'],
-        hidden_dims=checkpoint['hidden_dims']
+        hidden_dims=checkpoint['hidden_dims'],
+        use_batchnorm=use_batchnorm
     )
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
+    # Fusionner BatchNorm pour export (le modele TF ne contient que Dense+ReLU)
+    if use_batchnorm:
+        print(f"[Load] BatchNorm detecte, fusion dans les couches Linear...")
+        model = model.fuse_batchnorm()
+
     print(f"[Load] Modèle chargé: {model_path}")
     print(f"       Input: {checkpoint['input_dim']}, Output: {checkpoint['output_dim']}")
     print(f"       Hidden: {checkpoint['hidden_dims']}")
+    print(f"       BatchNorm: {use_batchnorm} (fusionne pour export)")
     print(f"       Val loss: {checkpoint['val_loss']:.6f}")
 
     return model, checkpoint
@@ -237,8 +249,12 @@ def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
         "feature_version": checkpoint.get('feature_version', 1),
         # Metadonnees fenetre glissante
         "mode": checkpoint.get('mode', 'sliding_window'),
-        "window_size": checkpoint.get('window_size', 20),
-        "window_feature_dim": checkpoint.get('window_feature_dim', 34),
+        "window_size": checkpoint.get('window_size', 25),
+        "window_feature_dim": checkpoint.get('window_feature_dim', 26),
+        "temporal_decay": checkpoint.get('temporal_decay', 0.95),
+        # Exclusion detection
+        "exclude_detection": checkpoint.get('exclude_detection', False),
+        "detection_indices": checkpoint.get('detection_indices', list(range(8, 16))),
     }
 
     stats_path = output_dir / "normalization_stats.json"
