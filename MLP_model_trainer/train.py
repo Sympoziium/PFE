@@ -1034,6 +1034,7 @@ def run_training(script_dir: Path, state: dict):
     print(f"\n{model.summary()}\n")
 
     # Transfer learning: proposer de charger les poids d'un modele precedent
+    is_finetuning = False
     pretrained_path = save_dir / "best_model.pt"
     if pretrained_path.exists():
         try:
@@ -1049,12 +1050,21 @@ def run_training(script_dir: Path, state: dict):
                 transfer = input("  Charger les poids pour fine-tuning? (O/N) : ").strip().upper()
                 if transfer == 'O':
                     model.load_state_dict(prev_checkpoint['model_state_dict'])
+                    is_finetuning = True
                     print("  Poids charges avec succes (fine-tuning)")
             else:
                 print(f"  Modele precedent incompatible (input={prev_input}, hidden={prev_hidden}, bn={prev_bn})")
                 print(f"  Entrainement from scratch.")
         except Exception as e:
             print(f"  Erreur lecture modele precedent: {e}")
+
+    # Ajuster les hyperparametres pour le fine-tuning
+    lr = config.get('lr', 1e-3)
+    warmup_epochs = 5
+    if is_finetuning:
+        lr = lr / 10.0  # LR 10x plus bas pour affiner sans detruire les poids
+        warmup_epochs = 0  # Pas de warmup, le modele est deja dans un bon bassin
+        print(f"  [Fine-tuning] LR reduit: {lr:.6f} (1/10e), pas de warmup")
 
     # Stats de normalisation (calculees par create_data_loaders sur le train set)
     norm_stats = {}
@@ -1091,10 +1101,10 @@ def run_training(script_dir: Path, state: dict):
         train_loader=train_loader,
         val_loader=val_loader,
         device=device,
-        lr=config.get('lr', 1e-3),
+        lr=lr,
         weight_decay=config.get('weight_decay', 1e-4),
         norm_stats=norm_stats,
-        warmup_epochs=5
+        warmup_epochs=warmup_epochs
     )
 
     history = trainer.train(

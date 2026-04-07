@@ -150,20 +150,14 @@ def run_sequence_evaluation(model, stats, data_dir: Path, save_dir: Path = None)
     raw_captures = dataset.captures.copy()
     raw_labels = dataset.labels.copy()
 
-    # Detecter les frontieres de sequence (sauts IR > 150)
-    ir_indices = list(range(min(8, raw_captures.shape[1])))
-    ir_step = np.zeros((len(raw_captures), len(ir_indices)), dtype=np.float32)
-    ir_step[1:] = raw_captures[1:, ir_indices] - raw_captures[:-1, ir_indices]
-    ir_jumps = np.linalg.norm(ir_step, axis=1)
-    boundary_mask = ir_jumps > 150.0
-    boundary_mask[0] = True
-
-    # Construire la liste des segments continus
-    boundary_indices = np.where(boundary_mask)[0]
+    # Construire la liste des segments continus via sequence_ids
+    seq_ids = dataset.sequence_ids
+    unique_seqs = np.unique(seq_ids)
     segments = []
-    for i in range(len(boundary_indices)):
-        start = int(boundary_indices[i])
-        end = int(boundary_indices[i + 1]) if i + 1 < len(boundary_indices) else len(raw_captures)
+    for sid in unique_seqs:
+        mask = np.where(seq_ids == sid)[0]
+        start = int(mask[0])
+        end = int(mask[-1]) + 1
         length = end - start
         if length >= 20:  # au moins 1 seconde
             segments.append((start, end, length))
@@ -278,6 +272,7 @@ def _prepare_eval_dataset(data_dir: Path, stats: dict):
     """Prepare le dataset pour l'evaluation avec le meme pipeline que l'entrainement.
 
     Lit exclude_detection et temporal_decay depuis les stats du modele.
+    Utilise les sequence_ids pour les frontieres de sequence.
     """
     exclude_det = stats.get('exclude_detection', True)
     decay = stats.get('temporal_decay', TEMPORAL_DECAY)
@@ -291,6 +286,19 @@ def _prepare_eval_dataset(data_dir: Path, stats: dict):
     return dataset, exclude_det, decay, ws
 
 
+def _prepare_full_eval_dataset(data_dir: Path, stats: dict):
+    """Prepare le dataset complet (avec sliding windows) pour l'evaluation."""
+    dataset, exclude_det, decay, ws = _prepare_eval_dataset(data_dir, stats)
+    dataset.compute_sliding_windows(window_size=ws, temporal_decay=decay)
+
+    mean = stats['feature_mean']
+    std = stats['feature_std'].copy()
+    std[std < 1e-6] = 1.0
+    dataset.captures = ((dataset.captures - mean) / std).astype(np.float32)
+
+    return dataset, exclude_det
+
+
 def run_per_category_metrics(model, stats, data_dir: Path):
     """Calcule MSE/MAE/R2 par categorie d'action sur le dataset."""
 
@@ -298,19 +306,19 @@ def run_per_category_metrics(model, stats, data_dir: Path):
     print("  Metriques par categorie d'action")
     print("=" * 60)
 
-    dataset, exclude_det, decay, ws = _prepare_eval_dataset(data_dir, stats)
+    dataset_pre, exclude_det, decay, ws = _prepare_eval_dataset(data_dir, stats)
 
     # Categoriser AVANT le windowing (classify_actions a besoin de gyro_z brut)
-    categories = classify_actions(dataset.captures, dataset.labels)
+    categories = classify_actions(dataset_pre.captures, dataset_pre.labels,
+                                  sequence_ids=dataset_pre.sequence_ids)
 
-    # Fenetre glissante
-    dataset.compute_sliding_windows(window_size=ws, temporal_decay=decay)
-
-    # Normaliser avec les stats du modele
+    # Fenetre glissante + normalisation
+    dataset_pre.compute_sliding_windows(window_size=ws, temporal_decay=decay)
     mean = stats['feature_mean']
     std = stats['feature_std'].copy()
     std[std < 1e-6] = 1.0
-    dataset.captures = ((dataset.captures - mean) / std).astype(np.float32)
+    dataset_pre.captures = ((dataset_pre.captures - mean) / std).astype(np.float32)
+    dataset = dataset_pre
 
     # Inference sur tout le dataset
     model.eval()

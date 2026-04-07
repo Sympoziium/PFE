@@ -4,13 +4,14 @@
 Dataset PyTorch pour l'entraînement du MLP de contrôle.
 
 Charge les fichiers JSONL générés par le système d'échantillonnage
-(captures.jsonl = vecteurs d'état, labels.jsonl = commandes moteur).
+(captures.jsonl = vecteurs d'état, labels.jsonl = commandes moteur,
+ sequence_ids.jsonl = IDs de séquence pour frontières et split train/val).
 """
 
 import json
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
+from torch.utils.data import Dataset, DataLoader, Subset, WeightedRandomSampler
 from pathlib import Path
 
 # ============================================================
@@ -66,30 +67,31 @@ GYRO_Z_INDEX = 18       # indice effectif (mis a jour si detection exclue)
 ACTION_NAMES = ["Arret", "Tout droit", "Tourne G", "Tourne D", "Recule"]
 
 
-def classify_actions(captures, labels, gyro_z_index=None,
-                     rotation_thresh=3.0, stop_thresh=0.02,
-                     boundary_thresh=150.0):
+def classify_actions(captures, labels, sequence_ids=None, gyro_z_index=None,
+                     rotation_thresh=3.0, stop_thresh=0.02):
     """Categorise les echantillons par action reelle via IMU.
 
     Utilise le delta du gyroscope (gyro_z[t] - gyro_z[t-1]) pour detecter
     les rotations plutot que les commandes moteur, car celles-ci sont
     biaisees par la correction PID de cap.
 
-    Note: gyro_z (index 18) est l'angle yaw CUMULATIF integre du gyroscope
-    (en degres), pas une vitesse angulaire. Il s'accumule au sein d'une
-    sequence et est reinitialise entre les sequences. On calcule donc le
-    delta entre echantillons consecutifs pour obtenir la vitesse angulaire
-    par tick, en mettant a zero les frontieres de sequence (gros sauts).
+    Note: gyro_z est l'angle yaw CUMULATIF integre du gyroscope (en degres).
+    Il s'accumule au sein d'une sequence et est reinitialise entre les sequences.
+    On calcule le delta entre echantillons consecutifs pour obtenir la vitesse
+    angulaire par tick, en mettant a zero les frontieres de sequence.
+
+    Les frontieres sont detectees via sequence_ids (changement d'ID).
 
     Convention Zumi: gyro_z positif = rotation vers la gauche.
 
     Args:
         captures: array (N, D) avec gyro_z a l'index gyro_z_index
         labels: array (N, 2) commandes moteur normalisees [-1, 1]
-        gyro_z_index: indice du gyro_z dans captures (18 pour raw 27-dim)
+        sequence_ids: array (N,) identifiant la sequence de chaque echantillon.
+                      Si None, pas de detection de frontiere.
+        gyro_z_index: indice du gyro_z dans captures. Si None, utilise GYRO_Z_INDEX.
         rotation_thresh: seuil delta gyro_z en deg/tick pour detecter une rotation
         stop_thresh: seuil commande moteur pour detecter un arret
-        boundary_thresh: seuil de saut gyro_z pour detecter une frontiere de sequence
 
     Returns:
         categories: array int (N,) — 0=arret, 1=forward, 2=turn_left,
@@ -106,9 +108,16 @@ def classify_actions(captures, labels, gyro_z_index=None,
     gyro_z_delta = np.zeros_like(gyro_z_raw)
     gyro_z_delta[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
 
-    # Mettre a zero les frontieres de sequence (gros sauts = reset gyro)
-    boundaries = np.abs(gyro_z_delta) > boundary_thresh
-    gyro_z_delta[boundaries] = 0.0
+    # Mettre a zero les frontieres de sequence (changement d'ID de sequence)
+    if sequence_ids is not None:
+        boundaries = np.zeros(len(captures), dtype=bool)
+        boundaries[0] = True
+        boundaries[1:] = sequence_ids[1:] != sequence_ids[:-1]
+        gyro_z_delta[boundaries] = 0.0
+    else:
+        # Fallback: gros sauts gyro = frontiere (cas sans sequence_ids)
+        boundaries = np.abs(gyro_z_delta) > 150.0
+        gyro_z_delta[boundaries] = 0.0
 
     left = labels[:, 0]
     right = labels[:, 1]
@@ -134,18 +143,20 @@ class ZumiControlDataset(Dataset):
     """Dataset pour l'apprentissage par imitation du contrôle Zumi.
 
     Format des données:
-        - captures.jsonl: vecteurs d'état normalisés (dim = 17 + N classes)
+        - captures.jsonl: vecteurs d'état (dim = 29)
         - labels.jsonl: commandes moteur normalisées [left, right] dans [-1, 1]
+        - sequence_ids.jsonl: ID de séquence par échantillon (généré par aggregate_sequences.py)
     """
 
     def __init__(self, data_dir: str):
         """
         Args:
-            data_dir: Répertoire contenant captures.jsonl et labels.jsonl
+            data_dir: Répertoire contenant captures.jsonl, labels.jsonl et sequence_ids.jsonl
         """
         self.data_dir = Path(data_dir)
         self.captures = []
         self.labels = []
+        self.sequence_ids = None
 
         self._load_data()
 
@@ -153,11 +164,17 @@ class ZumiControlDataset(Dataset):
         """Charge les fichiers JSONL en mémoire."""
         captures_path = self.data_dir / "captures.jsonl"
         labels_path = self.data_dir / "labels.jsonl"
+        seqids_path = self.data_dir / "sequence_ids.jsonl"
 
         if not captures_path.exists():
             raise FileNotFoundError(f"Fichier captures.jsonl non trouvé: {captures_path}")
         if not labels_path.exists():
             raise FileNotFoundError(f"Fichier labels.jsonl non trouvé: {labels_path}")
+        if not seqids_path.exists():
+            raise FileNotFoundError(
+                f"Fichier sequence_ids.jsonl non trouvé: {seqids_path}\n"
+                f"Relancez aggregate_sequences.py pour le générer."
+            )
 
         # Charger les captures (états)
         with open(captures_path, 'r') as f:
@@ -173,18 +190,34 @@ class ZumiControlDataset(Dataset):
                 if line:
                     self.labels.append(json.loads(line))
 
+        # Charger les IDs de séquence
+        seq_ids = []
+        with open(seqids_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    seq_ids.append(int(line))
+
         # Validation
         if len(self.captures) != len(self.labels):
             raise ValueError(
                 f"Nombre d'échantillons incohérent: "
                 f"{len(self.captures)} captures vs {len(self.labels)} labels"
             )
+        if len(seq_ids) != len(self.captures):
+            raise ValueError(
+                f"sequence_ids.jsonl incompatible: "
+                f"{len(seq_ids)} IDs vs {len(self.captures)} captures. "
+                f"Relancez aggregate_sequences.py."
+            )
 
-        # Convertir en tenseurs numpy pour efficacité
+        # Convertir en numpy
         self.captures = np.array(self.captures, dtype=np.float32)
         self.labels = np.array(self.labels, dtype=np.float32)
+        self.sequence_ids = np.array(seq_ids, dtype=np.int32)
 
-        print(f"[Dataset] Chargé {len(self)} échantillons")
+        n_seqs = len(np.unique(self.sequence_ids))
+        print(f"[Dataset] Chargé {len(self)} échantillons ({n_seqs} séquences)")
         print(f"[Dataset] Dimension entrée: {self.input_dim}, Dimension sortie: {self.output_dim}")
 
     @property
@@ -206,20 +239,23 @@ class ZumiControlDataset(Dataset):
         command = torch.from_numpy(self.labels[idx])
         return state, command
 
+    def _apply_mask(self, keep: np.ndarray):
+        """Applique un masque booleen aux captures, labels et sequence_ids."""
+        self.captures = self.captures[keep]
+        self.labels = self.labels[keep]
+        if self.sequence_ids is not None:
+            self.sequence_ids = self.sequence_ids[keep]
+
     def deduplicate(self, threshold: float = 1e-4, min_run_length: int = 5):
         """Retire les echantillons consecutifs quasi-identiques.
 
         Ne retire que les groupes de doublons d'au moins min_run_length
-        echantillons consecutifs, en gardant le premier de chaque groupe.
-        Les paires courtes (2-3 echantillons similaires) sont normales
-        a ~80ms de sampling et representent un signal valide (commande
-        maintenue, virage constant).
+        echantillons consecutifs ET qui sont dans la meme sequence.
 
         Args:
             threshold: Distance L2 minimale entre deux echantillons consecutifs.
             min_run_length: Nombre minimum d'echantillons consecutifs dans un
                            groupe pour qu'il soit considere comme un vrai doublon.
-                           Les groupes plus courts sont conserves.
         """
         if len(self.captures) < 2:
             return
@@ -227,8 +263,11 @@ class ZumiControlDataset(Dataset):
         diffs = np.linalg.norm(self.captures[1:] - self.captures[:-1], axis=1)
         is_dup = diffs < threshold
 
-        # Identifier les runs de doublons consecutifs et ne retirer
-        # que ceux dont la longueur >= min_run_length
+        # Ne pas considerer comme doublon si les echantillons sont de sequences differentes
+        if self.sequence_ids is not None:
+            seq_boundary = self.sequence_ids[1:] != self.sequence_ids[:-1]
+            is_dup[seq_boundary] = False
+
         keep = np.ones(len(self.captures), dtype=bool)
         run_start = None
         n_removed = 0
@@ -236,33 +275,30 @@ class ZumiControlDataset(Dataset):
         for i in range(len(is_dup)):
             if is_dup[i]:
                 if run_start is None:
-                    run_start = i  # i est le dernier "original", i+1 est le premier doublon
+                    run_start = i
             else:
                 if run_start is not None:
-                    run_length = (i + 1) - run_start  # nb echantillons dans le groupe
+                    run_length = (i + 1) - run_start
                     if run_length >= min_run_length:
-                        # Garder le premier (run_start), retirer le reste
                         keep[run_start + 1 : i + 1] = False
                         n_removed += i - run_start
                     run_start = None
 
-        # Fermer le dernier run s'il se termine a la fin du tableau
         if run_start is not None:
             run_length = len(self.captures) - run_start
             if run_length >= min_run_length:
                 keep[run_start + 1 :] = False
                 n_removed += len(self.captures) - run_start - 1
 
-        self.captures = self.captures[keep]
-        self.labels = self.labels[keep]
+        self._apply_mask(keep)
         print(f"[Dataset] Deduplication: {n_removed} doublons retires "
               f"(groupes >= {min_run_length} samples, {len(self)} restants)")
 
     def trim_stops(self, max_consecutive: int = 5, stop_thresh: float = 0.02):
         """Retire les sequences d'arret excessives (temps morts de collecte).
 
-        Detecte les runs consecutifs ou les deux moteurs sont proches de zero
-        et ne garde que les max_consecutive premiers de chaque run.
+        Respecte les frontieres de sequence: un changement de sequence remet
+        le compteur d'arret a zero.
 
         Args:
             max_consecutive: Nombre max d'echantillons d'arret consecutifs a garder.
@@ -278,8 +314,14 @@ class ZumiControlDataset(Dataset):
         keep = np.ones(len(self.labels), dtype=bool)
         run_length = 0
         n_removed = 0
+        prev_seq_id = -1
 
         for i in range(len(is_stop)):
+            # Reset compteur aux frontieres de sequence
+            if self.sequence_ids is not None and self.sequence_ids[i] != prev_seq_id:
+                run_length = 0
+                prev_seq_id = self.sequence_ids[i]
+
             if is_stop[i]:
                 run_length += 1
                 if run_length > max_consecutive:
@@ -288,25 +330,17 @@ class ZumiControlDataset(Dataset):
             else:
                 run_length = 0
 
-        self.captures = self.captures[keep]
-        self.labels = self.labels[keep]
-
         n_stops_remaining = int(is_stop[keep].sum())
+        self._apply_mask(keep)
         print(f"[Dataset] Trim stops: {n_removed} arrets excessifs retires "
               f"(max {max_consecutive} consecutifs, {n_stops_remaining} arrets restants, "
               f"{len(self)} total)")
 
     def compute_ir_offset(self) -> float:
-        """Estime l'offset IR bottom depuis le dataset (echantillons forward+straight).
-
-        Equivalent de la calibration IR hardware mais calcule a partir des
-        donnees d'entrainement. Utilise comme defaut quand pas de calibration.
-
-        Returns:
-            float: Offset moyen (ir_bot_left - ir_bot_right) sur les echantillons droits.
-        """
-        categories = classify_actions(self.captures, self.labels)
-        forward_mask = categories == 1  # forward
+        """Estime l'offset IR bottom depuis le dataset (echantillons forward+straight)."""
+        categories = classify_actions(self.captures, self.labels,
+                                      sequence_ids=self.sequence_ids)
+        forward_mask = categories == 1
 
         if forward_mask.sum() < 10:
             print(f"[Dataset] IR offset: pas assez d'echantillons forward, defaut={IR_OFFSET_DEFAULT}")
@@ -316,13 +350,19 @@ class ZumiControlDataset(Dataset):
         gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
         gyro_z_delta = np.zeros_like(gyro_z_raw)
         gyro_z_delta[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
-        gyro_z_delta[np.abs(gyro_z_delta) > 150.0] = 0.0
+
+        # Mettre a zero les frontieres de sequence
+        if self.sequence_ids is not None:
+            boundaries = np.zeros(len(self.captures), dtype=bool)
+            boundaries[0] = True
+            boundaries[1:] = self.sequence_ids[1:] != self.sequence_ids[:-1]
+            gyro_z_delta[boundaries] = 0.0
 
         fwd_delta = gyro_z_delta[forward_mask]
         straight_mask = np.abs(fwd_delta) < 5.0
 
         if straight_mask.sum() >= 10:
-            ir_diff_straight = self.captures[forward_mask][straight_mask, 6]  # IR_diff = index 6
+            ir_diff_straight = self.captures[forward_mask][straight_mask, 6]
         else:
             ir_diff_straight = self.captures[forward_mask, 6]
 
@@ -348,12 +388,8 @@ class ZumiControlDataset(Dataset):
         self._detection_excluded = True
         self._detection_keep_mask = keep_mask
 
-        # Mettre a jour l'indice gyro_z effectif
-        # Dans le vecteur 29-dim, gyro_z est a l'index 18.
-        # Apres suppression des indices 8-15 (8 features), il passe a 18-8=10.
         GYRO_Z_INDEX = GYRO_Z_INDEX_RAW - len(DETECTION_INDICES)
 
-        # Mettre a jour la dimension par pas de fenetre
         new_raw_dim = self.captures.shape[1]
         WINDOW_FEATURE_DIM = new_raw_dim + len(ENGINEERED_FEATURE_NAMES)
 
@@ -364,46 +400,33 @@ class ZumiControlDataset(Dataset):
     def compute_engineered_features(self, ir_offset: float = None):
         """Ajoute 5 features PID-inspired au vecteur de base.
 
-        Features ajoutees (a la fin du vecteur):
-          calibrated_error  - signal d'erreur PID zero-centre
-          line_visible      - 1.0 si ligne blanche detectee
-          cal_error_norm    - erreur normalisee par luminosite
-          gyro_z_rate       - vitesse angulaire (delta gyro_z par tick)
-          heading_drift     - derive de cap dans les gaps entre tirets
-
         Doit etre appelee AVANT compute_sliding_windows().
         Fonctionne que Detection soit exclue ou non (utilise GYRO_Z_INDEX dynamique).
-
-        Args:
-            ir_offset: Offset IR bottom (bot_left - bot_right). Si None, estime depuis le dataset.
         """
         if ir_offset is None:
             ir_offset = self.compute_ir_offset()
         self._ir_offset = ir_offset
 
         n = len(self.captures)
-        # IR indices 0-7 ne bougent pas, meme apres exclusion Detection
-        ir_bot_r = self.captures[:, 1]   # IR_bottom_right
-        ir_bot_l = self.captures[:, 3]   # IR_bottom_left
+        ir_bot_r = self.captures[:, 1]
+        ir_bot_l = self.captures[:, 3]
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
         gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
 
-        # calibrated_error — signal d'erreur PID zero-centre
         calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
-
-        # line_visible — la ligne blanche est sous un capteur
         line_visible = (ir_sum < GAP_THRESHOLD).astype(np.float32)
-
-        # cal_error_norm — invariant a la luminosite ambiante
         cal_error_norm = calibrated_error / (ir_sum + 1e-6)
 
-        # gyro_z_rate — vitesse angulaire (delta gyro_z cumulatif)
         gyro_z_rate = np.zeros(n, dtype=np.float32)
         gyro_z_rate[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
-        gyro_boundaries = np.abs(gyro_z_rate) > 150.0
-        gyro_z_rate[gyro_boundaries] = 0.0
 
-        # heading_drift — derive de cap active uniquement dans les gaps
+        # Mettre a zero les frontieres de sequence
+        if self.sequence_ids is not None:
+            boundaries = np.zeros(n, dtype=bool)
+            boundaries[0] = True
+            boundaries[1:] = self.sequence_ids[1:] != self.sequence_ids[:-1]
+            gyro_z_rate[boundaries] = 0.0
+
         heading_drift = gyro_z_rate * (1.0 - line_visible)
 
         new_features = np.column_stack([
@@ -420,25 +443,10 @@ class ZumiControlDataset(Dataset):
     def compute_sliding_windows(self, window_size: int = None, temporal_decay: float = None):
         """Construit des fenetres glissantes a partir des vecteurs d'etat.
 
-        Concatene window_size vecteurs d'etat consecutifs en un seul vecteur
-        plat. Le modele peut ainsi apprendre ses propres representations
-        temporelles a partir des etats bruts.
-
-        Chaque echantillon t devient: [state(t-W+1), state(t-W+2), ..., state(t)]
-        aplatit en vecteur de (feature_dim * window_size) dimensions.
-
-        Un decay exponentiel optionnel est applique: chaque frame w est multiplie
-        par alpha^(window_size - 1 - w), priorisant les frames recents.
-
-        Les frontieres de sequence (detectees par sauts IR > 150) sont respectees:
-        les pas avant une frontiere sont remplaces par des zeros (zero-padding).
+        Les frontieres de sequence sont detectees via sequence_ids (changement d'ID).
+        Les pas avant une frontiere sont remplaces par des zeros (zero-padding).
 
         Doit etre appelee APRES compute_engineered_features() et AVANT le shuffle.
-
-        Args:
-            window_size: Nombre de pas dans la fenetre (defaut: WINDOW_SIZE = 25)
-            temporal_decay: Facteur de decay exponentiel (defaut: TEMPORAL_DECAY = 0.95).
-                            1.0 desactive le decay.
         """
         if window_size is None:
             window_size = WINDOW_SIZE
@@ -452,7 +460,6 @@ class ZumiControlDataset(Dataset):
             return
 
         # Precalculer les poids temporels
-        # w=0 est le frame le plus ancien, w=window_size-1 est le plus recent
         if temporal_decay < 1.0:
             decay_weights = np.array([
                 temporal_decay ** (window_size - 1 - w) for w in range(window_size)
@@ -460,37 +467,27 @@ class ZumiControlDataset(Dataset):
         else:
             decay_weights = None
 
-        # Detecter les frontieres de sequence via sauts IR
-        ir_indices = list(range(min(8, feature_dim)))
-        if ir_indices:
-            ir_step1 = np.zeros((n_samples, len(ir_indices)), dtype=np.float32)
-            ir_step1[1:] = self.captures[1:, ir_indices] - self.captures[:-1, ir_indices]
-            ir_jumps = np.linalg.norm(ir_step1, axis=1)
-            boundary_mask = ir_jumps > 150.0
+        # Detecter les frontieres de sequence via sequence_ids
+        if self.sequence_ids is not None:
+            seq_id = self.sequence_ids
+            n_boundaries = int(np.sum(seq_id[1:] != seq_id[:-1])) + 1
         else:
-            boundary_mask = np.zeros(n_samples, dtype=bool)
-        boundary_mask[0] = True
-        n_boundaries = int(np.sum(boundary_mask))
-
-        # Assigner un ID de sequence a chaque echantillon
-        seq_id = np.cumsum(boundary_mask)
+            raise ValueError("sequence_ids requis pour compute_sliding_windows. "
+                             "Relancez aggregate_sequences.py.")
 
         # Construire les fenetres de facon vectorisee
         windowed = np.zeros((n_samples, window_size * feature_dim), dtype=np.float32)
 
         for w in range(window_size):
-            offset = window_size - 1 - w  # distance de lookback (0 = pas actuel)
+            offset = window_size - 1 - w
             col_start = w * feature_dim
             col_end = (w + 1) * feature_dim
 
-            # Poids temporel pour ce slot
             weight = decay_weights[w] if decay_weights is not None else 1.0
 
             if offset == 0:
-                # Pas actuel — toujours valide
                 windowed[:, col_start:col_end] = self.captures * weight
             else:
-                # Pas decale — valide uniquement si meme sequence et index >= 0
                 valid_dst = slice(offset, n_samples)
                 valid_src = slice(0, n_samples - offset)
 
@@ -501,37 +498,24 @@ class ZumiControlDataset(Dataset):
                 temp[temp_dst[same_seq]] = self.captures[:n_samples - offset][same_seq] * weight
                 windowed[:, col_start:col_end] = temp
 
-        original_dim = self.captures.shape[1]
         self.captures = windowed
 
         decay_str = f", decay={temporal_decay}" if temporal_decay < 1.0 else ""
         print(f"[Dataset] Fenetre glissante: {window_size} pas x {feature_dim} features = "
               f"{window_size * feature_dim}-dim "
-              f"({n_boundaries} frontieres de sequence detectees{decay_str})")
+              f"({n_boundaries} sequences{decay_str})")
 
     def compute_sample_weights(self) -> np.ndarray:
-        """Calcule les poids par echantillon pour equilibrer les categories d'actions.
-
-        Utilise le gyroscope (gyro_z) pour categoriser les actions reelles
-        plutot que les commandes moteur (biaisees par le PID de cap).
-
-        Returns:
-            np.ndarray: Poids par echantillon (shape: [n_samples])
-        """
-        categories = classify_actions(self.captures, self.labels)
+        """Calcule les poids par echantillon pour equilibrer les categories d'actions."""
+        categories = classify_actions(self.captures, self.labels,
+                                      sequence_ids=self.sequence_ids)
 
         class_counts = np.bincount(categories, minlength=5).astype(np.float64)
-        class_counts[class_counts == 0] = 1.0  # eviter div par zero
+        class_counts[class_counts == 0] = 1.0
 
-        # Utiliser 1/sqrt(count) au lieu de 1/count pour adoucir le reequilibrage.
-        # Avec la categorisation IMU, "tout droit" domine (~60%) et 1/count
-        # l'ecrase completement (ratio 28:1 vs recule). sqrt donne un ratio
-        # plus raisonnable (~5:1) qui booste les actions rares sans empecher
-        # le modele d'apprendre a aller droit.
         class_weights = 1.0 / np.sqrt(class_counts)
         sample_weights = class_weights[categories]
 
-        # Afficher le ratio max pour debug
         max_ratio = class_weights.max() / class_weights.min()
         print(f"[Dataset] Poids par categorie (equilibrage sqrt, IMU-based, ratio max: {max_ratio:.1f}x):")
         for i, name in enumerate(ACTION_NAMES):
@@ -542,30 +526,21 @@ class ZumiControlDataset(Dataset):
         return sample_weights
 
     def apply_feature_mask(self, mask: list):
-        """Retire les features mortes en ne gardant que les indices du masque.
-
-        Args:
-            mask: Liste d'indices de features a conserver (ex: [0,1,2,3,4,5,6,7,16,17,...])
-        """
+        """Retire les features mortes en ne gardant que les indices du masque."""
         original_dim = self.captures.shape[1]
         self.captures = self.captures[:, mask]
         print(f"[Dataset] Masque applique: {original_dim}-dim -> {self.captures.shape[1]}-dim "
               f"({original_dim - len(mask)} features mortes retirees)")
 
     def normalize(self, mean: np.ndarray, std: np.ndarray):
-        """Applique la normalisation z-score aux captures.
-
-        Args:
-            mean: Moyenne par feature (shape: [input_dim])
-            std: Ecart-type par feature (shape: [input_dim])
-        """
+        """Applique la normalisation z-score aux captures."""
         safe_std = std.copy()
-        safe_std[safe_std < 1e-6] = 1.0  # eviter division par zero pour features mortes
+        safe_std[safe_std < 1e-6] = 1.0
         self.captures = (self.captures - mean) / safe_std
 
     def get_statistics(self) -> dict:
         """Calcule les statistiques du dataset pour analyse."""
-        stats = {
+        return {
             "n_samples": len(self),
             "input_dim": self.input_dim,
             "output_dim": self.output_dim,
@@ -576,36 +551,29 @@ class ZumiControlDataset(Dataset):
             "label_min": self.labels.min(axis=0).tolist(),
             "label_max": self.labels.max(axis=0).tolist(),
         }
-        return stats
 
     def compute_motor_efficiency(self) -> float:
-        """Estime l'efficacite du moteur gauche depuis le biais des labels.
-
-        Pendant la collecte, le PID de cap boostait le moteur gauche (plus
-        faible) pour maintenir le cap. Pour les echantillons "tout droit"
-        (delta gyro_z ~= 0), le ratio mean_right / mean_left donne
-        l'efficacite relative du moteur gauche.
-
-        Returns:
-            float: Efficacite du moteur gauche dans (0, 1]. 1.0 = pas d'asymetrie.
-        """
-        categories = classify_actions(self.captures, self.labels)
-        forward_mask = categories == 1  # forward
+        """Estime l'efficacite du moteur gauche depuis le biais des labels."""
+        categories = classify_actions(self.captures, self.labels,
+                                      sequence_ids=self.sequence_ids)
+        forward_mask = categories == 1
 
         if forward_mask.sum() < 10:
             print("[Dataset] Motor efficiency: pas assez d'echantillons forward")
             return 1.0
 
-        # Parmi les forward, prendre ceux vraiment droits (delta gyro_z faible)
-        # gyro_z est cumulatif -> calculer le delta pour obtenir la vitesse angulaire
         gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
         gyro_z_delta = np.zeros_like(gyro_z_raw)
         gyro_z_delta[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
-        # Zeroiser les frontieres de sequence
-        gyro_z_delta[np.abs(gyro_z_delta) > 150.0] = 0.0
+
+        if self.sequence_ids is not None:
+            boundaries = np.zeros(len(self.captures), dtype=bool)
+            boundaries[0] = True
+            boundaries[1:] = self.sequence_ids[1:] != self.sequence_ids[:-1]
+            gyro_z_delta[boundaries] = 0.0
 
         fwd_delta = gyro_z_delta[forward_mask]
-        straight_mask = np.abs(fwd_delta) < 5.0  # < 5 deg/tick
+        straight_mask = np.abs(fwd_delta) < 5.0
 
         fwd_labels = self.labels[forward_mask]
         if straight_mask.sum() >= 10:
@@ -629,6 +597,103 @@ class ZumiControlDataset(Dataset):
         return efficiency
 
 
+def _split_by_sequence(dataset, train_ratio: float, seed: int) -> tuple:
+    """Split le dataset par sequence entiere (pas par sample).
+
+    Toutes les samples d'une meme sequence vont soit dans train soit dans val.
+    Evite le data leakage entre train et val lors du fine-tuning.
+
+    Charge l'historique precedent si disponible pour garantir la stabilite
+    du split entre les runs de fine-tuning.
+
+    Args:
+        dataset: ZumiControlDataset avec sequence_ids charges
+        train_ratio: Proportion cible pour le train set
+        seed: Graine pour la permutation aleatoire des sequences
+
+    Returns:
+        (train_indices, val_indices, split_history)
+    """
+    data_dir = dataset.data_dir
+    history_path = data_dir / "split_history.json"
+
+    unique_seqs = np.unique(dataset.sequence_ids)
+    n_seqs = len(unique_seqs)
+
+    # Charger l'historique si disponible
+    known_train_seqs = set()
+    known_val_seqs = set()
+    if history_path.exists():
+        with open(history_path, 'r') as f:
+            history = json.load(f)
+        known_train_seqs = set(history.get('train_sequences', []))
+        known_val_seqs = set(history.get('val_sequences', []))
+        print(f"[Dataset] Historique split charge: {len(known_train_seqs)} train, "
+              f"{len(known_val_seqs)} val sequences connues")
+
+    # Classifier les sequences: connues vs nouvelles
+    train_seqs = []
+    val_seqs = []
+    new_seqs = []
+
+    for seq_id in unique_seqs:
+        sid = int(seq_id)
+        if sid in known_train_seqs:
+            train_seqs.append(sid)
+        elif sid in known_val_seqs:
+            val_seqs.append(sid)
+        else:
+            new_seqs.append(sid)
+
+    # Repartir les nouvelles sequences pour atteindre le ratio cible
+    if new_seqs:
+        rng = np.random.RandomState(seed)
+        rng.shuffle(new_seqs)
+
+        # Calculer combien de samples sont deja assignes
+        train_samples = sum(int((dataset.sequence_ids == s).sum()) for s in train_seqs)
+        val_samples = sum(int((dataset.sequence_ids == s).sum()) for s in val_seqs)
+        total_assigned = train_samples + val_samples
+        total_all = len(dataset)
+
+        # Objectif: train_ratio du total
+        target_train = int(total_all * train_ratio)
+
+        for sid in new_seqs:
+            n = int((dataset.sequence_ids == sid).sum())
+            if train_samples < target_train:
+                train_seqs.append(sid)
+                train_samples += n
+            else:
+                val_seqs.append(sid)
+                val_samples += n
+
+        print(f"[Dataset] Split: {len(new_seqs)} nouvelles sequences reparties")
+
+    # Construire les indices
+    train_set = set(train_seqs)
+    train_indices = np.where(np.isin(dataset.sequence_ids, list(train_set)))[0]
+    val_indices = np.where(~np.isin(dataset.sequence_ids, list(train_set)))[0]
+
+    # Sauvegarder l'historique
+    split_history = {
+        'train_sequences': sorted(train_seqs),
+        'val_sequences': sorted(val_seqs),
+        'n_train_samples': len(train_indices),
+        'n_val_samples': len(val_indices),
+        'n_sequences': n_seqs,
+        'seed': seed,
+    }
+    with open(history_path, 'w') as f:
+        json.dump(split_history, f, indent=2)
+
+    print(f"[Dataset] Split par sequence: {len(train_seqs)} train / {len(val_seqs)} val sequences")
+    print(f"[Dataset] -> {len(train_indices)} train / {len(val_indices)} val samples")
+    print(f"[Dataset] Historique sauvegarde: {history_path}")
+
+    return train_indices, val_indices, split_history
+
+
 def create_data_loaders(
     data_dir: str,
     batch_size: int = 32,
@@ -647,30 +712,16 @@ def create_data_loaders(
     """Crée les DataLoaders pour l'entraînement et la validation.
 
     Pipeline complet:
-      1. Chargement des donnees
-      2. Deduplication des echantillons consecutifs quasi-identiques
-      2b. Exclusion des features Detection (indices 8-15) si demande
-      3. Features engineered PID-inspired (5 features)
-      4. Calcul des poids d'echantillonnage equilibre (avant fenetre glissante)
-      5. Fenetre glissante avec decay temporel optionnel
-      6. Split train/validation
-      7. Normalisation z-score (stats calculees sur train uniquement)
-      8. Creation des DataLoaders
-
-    Args:
-        data_dir: Répertoire des données
-        batch_size: Taille des mini-batches
-        train_ratio: Proportion des données pour l'entraînement (0.8 = 80%)
-        shuffle: Mélanger les données d'entraînement (ignore si balanced_sampling=True)
-        seed: Graine aléatoire pour reproductibilité
-        feature_mask: Inutilise (conserve pour compatibilite de signature)
-        deduplicate: Retirer les doublons consecutifs (defaut: True)
-        balanced_sampling: Utiliser WeightedRandomSampler pour equilibrer les categories (defaut: True)
-        window_size: Taille de la fenetre glissante (defaut: WINDOW_SIZE=25)
-        trim_stops: Nombre max d'arrets consecutifs a garder (None = pas de trim)
-        exclude_detection: Retirer les features Detection indices 8-15 (defaut: True)
-        temporal_decay: Facteur de decay exponentiel (defaut: TEMPORAL_DECAY=0.95)
-        num_workers: Nombre de workers pour le DataLoader (defaut: auto)
+      1. Chargement des donnees (captures + labels + sequence_ids)
+      2. Deduplication (respecte les frontieres de sequence)
+      2b. Trim des arrets excessifs (respecte les frontieres de sequence)
+      3. Exclusion des features Detection (indices 8-15) si demande
+      4. Features engineered PID-inspired (5 features)
+      5. Calcul des poids d'echantillonnage equilibre (avant fenetre glissante)
+      6. Fenetre glissante avec decay temporel (frontieres via sequence_ids)
+      7. Split train/val PAR SEQUENCE ENTIERE (pas par sample)
+      8. Normalisation z-score (stats calculees sur train uniquement)
+      9. Creation des DataLoaders
 
     Returns:
         tuple: (train_loader, val_loader, dataset)
@@ -679,8 +730,6 @@ def create_data_loaders(
     import sys
 
     if num_workers is None:
-        # Windows: multiprocessing spawn + gros datasets en memoire = pickle crash.
-        # num_workers>0 n'est fiable que sur Linux (fork).
         if sys.platform == 'win32':
             num_workers = 0
         else:
@@ -688,15 +737,15 @@ def create_data_loaders(
 
     dataset = ZumiControlDataset(data_dir)
 
-    # 1. Deduplication (avant tout traitement)
+    # 1. Deduplication (respecte les frontieres de sequence)
     if deduplicate:
         dataset.deduplicate()
 
-    # 1b. Trim des arrets excessifs (temps morts de collecte)
+    # 1b. Trim des arrets excessifs
     if trim_stops is not None:
         dataset.trim_stops(max_consecutive=trim_stops)
 
-    # 2. Exclure les features Detection si demande (AVANT feature engineering)
+    # 2. Exclure les features Detection si demande
     if exclude_detection:
         dataset.exclude_detection_features()
 
@@ -704,29 +753,23 @@ def create_data_loaders(
     dataset.compute_engineered_features()
 
     # 4. Calculer les poids d'echantillonnage AVANT la fenetre glissante
-    #    car classify_actions() a besoin d'acceder aux indices bruts (gyro_z)
     sample_weights = None
     if balanced_sampling:
         sample_weights = dataset.compute_sample_weights()
 
-    # 5. Fenetre glissante avec decay temporel
+    # 5. Fenetre glissante avec decay temporel (frontieres via sequence_ids)
     dataset.compute_sliding_windows(window_size=window_size, temporal_decay=temporal_decay)
     dataset.window_size = window_size or WINDOW_SIZE
     dataset.temporal_decay = temporal_decay or TEMPORAL_DECAY
     dataset.exclude_detection = exclude_detection
     dataset.feature_mask = None
 
-    # 6. Split train/validation
-    n_train = int(len(dataset) * train_ratio)
-    n_val = len(dataset) - n_train
-
-    generator = torch.Generator().manual_seed(seed)
-    train_dataset, val_dataset = random_split(
-        dataset, [n_train, n_val], generator=generator
-    )
+    # 6. Split train/val PAR SEQUENCE ENTIERE
+    train_indices, val_indices, _ = _split_by_sequence(dataset, train_ratio, seed)
+    train_dataset = Subset(dataset, train_indices)
+    val_dataset = Subset(dataset, val_indices)
 
     # 7. Calculer mean/std sur le train set uniquement
-    train_indices = train_dataset.indices
     train_captures = dataset.captures[train_indices]
     feature_mean = train_captures.mean(axis=0)
     feature_std = train_captures.std(axis=0)
@@ -738,7 +781,6 @@ def create_data_loaders(
     # Normaliser tout le dataset avec les stats du train set
     dataset.normalize(feature_mean, feature_std)
 
-    # Stocker les stats pour export ultérieur
     dataset.feature_mean = feature_mean
     dataset.feature_std = feature_std
 
@@ -775,14 +817,13 @@ def create_data_loaders(
         pin_memory=True
     )
 
-    print(f"[Dataset] Train: {n_train} samples, Val: {n_val} samples "
+    print(f"[Dataset] Train: {len(train_indices)} samples, Val: {len(val_indices)} samples "
           f"(num_workers={num_workers})")
 
     return train_loader, val_loader, dataset
 
 
 if __name__ == "__main__":
-    # Test de chargement
     import sys
 
     data_dir = Path(__file__).parent / "data"

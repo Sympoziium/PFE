@@ -203,9 +203,24 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
         print("[ERREUR] Aucune donnee a agreger!")
         return False
 
+    # Generer les IDs de sequence pour chaque echantillon
+    # Format: "scenario/sampling_name" -> ID unique incremental
+    global_seq_ids = []
+    seq_id_map = {}  # "scenario/seq_name" -> int
+    next_id = 0
+
+    for scenario_name, stats in all_scenario_stats.items():
+        for seq_name, seq_info in stats.items():
+            full_name = f"{scenario_name}/{seq_name}"
+            seq_id_map[full_name] = next_id
+            for _ in range(seq_info['samples']):
+                global_seq_ids.append(next_id)
+            next_id += 1
+
     # Sauvegarder les fichiers globaux
     global_captures_file = output_dir / "captures.jsonl"
     global_labels_file = output_dir / "labels.jsonl"
+    global_seqids_file = output_dir / "sequence_ids.jsonl"
 
     with open(global_captures_file, 'w') as f:
         for capture in global_captures:
@@ -214,6 +229,27 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
     with open(global_labels_file, 'w') as f:
         for label in global_labels:
             f.write(json.dumps(label) + '\n')
+
+    with open(global_seqids_file, 'w') as f:
+        for sid in global_seq_ids:
+            f.write(str(sid) + '\n')
+
+    # Sauvegarder le mapping ID -> nom de sequence
+    seq_map_file = output_dir / "sequence_map.json"
+    # Inverser: ID -> nom
+    id_to_name = {v: k for k, v in seq_id_map.items()}
+    with open(seq_map_file, 'w') as f:
+        json.dump({
+            "n_sequences": next_id,
+            "n_samples": len(global_seq_ids),
+            "id_to_name": {str(k): v for k, v in id_to_name.items()},
+            "name_to_id": seq_id_map,
+        }, f, indent=2)
+
+    if verbose:
+        print(f"[SEQ-IDS] {next_id} sequences uniques, {len(global_seq_ids)} echantillons")
+        print(f"  -> {global_seqids_file}")
+        print(f"  -> {seq_map_file}")
 
     if verbose:
         print(f"[GLOBAL] Fichiers consolides:")
