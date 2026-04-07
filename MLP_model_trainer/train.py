@@ -108,7 +108,7 @@ class Trainer:
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=8,
+            patience=5,
             min_lr=1e-6
         )
 
