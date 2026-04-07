@@ -477,7 +477,7 @@ def check_data_state(data_dir: Path, sequences_dir: Path) -> dict:
     if sequences_dir.exists():
         for item in sorted(sequences_dir.iterdir()):
             if item.is_dir():
-                sampling_dirs = list(item.glob('sampling_*'))
+                sampling_dirs = list(item.glob('sampling *'))
                 if sampling_dirs:
                     state['scenarios'].append({
                         'name': item.name,
