@@ -283,13 +283,16 @@ def load_raw_data(data_dir: Path):
     return np.array(captures, dtype=np.float32), np.array(labels, dtype=np.float32)
 
 
-def save_augmented_data(data_dir: Path, aug_captures: np.ndarray, aug_labels: np.ndarray):
+def save_augmented_data(data_dir: Path, aug_captures: np.ndarray, aug_labels: np.ndarray,
+                        n_original: int = None):
     """Sauvegarde les donnees augmentees dans des fichiers separes.
 
-    Ecrit dans captures_augmented.jsonl et labels_augmented.jsonl.
+    Ecrit dans captures_augmented.jsonl, labels_augmented.jsonl,
+    et sequence_ids_augmented.jsonl (replique les IDs originaux pour chaque copie).
     """
     cap_path = data_dir / "captures_augmented.jsonl"
     lab_path = data_dir / "labels_augmented.jsonl"
+    sid_path = data_dir / "sequence_ids_augmented.jsonl"
 
     with open(cap_path, 'w') as f:
         for row in aug_captures:
@@ -299,6 +302,28 @@ def save_augmented_data(data_dir: Path, aug_captures: np.ndarray, aug_labels: np
         for row in aug_labels:
             f.write(json.dumps(row.tolist()) + '\n')
 
+    # Repliquer les sequence_ids originaux pour les donnees augmentees.
+    # Chaque copie augmentee garde le meme ID que l'original.
+    orig_sid_path = data_dir / "sequence_ids.jsonl"
+    if orig_sid_path.exists() and n_original is not None:
+        orig_ids = []
+        with open(orig_sid_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    orig_ids.append(line)
+
+        if len(orig_ids) == n_original:
+            n_copies = len(aug_captures) // n_original
+            with open(sid_path, 'w') as f:
+                for _ in range(n_copies):
+                    for sid in orig_ids:
+                        f.write(sid + '\n')
+            print(f"[Augment] Sauvegarde: {sid_path} ({n_copies} copies x {n_original} IDs)")
+        else:
+            print(f"[Augment] WARN: sequence_ids.jsonl ({len(orig_ids)}) != n_original ({n_original}), "
+                  f"sequence_ids_augmented.jsonl non genere")
+
     print(f"[Augment] Sauvegarde: {cap_path} ({len(aug_captures)} echantillons)")
     print(f"[Augment] Sauvegarde: {lab_path}")
 
@@ -306,10 +331,10 @@ def save_augmented_data(data_dir: Path, aug_captures: np.ndarray, aug_labels: np
 def merge_augmented_into_dataset(data_dir: Path):
     """Fusionne les fichiers augmentes dans le dataset principal.
 
-    Appende captures_augmented.jsonl dans captures.jsonl (idem pour labels).
-    Supprime les fichiers augmentes apres fusion.
+    Appende captures_augmented.jsonl dans captures.jsonl (idem pour labels
+    et sequence_ids). Supprime les fichiers augmentes apres fusion.
     """
-    for name in ["captures", "labels"]:
+    for name in ["captures", "labels", "sequence_ids"]:
         main_path = data_dir / f"{name}.jsonl"
         aug_path = data_dir / f"{name}_augmented.jsonl"
 
@@ -457,8 +482,8 @@ def run_augmentation_menu(script_dir: Path):
         print("  Augmentation annulee.")
         return False
 
-    # Sauvegarder puis fusionner
-    save_augmented_data(data_dir, aug_cap, aug_lab)
+    # Sauvegarder puis fusionner (incluant les sequence_ids)
+    save_augmented_data(data_dir, aug_cap, aug_lab, n_original=n_original)
     merge_augmented_into_dataset(data_dir)
     save_augmentation_log(data_dir, technique, n_original, n_augmented, params)
 

@@ -550,7 +550,7 @@ def show_main_menu(script_dir: Path) -> tuple:
     if state['n_scenarios'] > 0:
         total_seqs = sum(s['n_sequences'] for s in state['scenarios'])
         scenarios_names = ', '.join(s['name'] for s in state['scenarios'])
-        print(status(True, f"Scenarios disponibles: {state['n_scenarios']} ({scenarios_names})"))
+        print(status(True, f"Scenarios disponibles: ({len(state['scenarios'])})"))
         print(f"         Total sequences: {total_seqs}")
     else:
         print(status(False, "Aucun scenario trouve dans sequences/"))
