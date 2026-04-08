@@ -750,22 +750,15 @@ def create_data_loaders(
     ds_train.feature_std = feature_std
 
     # === DataLoaders ===
-    if balanced_sampling and train_weights is not None:
-        sampler = WeightedRandomSampler(
-            weights=torch.from_numpy(train_weights).double(),
-            num_samples=len(train_weights),
-            replacement=True
-        )
-        train_loader = DataLoader(
-            ds_train, batch_size=batch_size, shuffle=True, sampler=sampler,
-            num_workers=num_workers, pin_memory=False
-        )
-        print(f"[Dataset] Echantillonnage equilibre active (WeightedRandomSampler)")
-    else:
-        train_loader = DataLoader(
-            ds_train, batch_size=batch_size, shuffle=True,
-            num_workers=num_workers, pin_memory=False
-        )
+    # Note: WeightedRandomSampler tire aleatoirement selon les poids,
+    # donc il fait un shuffle implicite. Mais avec 1.5M+ echantillons
+    # et des fenetres chevauchantes (96% de recouvrement), un shuffle
+    # pur est preferable pour casser la redondance spatiale.
+    # On privilegie shuffle=True sans sampler.
+    train_loader = DataLoader(
+        ds_train, batch_size=batch_size, shuffle=True,
+        num_workers=num_workers, pin_memory=False
+    )
 
     val_loader = DataLoader(
         ds_val, batch_size=batch_size, shuffle=False,
