@@ -32,7 +32,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataset import ZumiControlDataset, create_data_loaders
 from model import ZumiMLP
 
-EARLY_STOPPING_PATIENCE = 20 # Nombre d'epochs sans amelioration avant arret (ajuste pour les profils plus longs)
+EARLY_STOPPING_PATIENCE = 10 # Nombre d'epochs sans amelioration avant arret (ajuste pour les profils plus longs)
+REDUCE_LR_PATIENCE = 3          # Nombre d'epochs sans amelioration avant reduction du LR
 
 def load_environment_config(script_dir: Path) -> dict:
     """Charge la configuration d'environnement generee par validate_env.py.
@@ -108,7 +109,7 @@ class Trainer:
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=5,
+            patience=REDUCE_LR_PATIENCE,
             min_lr=1e-6
         )
 
