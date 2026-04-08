@@ -1011,6 +1011,19 @@ def run_training(script_dir: Path, state: dict):
     print("\n  Chargement de la configuration d'environnement...")
     load_environment_config(script_dir)
 
+    # Chargement des donnees avec dedup + masque + z-score + echantillonnage equilibre
+    window_size = config.get('window_size')
+    print(f"\n  Chargement des donnees (dedup + fenetre glissante + z-score + equilibrage)...")
+    train_loader, val_loader, dataset = create_data_loaders(
+        str(data_dir),
+        batch_size=config.get('batch_size', 32),
+        seed=seed,
+        deduplicate=True,
+        balanced_sampling=True,
+        window_size=window_size,
+        trim_stops=5
+    )
+    
     # Transfer learning: proposer de charger les poids d'un modele precedent
     is_finetuning = False
     pretrained_path = save_dir / "best_model.pt"
@@ -1046,18 +1059,7 @@ def run_training(script_dir: Path, state: dict):
         config['batch_size'] = 64  # Batch size plus petit pour le fine-tuning (plus de mises a jour par epoch)
         print(f"  [Fine-tuning] LR reduit: {lr:.6f} (1/10e), pas de warmup")
 
-    # Chargement des donnees avec dedup + masque + z-score + echantillonnage equilibre
-    window_size = config.get('window_size')
-    print(f"\n  Chargement des donnees (dedup + fenetre glissante + z-score + equilibrage)...")
-    train_loader, val_loader, dataset = create_data_loaders(
-        str(data_dir),
-        batch_size=config.get('batch_size', 32),
-        seed=seed,
-        deduplicate=True,
-        balanced_sampling=True,
-        window_size=window_size,
-        trim_stops=5
-    )
+    
 
     # Creation du modele (avec BatchNorm par defaut)
     model = ZumiMLP(
