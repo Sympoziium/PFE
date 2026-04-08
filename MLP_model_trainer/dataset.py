@@ -757,13 +757,13 @@ def create_data_loaders(
             replacement=True
         )
         train_loader = DataLoader(
-            ds_train, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
+            ds_train, batch_size=batch_size, shuffle=True, sampler=sampler,
             num_workers=num_workers, pin_memory=False
         )
         print(f"[Dataset] Echantillonnage equilibre active (WeightedRandomSampler)")
     else:
         train_loader = DataLoader(
-            ds_train, batch_size=batch_size, shuffle=shuffle,
+            ds_train, batch_size=batch_size, shuffle=True,
             num_workers=num_workers, pin_memory=False
         )
 
