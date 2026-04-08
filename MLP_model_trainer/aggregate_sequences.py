@@ -151,6 +151,32 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Nettoyer les fichiers augmentes et le global stale avant re-agregation.
+    # Sans ca, l'augmentation precedente reste fusionnee dans train/captures.jsonl
+    # et le menu affiche un compte d'echantillons obsolete.
+    train_dir = output_dir / "train"
+    val_dir = output_dir / "val"
+    stale_files = [
+        output_dir / "captures.jsonl",
+        output_dir / "labels.jsonl",
+        output_dir / "sequence_ids.jsonl",
+        output_dir / "augmentation_log.json",
+    ]
+    for subdir in [train_dir, val_dir]:
+        if subdir.exists():
+            for f in subdir.glob("*_augmented.jsonl"):
+                stale_files.append(f)
+            for f in subdir.glob("augmentation_log.json"):
+                stale_files.append(f)
+
+    removed = 0
+    for f in stale_files:
+        if f.exists():
+            f.unlink()
+            removed += 1
+    if removed and verbose:
+        print(f"[CLEAN] {removed} fichiers stale/augmentes supprimes")
+
     # Découvrir les scénarios
     scenarios = discover_scenarios(sequences_root)
 

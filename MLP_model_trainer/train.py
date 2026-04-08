@@ -488,15 +488,20 @@ def check_data_state(data_dir: Path, sequences_dir: Path) -> dict:
                     })
         state['n_scenarios'] = len(state['scenarios'])
 
-    # Verifier le dataset agrege
-    captures_file = data_dir / "captures.jsonl"
-    labels_file = data_dir / "labels.jsonl"
-    state['has_dataset'] = captures_file.exists() and labels_file.exists()
+    # Verifier le dataset agrege (train + val splits)
+    train_cap = data_dir / "train" / "captures.jsonl"
+    val_cap = data_dir / "val" / "captures.jsonl"
+    state['has_dataset'] = train_cap.exists() and val_cap.exists()
     state['n_samples'] = 0
+    state['n_train'] = 0
+    state['n_val'] = 0
 
     if state['has_dataset']:
-        with open(captures_file, 'r') as f:
-            state['n_samples'] = sum(1 for line in f if line.strip())
+        with open(train_cap, 'r') as f:
+            state['n_train'] = sum(1 for line in f if line.strip())
+        with open(val_cap, 'r') as f:
+            state['n_val'] = sum(1 for line in f if line.strip())
+        state['n_samples'] = state['n_train'] + state['n_val']
 
     # Verifier les modeles entraines
     checkpoints_dir = data_dir.parent / "checkpoints"
@@ -560,7 +565,8 @@ def show_main_menu(script_dir: Path) -> tuple:
 
     # Dataset
     if state['has_dataset']:
-        print(status(True, f"Dataset agrege: {state['n_samples']} echantillons"))
+        print(status(True, f"Dataset agrege: {state['n_samples']} echantillons "
+                     f"(train: {state['n_train']}, val: {state['n_val']})"))
     else:
         print(status(False, "Dataset non agrege (data/captures.jsonl absent)"))
 
@@ -983,11 +989,12 @@ def run_training(script_dir: Path, state: dict):
 
     # Chemins
     data_dir = script_dir / "data"
+    train_dir = data_dir / "train"
     save_dir = script_dir / "checkpoints"
 
     # Charger le dataset pour analyse (avant choix du profil)
     print("\n  Chargement du dataset pour analyse...")
-    preview_dataset = ZumiControlDataset(str(data_dir))
+    preview_dataset = ZumiControlDataset(str(train_dir))
 
     # Estimer l'efficacite du moteur gauche (avant toute transformation)
     motor_efficiency_left = preview_dataset.compute_motor_efficiency()
