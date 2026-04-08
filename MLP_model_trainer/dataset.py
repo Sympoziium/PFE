@@ -757,7 +757,7 @@ def create_data_loaders(
     # On privilegie shuffle=True sans sampler.
     train_loader = DataLoader(
         ds_train, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=False
+        num_workers=num_workers, pin_memory=False, drop_last=True
     )
 
     val_loader = DataLoader(
