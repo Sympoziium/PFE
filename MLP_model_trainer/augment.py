@@ -394,18 +394,22 @@ def save_augmentation_log(data_dir: Path, technique: str, n_original: int,
 # ══════════════════════════════════════════════════════════════
 
 def run_augmentation_menu(script_dir: Path):
-    """Menu interactif d'augmentation des donnees."""
-    data_dir = script_dir / "data"
+    """Menu interactif d'augmentation des donnees.
+
+    Augmente UNIQUEMENT les donnees d'entrainement (data/train/).
+    Les donnees de validation (data/val/) ne sont jamais touchees.
+    """
+    data_dir = script_dir / "data" / "train"
 
     print("\n" + "=" * 60)
-    print("  Augmentation des donnees")
+    print("  Augmentation des donnees (train set uniquement)")
     print("=" * 60)
 
-    # Charger les donnees
+    # Charger les donnees d'entrainement
     try:
         captures, labels = load_raw_data(data_dir)
     except FileNotFoundError:
-        print("\n  ERREUR: Dataset non trouve dans data/")
+        print("\n  ERREUR: Dataset train non trouve dans data/train/")
         print("  -> Executez d'abord l'option [1] Agreger les sequences")
         return False
 

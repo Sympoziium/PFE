@@ -294,6 +294,51 @@ class ZumiControlDataset(Dataset):
         print(f"[Dataset] Deduplication: {n_removed} doublons retires "
               f"(groupes >= {min_run_length} samples, {len(self)} restants)")
 
+    def remove_pwm_stops(self, stop_thresh: float = 0.02):
+        """Retire les arrets PWM intercales dans les virages sur place.
+
+        Le controle manuel utilise un PWM logiciel (duty 2/3) pour ralentir
+        les rotations sur place : 2 ticks actifs suivis de 1 tick a (0,0).
+        Ces arrets isoles sont des artefacts de l'interface humaine — le modele
+        ML qui infere a 20 Hz n'en a pas besoin.
+
+        Detection: un sample (0,0) est un arret PWM si le sample avant ET
+        le sample apres (dans la meme sequence) ne sont PAS des arrets.
+        Les vrais arrets (2+ consecutifs) ne sont pas touches.
+
+        Args:
+            stop_thresh: Seuil de commande moteur pour detecter un arret.
+        """
+        if len(self.labels) < 3:
+            return
+
+        n = len(self.labels)
+        left = self.labels[:, 0]
+        right = self.labels[:, 1]
+        is_stop = (np.abs(left) < stop_thresh) & (np.abs(right) < stop_thresh)
+
+        keep = np.ones(n, dtype=bool)
+        n_removed = 0
+
+        for i in range(1, n - 1):
+            if not is_stop[i]:
+                continue
+
+            # Verifier que c'est dans la meme sequence
+            if self.sequence_ids is not None:
+                if (self.sequence_ids[i] != self.sequence_ids[i - 1] or
+                        self.sequence_ids[i] != self.sequence_ids[i + 1]):
+                    continue
+
+            # Arret isole entre deux commandes non-nulles = artefact PWM
+            if not is_stop[i - 1] and not is_stop[i + 1]:
+                keep[i] = False
+                n_removed += 1
+
+        self._apply_mask(keep)
+        print(f"[Dataset] PWM stops: {n_removed} arrets PWM isoles retires "
+              f"({len(self)} restants)")
+
     def trim_stops(self, max_consecutive: int = 5, stop_thresh: float = 0.02):
         """Retire les sequences d'arret excessives (temps morts de collecte).
 
@@ -597,110 +642,39 @@ class ZumiControlDataset(Dataset):
         return efficiency
 
 
-def _split_by_sequence(dataset, train_ratio: float, seed: int) -> tuple:
-    """Split le dataset par sequence entiere (pas par sample).
+def _prepare_dataset(dataset, deduplicate, trim_stops, exclude_detection,
+                     window_size, temporal_decay, balanced_sampling):
+    """Pipeline complet de preparation d'un dataset (train ou val).
 
-    Toutes les samples d'une meme sequence vont soit dans train soit dans val.
-    Evite le data leakage entre train et val lors du fine-tuning.
-
-    Charge l'historique precedent si disponible pour garantir la stabilite
-    du split entre les runs de fine-tuning.
-
-    Args:
-        dataset: ZumiControlDataset avec sequence_ids charges
-        train_ratio: Proportion cible pour le train set
-        seed: Graine pour la permutation aleatoire des sequences
-
-    Returns:
-        (train_indices, val_indices, split_history)
+    Nettoyage -> exclusion detection -> features -> poids -> sliding windows.
+    Retourne aussi les sample_weights si balanced_sampling=True.
     """
-    data_dir = dataset.data_dir
-    history_path = data_dir / "split_history.json"
+    if deduplicate:
+        dataset.deduplicate()
+    dataset.remove_pwm_stops()
+    if trim_stops is not None:
+        dataset.trim_stops(max_consecutive=trim_stops)
 
-    unique_seqs = np.unique(dataset.sequence_ids)
-    n_seqs = len(unique_seqs)
+    if exclude_detection:
+        dataset.exclude_detection_features()
 
-    # Charger l'historique si disponible
-    known_train_seqs = set()
-    known_val_seqs = set()
-    if history_path.exists():
-        with open(history_path, 'r') as f:
-            history = json.load(f)
-        known_train_seqs = set(history.get('train_sequences', []))
-        known_val_seqs = set(history.get('val_sequences', []))
-        print(f"[Dataset] Historique split charge: {len(known_train_seqs)} train, "
-              f"{len(known_val_seqs)} val sequences connues")
+    dataset.compute_engineered_features()
 
-    # Classifier les sequences: connues vs nouvelles
-    train_seqs = []
-    val_seqs = []
-    new_seqs = []
+    sample_weights = None
+    if balanced_sampling:
+        sample_weights = dataset.compute_sample_weights()
 
-    for seq_id in unique_seqs:
-        sid = int(seq_id)
-        if sid in known_train_seqs:
-            train_seqs.append(sid)
-        elif sid in known_val_seqs:
-            val_seqs.append(sid)
-        else:
-            new_seqs.append(sid)
+    dataset.compute_sliding_windows(window_size=window_size, temporal_decay=temporal_decay)
 
-    # Repartir les nouvelles sequences pour atteindre le ratio cible
-    if new_seqs:
-        rng = np.random.RandomState(seed)
-        rng.shuffle(new_seqs)
-
-        # Calculer combien de samples sont deja assignes
-        train_samples = sum(int((dataset.sequence_ids == s).sum()) for s in train_seqs)
-        val_samples = sum(int((dataset.sequence_ids == s).sum()) for s in val_seqs)
-        total_assigned = train_samples + val_samples
-        total_all = len(dataset)
-
-        # Objectif: train_ratio du total
-        target_train = int(total_all * train_ratio)
-
-        for sid in new_seqs:
-            n = int((dataset.sequence_ids == sid).sum())
-            if train_samples < target_train:
-                train_seqs.append(sid)
-                train_samples += n
-            else:
-                val_seqs.append(sid)
-                val_samples += n
-
-        print(f"[Dataset] Split: {len(new_seqs)} nouvelles sequences reparties")
-
-    # Construire les indices
-    train_set = set(train_seqs)
-    train_indices = np.where(np.isin(dataset.sequence_ids, list(train_set)))[0]
-    val_indices = np.where(~np.isin(dataset.sequence_ids, list(train_set)))[0]
-
-    # Sauvegarder l'historique
-    split_history = {
-        'train_sequences': sorted(train_seqs),
-        'val_sequences': sorted(val_seqs),
-        'n_train_samples': len(train_indices),
-        'n_val_samples': len(val_indices),
-        'n_sequences': n_seqs,
-        'seed': seed,
-    }
-    with open(history_path, 'w') as f:
-        json.dump(split_history, f, indent=2)
-
-    print(f"[Dataset] Split par sequence: {len(train_seqs)} train / {len(val_seqs)} val sequences")
-    print(f"[Dataset] -> {len(train_indices)} train / {len(val_indices)} val samples")
-    print(f"[Dataset] Historique sauvegarde: {history_path}")
-
-    return train_indices, val_indices, split_history
+    return sample_weights
 
 
 def create_data_loaders(
-    data_dir: str,
+    train_dir: str,
+    val_dir: str,
     batch_size: int = 32,
-    train_ratio: float = 0.8,
     shuffle: bool = True,
     seed: int = 42,
-    feature_mask: list = None,
     deduplicate: bool = True,
     balanced_sampling: bool = True,
     window_size: int = None,
@@ -711,20 +685,25 @@ def create_data_loaders(
 ) -> tuple:
     """Crée les DataLoaders pour l'entraînement et la validation.
 
-    Pipeline complet:
-      1. Chargement des donnees (captures + labels + sequence_ids)
-      2. Deduplication (respecte les frontieres de sequence)
-      2b. Trim des arrets excessifs (respecte les frontieres de sequence)
-      3. Exclusion des features Detection (indices 8-15) si demande
-      4. Features engineered PID-inspired (5 features)
-      5. Calcul des poids d'echantillonnage equilibre (avant fenetre glissante)
-      6. Fenetre glissante avec decay temporel (frontieres via sequence_ids)
-      7. Split train/val PAR SEQUENCE ENTIERE (pas par sample)
-      8. Normalisation z-score (stats calculees sur train uniquement)
-      9. Creation des DataLoaders
+    Le split train/val est fait en amont par aggregate_sequences.py.
+    L'augmentation est faite en amont par augment.py sur data/train/ uniquement.
+    Le val set est garanti 100% donnees reelles.
+
+    Pipeline (applique independamment sur train et val):
+      1. Chargement (captures + labels + sequence_ids)
+      2. Nettoyage: dedup, PWM stops, trim stops
+      3. Exclusion features Detection
+      4. Features engineered
+      5. Poids d'echantillonnage (train seulement)
+      6. Fenetre glissante avec decay temporel
+      7. Normalisation z-score (stats du train, appliquees aux deux)
+
+    Args:
+        train_dir: Repertoire data/train/ (donnees reelles + augmentees)
+        val_dir: Repertoire data/val/ (donnees reelles pures)
 
     Returns:
-        tuple: (train_loader, val_loader, dataset)
+        tuple: (train_loader, val_loader, ds_train)
     """
     import os
     import sys
@@ -735,92 +714,69 @@ def create_data_loaders(
         else:
             num_workers = min(4, os.cpu_count() or 0)
 
-    dataset = ZumiControlDataset(data_dir)
+    ws = window_size or WINDOW_SIZE
+    td = temporal_decay or TEMPORAL_DECAY
 
-    # 1. Deduplication (respecte les frontieres de sequence)
-    if deduplicate:
-        dataset.deduplicate()
+    # === Charger et preparer le TRAIN set ===
+    ds_train = ZumiControlDataset(train_dir)
+    train_weights = _prepare_dataset(
+        ds_train, deduplicate, trim_stops, exclude_detection, ws, td, balanced_sampling
+    )
 
-    # 1b. Trim des arrets excessifs
-    if trim_stops is not None:
-        dataset.trim_stops(max_consecutive=trim_stops)
+    # === Charger et preparer le VAL set (donnees reelles pures) ===
+    ds_val = ZumiControlDataset(val_dir)
+    _prepare_dataset(
+        ds_val, deduplicate, trim_stops, exclude_detection, ws, td, False
+    )
 
-    # 2. Exclure les features Detection si demande
-    if exclude_detection:
-        dataset.exclude_detection_features()
+    # Stocker les metadonnees
+    ds_train.window_size = ws
+    ds_train.temporal_decay = td
+    ds_train.exclude_detection = exclude_detection
+    ds_train.feature_mask = None
 
-    # 3. Features engineered
-    dataset.compute_engineered_features()
-
-    # 4. Calculer les poids d'echantillonnage AVANT la fenetre glissante
-    sample_weights = None
-    if balanced_sampling:
-        sample_weights = dataset.compute_sample_weights()
-
-    # 5. Fenetre glissante avec decay temporel (frontieres via sequence_ids)
-    dataset.compute_sliding_windows(window_size=window_size, temporal_decay=temporal_decay)
-    dataset.window_size = window_size or WINDOW_SIZE
-    dataset.temporal_decay = temporal_decay or TEMPORAL_DECAY
-    dataset.exclude_detection = exclude_detection
-    dataset.feature_mask = None
-
-    # 6. Split train/val PAR SEQUENCE ENTIERE
-    train_indices, val_indices, _ = _split_by_sequence(dataset, train_ratio, seed)
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
-
-    # 7. Calculer mean/std sur le train set uniquement
-    train_captures = dataset.captures[train_indices]
-    feature_mean = train_captures.mean(axis=0)
-    feature_std = train_captures.std(axis=0)
+    # === Z-score (stats du train, appliquees aux deux) ===
+    feature_mean = ds_train.captures.mean(axis=0)
+    feature_std = ds_train.captures.std(axis=0)
 
     n_dead = np.sum(feature_std < 1e-6)
     n_active = len(feature_std) - n_dead
     print(f"[Dataset] Z-score: {n_active} features actives, {n_dead} features mortes (std < 1e-6)")
 
-    # Normaliser tout le dataset avec les stats du train set
-    dataset.normalize(feature_mean, feature_std)
+    ds_train.normalize(feature_mean, feature_std)
+    ds_val.normalize(feature_mean, feature_std)
 
-    dataset.feature_mean = feature_mean
-    dataset.feature_std = feature_std
+    ds_train.feature_mean = feature_mean
+    ds_train.feature_std = feature_std
 
-    # 8. Creer les DataLoaders
-    if balanced_sampling and sample_weights is not None:
-        train_weights = torch.from_numpy(sample_weights[train_indices]).double()
+    # === DataLoaders ===
+    if balanced_sampling and train_weights is not None:
         sampler = WeightedRandomSampler(
-            weights=train_weights,
+            weights=torch.from_numpy(train_weights).double(),
             num_samples=len(train_weights),
             replacement=True
         )
         train_loader = DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            sampler=sampler,
-            num_workers=num_workers,
-            pin_memory=True
+            ds_train, batch_size=batch_size, shuffle=shuffle, sampler=sampler,
+            num_workers=num_workers, pin_memory=False
         )
         print(f"[Dataset] Echantillonnage equilibre active (WeightedRandomSampler)")
     else:
         train_loader = DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            pin_memory=True
+            ds_train, batch_size=batch_size, shuffle=shuffle,
+            num_workers=num_workers, pin_memory=False
         )
 
     val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True
+        ds_val, batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=False
     )
 
-    print(f"[Dataset] Train: {len(train_indices)} samples, Val: {len(val_indices)} samples "
+    print(f"[Dataset] Train: {len(ds_train)} samples, "
+          f"Val: {len(ds_val)} samples (reel pur) "
           f"(num_workers={num_workers})")
 
-    return train_loader, val_loader, dataset
+    return train_loader, val_loader, ds_train
 
 
 if __name__ == "__main__":

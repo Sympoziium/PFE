@@ -89,12 +89,12 @@ def export_to_savedmodel(model: torch.nn.Module, input_dim: int, output_path: Pa
         shutil.rmtree(output_path)
 
     # Créer un modèle TensorFlow équivalent dynamiquement
-    # Architecture: Input → [Dense(hidden, ReLU)] × N → Dense(output, Tanh)
+    # Architecture: Input → [Dense(hidden, GELU)] × N → Dense(output, Tanh)
     tf_model = tf.keras.Sequential()
     tf_model.add(tf.keras.layers.Input(shape=(input_dim,)))
 
     for hidden_dim in hidden_dims:
-        tf_model.add(tf.keras.layers.Dense(hidden_dim, activation='relu'))
+        tf_model.add(tf.keras.layers.Dense(hidden_dim, activation='gelu'))
 
     tf_model.add(tf.keras.layers.Dense(output_dim, activation='tanh'))
 

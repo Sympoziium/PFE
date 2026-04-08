@@ -204,7 +204,6 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
         return False
 
     # Generer les IDs de sequence pour chaque echantillon
-    # Format: "scenario/sampling_name" -> ID unique incremental
     global_seq_ids = []
     seq_id_map = {}  # "scenario/seq_name" -> int
     next_id = 0
@@ -217,26 +216,10 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
                 global_seq_ids.append(next_id)
             next_id += 1
 
-    # Sauvegarder les fichiers globaux
-    global_captures_file = output_dir / "captures.jsonl"
-    global_labels_file = output_dir / "labels.jsonl"
-    global_seqids_file = output_dir / "sequence_ids.jsonl"
-
-    with open(global_captures_file, 'w') as f:
-        for capture in global_captures:
-            f.write(json.dumps(capture) + '\n')
-
-    with open(global_labels_file, 'w') as f:
-        for label in global_labels:
-            f.write(json.dumps(label) + '\n')
-
-    with open(global_seqids_file, 'w') as f:
-        for sid in global_seq_ids:
-            f.write(str(sid) + '\n')
+    global_seq_ids = [int(s) for s in global_seq_ids]
 
     # Sauvegarder le mapping ID -> nom de sequence
     seq_map_file = output_dir / "sequence_map.json"
-    # Inverser: ID -> nom
     id_to_name = {v: k for k, v in seq_id_map.items()}
     with open(seq_map_file, 'w') as f:
         json.dump({
@@ -248,23 +231,115 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
 
     if verbose:
         print(f"[SEQ-IDS] {next_id} sequences uniques, {len(global_seq_ids)} echantillons")
-        print(f"  -> {global_seqids_file}")
-        print(f"  -> {seq_map_file}")
+
+    # ══════════════════════════════════════════════════════════════
+    #  Split train/val par sequence entiere
+    # ══════════════════════════════════════════════════════════════
+    import numpy as np
+
+    seq_ids_arr = np.array(global_seq_ids, dtype=np.int32)
+    unique_seqs = list(range(next_id))
+
+    # Charger l'historique de split si disponible
+    history_path = output_dir / "split_history.json"
+    known_train = set()
+    known_val = set()
+    if history_path.exists():
+        with open(history_path, 'r') as f:
+            history = json.load(f)
+        known_train = set(history.get('train_sequences', []))
+        known_val = set(history.get('val_sequences', []))
+        if verbose:
+            print(f"[SPLIT] Historique charge: {len(known_train)} train, {len(known_val)} val")
+
+    train_seqs = [s for s in unique_seqs if s in known_train]
+    val_seqs = [s for s in unique_seqs if s in known_val]
+    new_seqs = [s for s in unique_seqs if s not in known_train and s not in known_val]
+
+    # Repartir les nouvelles sequences (80/20)
+    if new_seqs:
+        rng = __import__('random')
+        rng.seed(42)
+        rng.shuffle(new_seqs)
+
+        # Compter les samples par sequence
+        seq_sample_counts = {}
+        for sid in unique_seqs:
+            seq_sample_counts[sid] = int(np.sum(seq_ids_arr == sid))
+
+        train_n = sum(seq_sample_counts.get(s, 0) for s in train_seqs)
+        total_n = len(global_seq_ids)
+        target_train = int(total_n * 0.8)
+
+        for sid in new_seqs:
+            if train_n < target_train:
+                train_seqs.append(sid)
+                train_n += seq_sample_counts.get(sid, 0)
+            else:
+                val_seqs.append(sid)
+
+        if verbose:
+            print(f"[SPLIT] {len(new_seqs)} nouvelles sequences reparties")
+
+    # Sauvegarder l'historique
+    with open(history_path, 'w') as f:
+        json.dump({
+            'train_sequences': sorted(train_seqs),
+            'val_sequences': sorted(val_seqs),
+        }, f, indent=2)
+
+    # Ecrire dans data/train/ et data/val/
+    train_set = set(train_seqs)
+    train_dir = output_dir / "train"
+    val_dir = output_dir / "val"
+    train_dir.mkdir(parents=True, exist_ok=True)
+    val_dir.mkdir(parents=True, exist_ok=True)
+
+    n_train = 0
+    n_val = 0
+
+    train_cap_f = open(train_dir / "captures.jsonl", 'w')
+    train_lab_f = open(train_dir / "labels.jsonl", 'w')
+    train_sid_f = open(train_dir / "sequence_ids.jsonl", 'w')
+    val_cap_f = open(val_dir / "captures.jsonl", 'w')
+    val_lab_f = open(val_dir / "labels.jsonl", 'w')
+    val_sid_f = open(val_dir / "sequence_ids.jsonl", 'w')
+
+    for i in range(len(global_captures)):
+        cap_line = json.dumps(global_captures[i]) + '\n'
+        lab_line = json.dumps(global_labels[i]) + '\n'
+        sid_line = str(global_seq_ids[i]) + '\n'
+
+        if global_seq_ids[i] in train_set:
+            train_cap_f.write(cap_line)
+            train_lab_f.write(lab_line)
+            train_sid_f.write(sid_line)
+            n_train += 1
+        else:
+            val_cap_f.write(cap_line)
+            val_lab_f.write(lab_line)
+            val_sid_f.write(sid_line)
+            n_val += 1
+
+    for f in [train_cap_f, train_lab_f, train_sid_f,
+              val_cap_f, val_lab_f, val_sid_f]:
+        f.close()
 
     if verbose:
-        print(f"[GLOBAL] Fichiers consolides:")
-        print(f"  -> {global_captures_file}")
-        print(f"  -> {global_labels_file}")
+        print(f"[SPLIT] {len(train_seqs)} train / {len(val_seqs)} val sequences")
+        print(f"[SPLIT] {n_train} train / {n_val} val echantillons")
+        print(f"  -> {train_dir}/")
+        print(f"  -> {val_dir}/")
         print()
 
-        # Résumé statistiques
-        total_samples = 0
-        for scenario_stats in all_scenario_stats.values():
-            total_samples += sum(s['samples'] for s in scenario_stats.values())
-
-        print(f"[STATS] Résumé global:")
+        # Resume statistiques
+        total_samples = n_train + n_val
+        print(f"[STATS] Resume global:")
         print(f"  * Total scenarios: {len(scenarios)}")
         print(f"  * Total echantillons: {total_samples}")
+        print(f"  * Train: {n_train} ({n_train/total_samples*100:.1f}%)")
+        print(f"  * Val:   {n_val} ({n_val/total_samples*100:.1f}%)")
+        print()
 
         for scenario_name, stats in all_scenario_stats.items():
             scenario_total = sum(s['samples'] for s in stats.values())

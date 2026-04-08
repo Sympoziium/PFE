@@ -542,7 +542,7 @@ def run_simulation_menu(script_dir: Path, state: dict):
     """Menu interactif d'evaluation avancee."""
 
     checkpoints_dir = script_dir / "checkpoints"
-    data_dir = script_dir / "data"
+    data_dir = script_dir / "data" / "val"  # Evaluer sur le val set (donnees reelles pures)
     eval_output_dir = script_dir / "evaluation_results"
 
     # Verifier le modele

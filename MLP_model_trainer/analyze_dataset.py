@@ -27,12 +27,13 @@ from dataset import (classify_actions, ACTION_NAMES, GYRO_Z_INDEX,
 
 
 def load_dataset(data_dir: Path):
-    """Charge les fichiers captures.jsonl et labels.jsonl."""
+    """Charge les fichiers captures.jsonl, labels.jsonl et sequence_ids.jsonl."""
     captures_file = data_dir / "captures.jsonl"
     labels_file = data_dir / "labels.jsonl"
+    seqids_file = data_dir / "sequence_ids.jsonl"
 
     if not captures_file.exists() or not labels_file.exists():
-        return None, None
+        return None, None, None
 
     captures = []
     labels = []
@@ -47,10 +48,24 @@ def load_dataset(data_dir: Path):
             if line.strip():
                 labels.append(json.loads(line))
 
-    return np.array(captures, dtype=np.float32), np.array(labels, dtype=np.float32)
+    # Charger les sequence_ids
+    sequence_ids = None
+    if seqids_file.exists():
+        seq_ids = []
+        with open(seqids_file, 'r') as f:
+            for line in f:
+                if line.strip():
+                    seq_ids.append(int(line.strip()))
+        if len(seq_ids) == len(captures):
+            sequence_ids = np.array(seq_ids, dtype=np.int32)
+            print(f"[Dataset] Sequence IDs chargés: {len(np.unique(sequence_ids))} séquences")
+        else:
+            print(f"[WARN] sequence_ids.jsonl incompatible ({len(seq_ids)} vs {len(captures)})")
+
+    return np.array(captures, dtype=np.float32), np.array(labels, dtype=np.float32), sequence_ids
 
 
-def analyze_dataset(captures, labels, save_dir=None):
+def analyze_dataset(captures, labels, save_dir=None, sequence_ids=None):
     """Analyse en détail le dataset."""
 
     print("[*] Analyse du Dataset")
@@ -298,7 +313,7 @@ def analyze_dataset(captures, labels, save_dir=None):
 
             # Breakdown par action (via IMU gyro_z)
             # Classifier chaque echantillon du dataset, puis compter par groupe
-            all_categories = classify_actions(captures, labels)
+            all_categories = classify_actions(captures, labels, sequence_ids=sequence_ids)
             long_run_cat_counts = {name: 0 for name in ACTION_NAMES}
             for length, start, end in long_runs:
                 # Action dominante du groupe = mode des categories
@@ -360,11 +375,38 @@ def analyze_dataset(captures, labels, save_dir=None):
             print(f"  [OK] Transitions globalement lisses.")
     print()
 
+    # === DETECTION DES ARRETS PWM ===
+    stop_thresh = 0.02
+    left_lbl = labels[:, 0]
+    right_lbl = labels[:, 1]
+    is_stop_lbl = (np.abs(left_lbl) < stop_thresh) & (np.abs(right_lbl) < stop_thresh)
+    total_stops = int(is_stop_lbl.sum())
+
+    # Compter les arrets PWM isoles (1 tick entre deux commandes non-nulles)
+    n_pwm = 0
+    for i in range(1, len(labels) - 1):
+        if not is_stop_lbl[i]:
+            continue
+        if sequence_ids is not None:
+            if sequence_ids[i] != sequence_ids[i - 1] or sequence_ids[i] != sequence_ids[i + 1]:
+                continue
+        if not is_stop_lbl[i - 1] and not is_stop_lbl[i + 1]:
+            n_pwm += 1
+
+    n_real_stops = total_stops - n_pwm
+    print(f"[PWM] Analyse des arrets:")
+    print(f"  Total arrets (labels ~0):       {total_stops:6d} ({total_stops/len(labels)*100:.1f}%)")
+    print(f"  Arrets PWM isoles (artefacts):  {n_pwm:6d} ({n_pwm/len(labels)*100:.1f}%)")
+    print(f"  Vrais arrets (2+ consecutifs):  {n_real_stops:6d} ({n_real_stops/len(labels)*100:.1f}%)")
+    if n_pwm > 0:
+        print(f"  [INFO] {n_pwm} arrets PWM seront retires par remove_pwm_stops() a l'entrainement")
+    print()
+
     # === CATEGORISATION FINE DES ACTIONS ===
     # Utilise le gyroscope (gyro_z) pour detecter les rotations reelles
     # plutot que les commandes moteur (biaisees par le PID de cap).
     print("[ACTIONS] Categorisation fine des actions (IMU-based, gyro_z):")
-    action_categories = classify_actions(captures, labels)
+    action_categories = classify_actions(captures, labels, sequence_ids=sequence_ids)
     categories = {}
     for i, name in enumerate(ACTION_NAMES):
         categories[name] = int(np.sum(action_categories == i))
@@ -500,15 +542,18 @@ def analyze_dataset(captures, labels, save_dir=None):
     # 29: cal_error_norm
     pid_cal_error_norm = pid_cal_error / (ir_sum_raw + 1e-6)
 
-    # 30: approaching_line (with boundary detection)
+    # 30: approaching_line (with boundary detection via sequence_ids)
     pid_abs_error = np.abs(pid_cal_error)
     pid_abs_error_prev = np.zeros_like(pid_abs_error)
     pid_abs_error_prev[1:] = pid_abs_error[:-1]
     pid_approaching = np.where(pid_abs_error < pid_abs_error_prev, 1.0, -1.0).astype(np.float32)
-    pid_error_jumps = np.abs(pid_cal_error[1:] - pid_cal_error[:-1])
     pid_boundaries = np.zeros(len(captures), dtype=bool)
     pid_boundaries[0] = True
-    pid_boundaries[1:] = pid_error_jumps > 100.0
+    if sequence_ids is not None:
+        pid_boundaries[1:] = sequence_ids[1:] != sequence_ids[:-1]
+    else:
+        pid_error_jumps = np.abs(pid_cal_error[1:] - pid_cal_error[:-1])
+        pid_boundaries[1:] = pid_error_jumps > 100.0
     pid_approaching[pid_boundaries] = 0.0
 
     # 31: on_road
@@ -517,11 +562,17 @@ def analyze_dataset(captures, labels, save_dir=None):
     # 32: grass_detect
     pid_grass_detect = (np.minimum(ir_front_l_raw, ir_front_r_raw) < GRASS_THRESHOLD).astype(np.float32)
 
-    # 33: gyro_z_rate (with boundary detection)
+    # 33: gyro_z_rate (with boundary detection via sequence_ids)
     pid_gyro_z_rate = np.zeros(len(captures), dtype=np.float32)
     pid_gyro_z_rate[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
-    pid_gyro_boundaries = np.abs(pid_gyro_z_rate) > 150.0
-    pid_gyro_z_rate[pid_gyro_boundaries] = 0.0
+    if sequence_ids is not None:
+        gyro_boundaries = np.zeros(len(captures), dtype=bool)
+        gyro_boundaries[0] = True
+        gyro_boundaries[1:] = sequence_ids[1:] != sequence_ids[:-1]
+        pid_gyro_z_rate[gyro_boundaries] = 0.0
+    else:
+        pid_gyro_boundaries = np.abs(pid_gyro_z_rate) > 150.0
+        pid_gyro_z_rate[pid_gyro_boundaries] = 0.0
 
     # 34: heading_drift
     pid_heading_drift = pid_gyro_z_rate * (1.0 - pid_line_visible)
@@ -654,7 +705,7 @@ def analyze_dataset(captures, labels, save_dir=None):
     }
 
 
-def plot_analysis(captures, labels, save_dir=None):
+def plot_analysis(captures, labels, save_dir=None, sequence_ids=None):
     """Crée des visualisations du dataset."""
 
     feature_names = [
@@ -794,7 +845,7 @@ def plot_analysis(captures, labels, save_dir=None):
     plt.close()
 
     # === Figure 5: Distribution des categories d'actions (IMU-based) ===
-    action_cats = classify_actions(captures, labels)
+    action_cats = classify_actions(captures, labels, sequence_ids=sequence_ids)
     cat_names = list(ACTION_NAMES)
     cat_counts = [int(np.sum(action_cats == i)) for i in range(5)]
     colors = ['#e74c3c', '#2ecc71', '#3498db', '#f39c12', '#9b59b6']
@@ -866,19 +917,19 @@ def main():
     print(f"[*] Chargement du dataset depuis {data_dir}")
     print()
 
-    captures, labels = load_dataset(data_dir)
+    captures, labels, sequence_ids = load_dataset(data_dir)
 
     if captures is None:
         print("[ERREUR] Impossible de charger le dataset")
         return False
 
-    stats = analyze_dataset(captures, labels)
+    stats = analyze_dataset(captures, labels, sequence_ids=sequence_ids)
 
     if args.plot:
         output_dir = script_dir / args.output_dir
         print(f"[*] Generation des graphiques vers {output_dir}")
         print()
-        plot_analysis(captures, labels, output_dir)
+        plot_analysis(captures, labels, output_dir, sequence_ids=sequence_ids)
         print()
 
     return True

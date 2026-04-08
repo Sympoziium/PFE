@@ -34,7 +34,7 @@ class ZumiMLP(nn.Module):
         input_dim: int,
         output_dim: int = 2,
         hidden_dims: list = None,
-        dropout: float = 0.1,
+        dropout: float = 0.3,
         use_batchnorm: bool = True
     ):
         """
@@ -63,7 +63,7 @@ class ZumiMLP(nn.Module):
             layers.append(nn.Linear(prev_dim, hidden_dim))
             if use_batchnorm:
                 layers.append(nn.BatchNorm1d(hidden_dim))
-            layers.append(nn.ReLU())
+            layers.append(nn.GELU())
             layers.append(nn.Dropout(dropout))
             prev_dim = hidden_dim
 

@@ -27,13 +27,13 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from dataset import ZumiControlDataset, create_data_loaders
 from model import ZumiMLP
 
 EARLY_STOPPING_PATIENCE = 8 # Nombre d'epochs sans amelioration avant arret (ajuste pour les profils plus longs)
-REDUCE_LR_PATIENCE = 3          # Nombre d'epochs sans amelioration avant reduction du LR
+# LR scheduler: CosineAnnealingLR (descente progressive du LR sur toute la duree)
 
 def load_environment_config(script_dir: Path) -> dict:
     """Charge la configuration d'environnement generee par validate_env.py.
@@ -89,7 +89,8 @@ class Trainer:
         lr: float = 1e-3,
         weight_decay: float = 1e-4,
         norm_stats: dict = None,
-        warmup_epochs: int = 5
+        warmup_epochs: int = 5,
+        total_epochs: int = 100
     ):
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -99,18 +100,19 @@ class Trainer:
         self.base_lr = lr
         self.warmup_epochs = warmup_epochs
 
-        self.criterion = nn.SmoothL1Loss(beta=0.1)
+        self.criterion = nn.MSELoss()
         self.optimizer = optim.AdamW(
             model.parameters(),
             lr=lr,
             weight_decay=weight_decay
         )
-        self.scheduler = ReduceLROnPlateau(
+        # Cosine annealing: LR descend progressivement de lr -> eta_min
+        # sur toute la duree de l'entrainement (apres warmup).
+        # Evite les plateaux ou le LR reste coince trop haut ou trop bas.
+        self.scheduler = CosineAnnealingLR(
             self.optimizer,
-            mode='min',
-            factor=0.5,
-            patience=REDUCE_LR_PATIENCE,
-            min_lr=1e-6
+            T_max=total_epochs - warmup_epochs,  # cycles sur les epoques post-warmup
+            eta_min=1e-7
         )
 
         # Historique
@@ -345,10 +347,10 @@ class Trainer:
             train_loss = self.train_epoch()
             val_loss = self.validate()
 
-            # Mise à jour du scheduler (apres le warmup uniquement)
+            # Mise à jour du scheduler cosine (apres le warmup uniquement)
             current_lr = self.optimizer.param_groups[0]['lr']
             if epoch > self.warmup_epochs:
-                self.scheduler.step(val_loss)
+                self.scheduler.step()
 
             # Enregistrement historique
             self.history["train_loss"].append(train_loss)
@@ -700,9 +702,9 @@ def suggest_training_profile(dataset) -> dict:
     elif n_samples < 500000:
         epochs, batch_size, lr, wd = 150, 256, 3e-3, 1e-4
     elif n_samples < 1500000:
-        epochs, batch_size, lr, wd = 150, 512, 3e-3, 1e-4
+        epochs, batch_size, lr, wd = 150, 512, 1e-5, 1e-4
     else:
-        epochs, batch_size, lr, wd = 100, 512, 5e-4, 1e-4
+        epochs, batch_size, lr, wd = 100, 128, 1e-4, 1e-5
 
     profile = {
         'name': 'Adaptatif',
@@ -925,28 +927,35 @@ def run_analyze_dataset(script_dir: Path):
     try:
         from analyze_dataset import load_dataset, analyze_dataset, plot_analysis
 
-        data_dir = script_dir / "data"
+        train_dir = script_dir / "data" / "train"
+        val_dir = script_dir / "data" / "val"
         output_dir = script_dir / "dataset_analysis"
 
-        if not data_dir.exists():
-            print(f"  ERREUR: Repertoire data/ non trouve: {data_dir}")
+        if not train_dir.exists():
+            print(f"  ERREUR: Repertoire data/train/ non trouve: {train_dir}")
             print("  -> Executez d'abord l'option [1] Agreger les sequences")
             return False
 
-        print(f"  Chargement du dataset depuis {data_dir}...")
-        captures, labels = load_dataset(data_dir)
-
+        # Analyse du train set
+        print(f"  === TRAIN SET ({train_dir}) ===")
+        captures, labels, sequence_ids = load_dataset(train_dir)
         if captures is None:
-            print("  ERREUR: Impossible de charger le dataset")
+            print("  ERREUR: Impossible de charger le train set")
             return False
+        stats = analyze_dataset(captures, labels, sequence_ids=sequence_ids)
 
-        # Analyse textuelle
-        stats = analyze_dataset(captures, labels)
+        # Analyse du val set
+        if val_dir.exists():
+            print(f"\n  === VAL SET ({val_dir}) ===")
+            val_cap, val_lab, val_sids = load_dataset(val_dir)
+            if val_cap is not None:
+                print(f"  Val: {len(val_cap)} echantillons (donnees reelles pures)")
+                print()
 
-        # Generation des graphiques
+        # Generation des graphiques (sur le train set)
         print(f"\n  Generation des graphiques vers {output_dir}...")
         print()
-        plot_analysis(captures, labels, output_dir)
+        plot_analysis(captures, labels, output_dir, sequence_ids=sequence_ids)
 
         print("\n" + "=" * 60)
         print("  Analyse terminee!")
@@ -1011,17 +1020,26 @@ def run_training(script_dir: Path, state: dict):
     print("\n  Chargement de la configuration d'environnement...")
     load_environment_config(script_dir)
 
-    # Chargement des donnees avec dedup + masque + z-score + echantillonnage equilibre
+    # Chargement des donnees (train et val separes, val = reel pur)
+    train_dir = data_dir / "train"
+    val_dir = data_dir / "val"
+
+    if not train_dir.exists() or not val_dir.exists():
+        print("\n  ERREUR: data/train/ ou data/val/ non trouve!")
+        print("  -> Executez d'abord l'option [1] Agreger les sequences")
+        return False
+
     window_size = config.get('window_size')
     print(f"\n  Chargement des donnees (dedup + fenetre glissante + z-score + equilibrage)...")
     train_loader, val_loader, dataset = create_data_loaders(
-        str(data_dir),
+        str(train_dir),
+        str(val_dir),
         batch_size=config.get('batch_size', 32),
         seed=seed,
         deduplicate=True,
         balanced_sampling=True,
         window_size=window_size,
-        trim_stops=5
+        trim_stops=3
     )
     
     # Transfer learning: proposer de charger les poids d'un modele precedent
@@ -1101,6 +1119,7 @@ def run_training(script_dir: Path, state: dict):
         }
 
     # Entraînement
+    total_epochs = config.get('epochs', 100)
     trainer = Trainer(
         model=model,
         train_loader=train_loader,
@@ -1109,7 +1128,8 @@ def run_training(script_dir: Path, state: dict):
         lr=lr,
         weight_decay=config.get('weight_decay', 1e-4),
         norm_stats=norm_stats,
-        warmup_epochs=warmup_epochs
+        warmup_epochs=warmup_epochs,
+        total_epochs=total_epochs
     )
 
     history = trainer.train(
