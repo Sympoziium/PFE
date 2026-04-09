@@ -308,6 +308,14 @@ class ControlManager:
                 self.last_left_speed = command.left_speed
                 self.last_right_speed = command.right_speed
                 self.last_motor_command = command
+            # Logger l'override dans le debug du contrôleur actif
+            ctrl = self._active_controller
+            if hasattr(ctrl, '_debug_enabled') and ctrl._debug_enabled:
+                ctrl._debug_log.append({
+                    'tick': getattr(ctrl, '_inference_count', 0),
+                    'override': True,
+                    'command': [command.left_speed, command.right_speed],
+                })
             return state, command
 
         # Si l'override vient d'expirer, nettoyer

@@ -32,7 +32,7 @@ class MLController(ControllerBase):
     # Fenetre glissante (defauts, ecrases par normalization_stats.json)
     WINDOW_SIZE = 25           # Nombre de pas dans la fenetre (1.25s a 20Hz)
     WINDOW_FEATURE_DIM = 30    # 21 raw + 9 engineered par pas (detection exclue)
-    TEMPORAL_DECAY = 0.95      # Decay exponentiel (1.0 = pas de decay)
+    TEMPORAL_DECAY = 0.85      # Decay exponentiel (1.0 = pas de decay)
     INTEGRAL_WINDOW = 5        # Fenetre pour ir_error_integral
 
     def __init__(self, vision_adapter, model_path=None):
@@ -59,6 +59,13 @@ class MLController(ControllerBase):
         self._prev_gyro_z = None  # Pour le calcul du gyro_z_rate
         self._prev_calibrated_error = None  # Pour ir_error_derivative
         self._prev_gyro_z_rate = None  # Pour gyro_z_accel
+
+        # Debug logging (activé via UI ou set_debug())
+        self._debug_enabled = False
+        self._debug_log = []
+        self._debug_interval = 10  # log every N ticks
+        self._prev_output = None
+        self._last_step_debug = {}
 
         # Exclusion des features Detection (indices 8-15 dans le vecteur brut 29-dim)
         self._exclude_detection = False
@@ -315,6 +322,15 @@ class MLController(ControllerBase):
             ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
         ], dtype=np.float32)
 
+        # Exposer les features clés pour le debug logging
+        self._last_step_debug = {
+            'cal_error': float(calibrated_error),
+            'line_visible': float(line_visible),
+            'gyro_z_rate': float(gyro_z_rate),
+            'lookahead_delta': float(lookahead_delta),
+            'ir_error_deriv': float(ir_error_derivative),
+        }
+
         return np.concatenate([raw_vector, engineered])
 
     def _build_state_vector(self, state) -> np.ndarray:
@@ -394,6 +410,9 @@ class MLController(ControllerBase):
         Returns:
             MotorCommand: Commande moteur calculée.
         """
+        import time as _time
+        t0 = _time.perf_counter()
+
         # 1. Vectoriser l'état
         input_vector = self._build_state_vector(state)
         self._last_input = input_vector
@@ -415,6 +434,23 @@ class MLController(ControllerBase):
                         ir = state.ir_sensors
                         print(f"  IR raw: fr={ir[0]}, br={ir[1]}, bkr={ir[2]}, "
                               f"bl={ir[3]}, bkl={ir[4]}, fl={ir[5]}")
+
+                # Debug logging périodique
+                if self._debug_enabled and self._inference_count % self._debug_interval == 0:
+                    step_ms = (_time.perf_counter() - t0) * 1000
+                    output_delta = float(np.abs(output - self._prev_output).sum()) if self._prev_output is not None else 0.0
+                    self._debug_log.append({
+                        'tick': self._inference_count,
+                        'override': False,
+                        'step_ms': round(step_ms, 1),
+                        'ir': [round(float(x), 1) for x in state.ir_sensors] if state.ir_sensors else None,
+                        'line_offset': round(float(state.line_offset), 3) if getattr(state, 'line_offset', None) is not None else None,
+                        **{k: round(v, 4) for k, v in self._last_step_debug.items()},
+                        'output': [round(float(output[0]), 4), round(float(output[1]), 4)],
+                        'output_delta': round(output_delta, 4),
+                        'input_range': [round(float(input_vector.min()), 2), round(float(input_vector.max()), 2)],
+                    })
+                self._prev_output = output.copy()
 
                 # Dénormaliser: [-1, 1] -> [-MOTOR_SPEED_MAX, MOTOR_SPEED_MAX]
                 left_speed = float(output[0]) * self.MOTOR_SPEED_MAX
@@ -454,6 +490,35 @@ class MLController(ControllerBase):
     def stop(self):
         """Arrête le contrôleur ML."""
         print(f"[MLController] Arrêté. Inférences effectuées: {self._inference_count}")
+
+        # Sauvegarder et résumer le debug log
+        if self._debug_log:
+            ml_entries = [e for e in self._debug_log if not e.get('override', False)]
+            override_entries = [e for e in self._debug_log if e.get('override', False)]
+
+            if ml_entries:
+                timings = [e['step_ms'] for e in ml_entries]
+                deltas = [e['output_delta'] for e in ml_entries]
+                print(f"  [DEBUG] {len(ml_entries)} entries ML, {len(override_entries)} overrides")
+                print(f"  [DEBUG] Timing: mean={np.mean(timings):.1f}ms, max={np.max(timings):.1f}ms")
+                print(f"  [DEBUG] Output delta: mean={np.mean(deltas):.4f}, max={np.max(deltas):.4f}")
+                if np.mean(deltas) < 0.001:
+                    print(f"  [DEBUG] ALERTE: Le modele donne des sorties quasi-identiques!")
+
+            import json
+            from pathlib import Path
+            log_path = Path(self.model_path).parent / 'debug_log.json'
+            with open(log_path, 'w') as f:
+                json.dump(self._debug_log, f, indent=2)
+            print(f"  [DEBUG] Log sauvegardé: {log_path}")
+
+    def set_debug(self, enabled):
+        """Active ou désactive le debug logging."""
+        self._debug_enabled = enabled
+        if enabled:
+            self._debug_log = []
+            self._prev_output = None
+        print(f"[MLController] Debug {'activé' if enabled else 'désactivé'}")
 
     def get_debug_info(self) -> dict:
         """Retourne les informations de debug pour l'interface."""

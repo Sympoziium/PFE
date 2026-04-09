@@ -1748,6 +1748,20 @@ class controller:
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    def toggle_ml_debug(self):
+        """Active/désactive le debug logging du MLController."""
+        try:
+            if self.control_manager is None:
+                return jsonify({'error': 'ControlManager non attaché'}), 400
+            ml_ctrl = self.control_manager.get_controller('ml_controller')
+            if ml_ctrl is None:
+                return jsonify({'error': 'MLController non trouvé'}), 400
+            new_state = not ml_ctrl._debug_enabled
+            ml_ctrl.set_debug(new_state)
+            return jsonify({'debug': new_state})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     def controller_params(self):
         """GET/POST les paramètres d'un contrôleur par nom.
 

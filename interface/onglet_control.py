@@ -352,6 +352,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         </select>
                     </div>
                     <button class='primary-btn' id='controllerToggleBtn' style='margin-top:10px; width:85%;'>▶ Activer le contrôleur</button>
+                    <button class='toggle-btn' id='mlDebugBtn' style='margin-top:6px; width:85%; font-size:12px; padding:6px 8px;'>ML Debug: OFF</button>
 
                     <!-- Conteneur du menu de réglages adaptatif -->
                     <div class='settings-menu-container' style='margin-top:12px;'>
@@ -611,6 +612,22 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 })
                 .catch(function(e) { console.error('toggleController stop error:', e); });
         }
+    }
+
+    function toggleMLDebug() {
+        fetch('/controller/debug/toggle', { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var btn = document.getElementById('mlDebugBtn');
+                if (data.debug) {
+                    btn.classList.add('active');
+                    btn.textContent = 'ML Debug: ON';
+                } else {
+                    btn.classList.remove('active');
+                    btn.textContent = 'ML Debug: OFF';
+                }
+            })
+            .catch(function(e) { console.error('toggleMLDebug error:', e); });
     }
 
     // ================================================================
@@ -1001,6 +1018,10 @@ def render_control_tab(title: str = "Contrôle") -> str:
         // Controller toggle
         var ctrlBtn = document.getElementById('controllerToggleBtn');
         if (ctrlBtn) ctrlBtn.addEventListener('click', toggleController);
+
+        // ML Debug toggle
+        var mlDebugBtn = document.getElementById('mlDebugBtn');
+        if (mlDebugBtn) mlDebugBtn.addEventListener('click', toggleMLDebug);
 
         var controllerSelect = document.getElementById('controllerSelect');
         if (controllerSelect) {

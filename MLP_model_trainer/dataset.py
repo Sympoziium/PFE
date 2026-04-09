@@ -61,8 +61,8 @@ WINDOW_FEATURE_DIM = 30  # defaut: detection exclue
 # Chaque frame t est multiplie par alpha^(window_size - 1 - t):
 #   frame le plus recent (t=window_size-1) = 1.0
 #   frame le plus ancien (t=0) = alpha^(window_size-1)
-# alpha=1.0 desactive le decay. alpha=0.95 avec 25 frames: ancien=0.29, milieu=0.54.
-TEMPORAL_DECAY = 0.95
+# alpha=1.0 desactive le decay. alpha=0.85 avec 25 frames: ancien=0.29, milieu=0.54.
+TEMPORAL_DECAY = 0.85
 
 # Indice du gyro_z dans le vecteur de base (29-dim complet)
 # Si exclude_detection=True, l'indice effectif est recalcule dynamiquement.

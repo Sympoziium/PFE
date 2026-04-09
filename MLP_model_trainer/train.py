@@ -133,7 +133,7 @@ class Trainer:
         self.base_lr = lr
         self.warmup_epochs = warmup_epochs
 
-        self.criterion = RangeAwareLoss(lambda_var=0.1)
+        self.criterion = RangeAwareLoss(lambda_var=0.2)
         self.optimizer = optim.AdamW(
             model.parameters(),
             lr=lr,
