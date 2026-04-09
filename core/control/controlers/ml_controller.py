@@ -63,7 +63,7 @@ class MLController(ControllerBase):
         # Debug logging (activé via UI ou set_debug())
         self._debug_enabled = False
         self._debug_log = []
-        self._debug_interval = 10  # log every N ticks
+        self._debug_interval = 1  # log every tick (changer a 5-10 si le log est trop gros)
         self._prev_output = None
         self._last_step_debug = {}
 
