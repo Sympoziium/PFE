@@ -5,6 +5,64 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publie] — Anti-compression, features engineered v2 et split detecteurs (2026-04-09)
+
+### Contexte
+Le MLP (R²=0.51, val_loss=0.0092) souffrait de compression des predictions vers la moyenne:
+les scatter plots montraient des predictions regroupees en bande horizontale au lieu de suivre
+la diagonale. Le modele predisait des valeurs conservatrices, incapable de produire des commandes
+franches (virages marques, arrets nets, marche arriere). Diagnostic: (1) le MSE pur incite le
+modele a predire la moyenne conditionnelle, (2) les features ne capturaient pas assez de signal
+predictif (derivees, integrales, anticipation camera-IR), (3) le dropout 0.3 etait trop
+conservateur pour 2.6M+ echantillons.
+
+### Added
+- **RangeAwareLoss** (`train.py`): nouvelle loss MSE + penalite de variance. Penalise le modele
+  quand la variance de ses predictions est inferieure a celle des cibles (`torch.relu(target_var -
+  pred_var)`). Parametre `lambda_var=0.1` (ajustable: 0.05-0.2). Adresse directement la compression
+  des predictions sans revenir a Huber (qui discretisait les sorties avec delta=0.1).
+
+- **4 nouvelles features engineered** (`dataset.py`, `simulator_2d.py`, `ml_controller.py`):
+  le vecteur passe de 26-dim/pas (21 raw + 5 eng.) a **30-dim/pas** (21 raw + 9 eng.),
+  fenetre glissante 25x30 = **750-dim d'entree** (etait 650-dim).
+  - `ir_error_derivative`: `calibrated_error[t] - calibrated_error[t-1]` — vitesse de derive
+    laterale. Permet au modele de savoir si la ligne s'eloigne rapidement ou lentement.
+  - `ir_error_integral`: moyenne glissante de `calibrated_error` sur 5 pas — biais persistant
+    accumule. Indique un decentrage soutenu (terme I du PID).
+  - `gyro_z_accel`: `gyro_z_rate[t] - gyro_z_rate[t-1]` — acceleration angulaire. Indique si
+    un virage s'intensifie ou se relache (courbure du trajet).
+  - `lookahead_delta`: `(line_camera_offset - cal_error_norm) * line_visible` — discordance
+    entre la position de la ligne vue par la camera (devant le robot) et celle vue par les IR
+    (sous le robot). Signal d'anticipation: quand la camera voit la ligne a droite mais les IR
+    la voient au centre, un virage a droite approche.
+
+- **Split detecteurs passifs** (`vision_pipeline.py`, `server_controller.py`):
+  nouvelle methode `set_passive_detectors()` pour changer dynamiquement les detecteurs passifs.
+  - Onglet Controle: detection passive = **Line detector seulement** (economie CPU, Haar inutile)
+  - Onglet Vision: detection passive = **Haar classifiers seulement** (monitoring objets)
+  - Garde-fou dans `start_passive_detection()`: si aucun controleur actif, force Haar.
+
+### Changed
+- **Dropout** (`train.py`): reduit de 0.3 a 0.15. Avec 2.6M+ echantillons, le dropout elevé
+  empechait le modele de faire des predictions confiantes vers les extremes.
+- **Loss function** (`train.py`): `nn.MSELoss()` -> `RangeAwareLoss(lambda_var=0.1)`
+- **Dimension d'entree MLP**: 650-dim -> 750-dim (necessite re-agregation du dataset)
+- **WINDOW_FEATURE_DIM** (`dataset.py`, `ml_controller.py`): 26 -> 30
+- **Groupes permutation importance** (`evaluate.py`): Engineered 21-25 -> 21-29
+
+### Notes techniques
+- Toutes les nouvelles features respectent les frontieres de sequence (zero aux transitions).
+- `ir_error_integral` utilise une somme cumulee vectorisee par segment (O(n), pas de boucle Python
+  sur les echantillons individuels).
+- `lookahead_delta` est conditionne par `line_visible` pour eviter du bruit quand la camera ne
+  detecte pas de ligne.
+- Le `compute_engineered()` du simulateur et du ml_controller recoit maintenant le `window_buffer`
+  pour calculer l'integrale sur les pas precedents.
+- **Compatibilite**: l'ancien modele (650-dim) n'est PAS compatible. Il faut re-agreger (option 1)
+  puis re-entrainer (option 4).
+
+---
+
 ## [Non publie] — Migration simulateur + refonte evaluations (2026-04-04)
 
 ### Contexte

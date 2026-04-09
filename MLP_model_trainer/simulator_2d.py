@@ -24,6 +24,7 @@ except ImportError:
 from dataset import (
     ENGINEERED_FEATURE_NAMES, WINDOW_SIZE, WINDOW_FEATURE_DIM,
     IR_OFFSET_DEFAULT, GAP_THRESHOLD, GYRO_Z_INDEX,
+    DETECTION_INDICES,
 )
 
 
@@ -770,74 +771,103 @@ class SimMetrics:
 # ============================================================
 
 def build_state_vector(ir_data, imu_data):
-    """Construit le vecteur 29-dim (27 IMU/IR + 2 camera)."""
-    vec = np.zeros(29, dtype=np.float32)
+    """Construit le vecteur 21-dim (detection exclue: indices 8-15 retires).
+
+    Layout apres exclusion:
+      0-5: IR values, 6: diff, 7: sum
+      8-18: IMU (gyro, acc, comp, rot, tilt)
+      19-20: camera (line_offset, line_detected)
+    """
+    vec29 = np.zeros(29, dtype=np.float32)
     # IR: indices 0-7
-    vec[0] = ir_data['values'][0]  # front_r
-    vec[1] = ir_data['values'][1]  # bot_r
-    vec[2] = ir_data['values'][2]  # back_r
-    vec[3] = ir_data['values'][3]  # bot_l
-    vec[4] = ir_data['values'][4]  # back_l
-    vec[5] = ir_data['values'][5]  # front_l
-    vec[6] = ir_data['diff']
-    vec[7] = ir_data['sum']
+    vec29[0] = ir_data['values'][0]  # front_r
+    vec29[1] = ir_data['values'][1]  # bot_r
+    vec29[2] = ir_data['values'][2]  # back_r
+    vec29[3] = ir_data['values'][3]  # bot_l
+    vec29[4] = ir_data['values'][4]  # back_l
+    vec29[5] = ir_data['values'][5]  # front_l
+    vec29[6] = ir_data['diff']
+    vec29[7] = ir_data['sum']
     # Detection: indices 8-15 (pas de detection en simulation)
     # IMU: indices 16-26
-    vec[16] = imu_data['gyro_x']
-    vec[17] = imu_data['gyro_y']
-    vec[18] = imu_data['gyro_z']
-    vec[19] = imu_data['acc_x']
-    vec[20] = imu_data['acc_y']
-    vec[21] = imu_data['comp_x']
-    vec[22] = imu_data['comp_y']
-    vec[23] = imu_data['rot_x']
-    vec[24] = imu_data['rot_y']
-    vec[25] = imu_data['rot_z']
-    vec[26] = imu_data['tilt_state']
-    # Camera: indices 27-28 (pas de camera en simulation)
-    vec[27] = 0.0  # line_offset
-    vec[28] = 0.0  # line_detected
-    return vec
+    vec29[16] = imu_data['gyro_x']
+    vec29[17] = imu_data['gyro_y']
+    vec29[18] = imu_data['gyro_z']
+    vec29[19] = imu_data['acc_x']
+    vec29[20] = imu_data['acc_y']
+    vec29[21] = imu_data['comp_x']
+    vec29[22] = imu_data['comp_y']
+    vec29[23] = imu_data['rot_x']
+    vec29[24] = imu_data['rot_y']
+    vec29[25] = imu_data['rot_z']
+    vec29[26] = imu_data['tilt_state']
+    # Camera: indices 27-28
+    vec29[27] = 0.0  # line_offset
+    vec29[28] = 0.0  # line_detected
+    # Exclure detection (indices 8-15) -> 21-dim
+    keep_mask = [i for i in range(29) if i not in DETECTION_INDICES]
+    return vec29[keep_mask]
 
 
-def compute_engineered(vec29, prev_vec34=None, ir_offset=IR_OFFSET_DEFAULT):
-    """Ajoute 5 features PID-inspired -> 34-dim.
+def compute_engineered(vec_raw, prev_vec=None, ir_offset=IR_OFFSET_DEFAULT, window_buffer=None):
+    """Ajoute 9 features PID-inspired -> 30-dim (detection exclue).
 
     Args:
-        vec29: Vecteur brut 29-dim
-        prev_vec34: Vecteur 34-dim precedent (pour gyro_z_rate)
+        vec_raw: Vecteur 21-dim (detection exclue)
+        prev_vec: Vecteur 30-dim precedent (pour derivees)
         ir_offset: Offset IR bottom (bot_left - bot_right)
+        window_buffer: Buffer des vecteurs precedents (pour ir_error_integral)
     """
-    ir_bot_r = vec29[1]
-    ir_bot_l = vec29[3]
+    raw_dim = len(vec_raw)
+    ir_bot_r = vec_raw[1]
+    ir_bot_l = vec_raw[3]
     ir_sum = (ir_bot_l + ir_bot_r) / 2.0
-    gyro_z = vec29[GYRO_Z_INDEX]
+    gyro_z = vec_raw[GYRO_Z_INDEX]
+    line_camera_offset = vec_raw[raw_dim - 2]  # camera toujours avant-dernier
 
-    # 29: calibrated_error
     calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
-
-    # 30: line_visible
     line_visible = 1.0 if ir_sum < GAP_THRESHOLD else 0.0
-
-    # 31: cal_error_norm
     cal_error_norm = calibrated_error / (ir_sum + 1e-6)
 
-    # 32: gyro_z_rate
     gyro_z_rate = 0.0
-    if prev_vec34 is not None:
-        rate = gyro_z - prev_vec34[GYRO_Z_INDEX]
+    if prev_vec is not None:
+        rate = gyro_z - prev_vec[GYRO_Z_INDEX]
         if abs(rate) < 150.0:
             gyro_z_rate = rate
 
-    # 33: heading_drift
     heading_drift = gyro_z_rate * (1.0 - line_visible)
+
+    # --- Nouvelles features ---
+    # ir_error_derivative: delta calibrated_error
+    ir_error_derivative = 0.0
+    if prev_vec is not None:
+        ir_error_derivative = calibrated_error - prev_vec[raw_dim + 0]  # prev calibrated_error
+
+    # ir_error_integral: moyenne glissante sur 5 pas
+    from dataset import INTEGRAL_WINDOW
+    recent_errors = []
+    if window_buffer is not None:
+        for vec in list(window_buffer)[-(INTEGRAL_WINDOW - 1):]:
+            recent_errors.append(vec[raw_dim + 0])  # calibrated_error index
+    recent_errors.append(calibrated_error)
+    ir_error_integral = sum(recent_errors) / len(recent_errors)
+
+    # gyro_z_accel: delta gyro_z_rate
+    gyro_z_accel = 0.0
+    if prev_vec is not None:
+        prev_gyro_z_rate = prev_vec[raw_dim + 3]  # prev gyro_z_rate
+        gyro_z_accel = gyro_z_rate - prev_gyro_z_rate
+
+    # lookahead_delta: discordance camera vs IR
+    lookahead_delta = (line_camera_offset - cal_error_norm) * line_visible
 
     engineered = np.array([
         calibrated_error, line_visible, cal_error_norm,
-        gyro_z_rate, heading_drift
+        gyro_z_rate, heading_drift,
+        ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
     ], dtype=np.float32)
 
-    return np.concatenate([vec29, engineered]).astype(np.float32)
+    return np.concatenate([vec_raw, engineered]).astype(np.float32)
 
 
 def build_windowed_vector(window_buffer):
@@ -848,10 +878,10 @@ def build_windowed_vector(window_buffer):
     identique au comportement du training pipeline aux frontieres de sequence.
 
     Args:
-        window_buffer: collections.deque de np.arrays 34-dim, maxlen=WINDOW_SIZE
+        window_buffer: collections.deque de np.arrays 26-dim, maxlen=WINDOW_SIZE
 
     Returns:
-        np.array de shape (WINDOW_SIZE * WINDOW_FEATURE_DIM,) = (680,)
+        np.array de shape (WINDOW_SIZE * WINDOW_FEATURE_DIM,) = (650,)
     """
     flat = np.zeros(WINDOW_SIZE * WINDOW_FEATURE_DIM, dtype=np.float32)
     n = len(window_buffer)
@@ -1122,16 +1152,16 @@ def run_simulator(script_dir, state, track_mode='loop'):
                 ir_data = sensor_model.read_all(robot)
                 imu_data = sensor_model.read_imu(robot, SIM_DT)
 
-                # 2. Vecteur 29-dim
+                # 2. Vecteur 21-dim (detection exclue)
                 state_vec = build_state_vector(ir_data, imu_data)
 
-                # 3. Features engineered (29 -> 34)
-                prev_34 = window_buffer[-1] if len(window_buffer) > 0 else None
+                # 3. Features engineered (21 -> 30)
+                prev_vec = window_buffer[-1] if len(window_buffer) > 0 else None
                 ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
-                state_34 = compute_engineered(state_vec, prev_34, ir_offset)
+                state_30 = compute_engineered(state_vec, prev_vec, ir_offset, window_buffer)
 
-                # 4. Buffer glissant -> vecteur 680-dim
-                window_buffer.append(state_34.copy())
+                # 4. Buffer glissant -> vecteur windowed
+                window_buffer.append(state_30.copy())
                 full = build_windowed_vector(window_buffer)
 
                 # 5. Z-score + inference

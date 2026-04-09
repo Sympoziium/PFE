@@ -805,6 +805,16 @@ class controller:
             return jsonify({'error': 'pipeline vision non initialisé'}), 400
         if vp._passive_running: # éviter de lancer plusieurs fois le mode passif
             return ("", 204)
+
+        # Si pas de contrôleur actif → mode Vision → Haar classifiers seulement
+        # Si contrôleur actif → Line detector déjà configuré par start_controller()
+        if hasattr(vp, 'set_passive_detectors'):
+            is_controller_active = (self.control_manager is not None
+                                    and self.control_manager._active_controller is not None)
+            if not is_controller_active:
+                haar_dets = [d for d in vp.detectors if getattr(d, 'name', '') != 'line']
+                vp.set_passive_detectors(haar_dets)
+
         vp.start_passive_detection()
         return ("", 204)
     
@@ -1680,6 +1690,12 @@ class controller:
             # Auto-switch: appliquer le profil caméra 'passive' (320x240) pour économiser le CPU
             self._apply_camera_profile('passive')
 
+            # Passive detection: Line detector seulement en mode contrôleur (pas de Haar = économie CPU)
+            vp = self.vision_pipeline
+            if vp and hasattr(vp, 'set_passive_detectors'):
+                line_dets = [d for d in vp.detectors if getattr(d, 'name', '') == 'line']
+                vp.set_passive_detectors(line_dets)
+
             self.robot.reset_drive_state() # reset gyro + PID pour des conditions de contrôle optimales au démarrage
 
             self.control_manager.activate_controller(controller_name)
@@ -1700,6 +1716,12 @@ class controller:
 
                 # Auto-switch: revenir au profil caméra 'stream' (640x480) pour le streaming
                 self._apply_camera_profile('stream')
+
+                # Restaurer Haar classifiers pour la détection passive en mode Vision
+                vp = self.vision_pipeline
+                if vp and hasattr(vp, 'set_passive_detectors'):
+                    haar_dets = [d for d in vp.detectors if getattr(d, 'name', '') != 'line']
+                    vp.set_passive_detectors(haar_dets)
 
                 return jsonify({'status': 'stopped', 'controller': name})
             return jsonify({'status': 'stopped', 'controller': None})

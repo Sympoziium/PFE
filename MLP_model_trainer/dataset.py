@@ -36,7 +36,13 @@ ENGINEERED_FEATURE_NAMES = [
     'cal_error_norm',     # calibrated_error / (ir_sum + eps)
     'gyro_z_rate',        # delta gyro_z (vitesse angulaire par tick)
     'heading_drift',      # gyro_z_rate * (1 - line_visible)
+    'ir_error_derivative',# delta calibrated_error (vitesse de derive laterale)
+    'ir_error_integral',  # moyenne glissante calibrated_error sur 5 pas (biais persistant)
+    'gyro_z_accel',       # delta gyro_z_rate (virage qui s'intensifie ou se relache)
+    'lookahead_delta',    # (line_camera_offset - cal_error_norm) * line_visible (anticipation)
 ]
+
+INTEGRAL_WINDOW = 5  # Taille de la fenetre pour ir_error_integral
 
 # Indices des features Detection (Haar) dans le vecteur brut 29-dim.
 # Ces features sont inutilisees tant que les detecteurs Haar ne sont pas integres
@@ -47,9 +53,9 @@ DETECTION_INDICES = list(range(8, 16))  # 8 features: flag + 3 one-hot + 4 bbox
 WINDOW_SIZE = 25
 
 # Dimension par pas de fenetre (calculee dynamiquement selon exclude_detection)
-# 34 = 29 raw + 5 engineered (detection incluse)
-# 26 = 21 raw + 5 engineered (detection exclue)
-WINDOW_FEATURE_DIM = 26  # defaut: detection exclue
+# 38 = 29 raw + 9 engineered (detection incluse)
+# 30 = 21 raw + 9 engineered (detection exclue)
+WINDOW_FEATURE_DIM = 30  # defaut: detection exclue
 
 # Ponderation temporelle exponentielle de la fenetre glissante.
 # Chaque frame t est multiplie par alpha^(window_size - 1 - t):
@@ -443,7 +449,12 @@ class ZumiControlDataset(Dataset):
               f"gyro_z_index={GYRO_Z_INDEX})")
 
     def compute_engineered_features(self, ir_offset: float = None):
-        """Ajoute 5 features PID-inspired au vecteur de base.
+        """Ajoute 9 features PID-inspired au vecteur de base.
+
+        Features originales (5):
+            calibrated_error, line_visible, cal_error_norm, gyro_z_rate, heading_drift
+        Nouvelles features (4):
+            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
 
         Doit etre appelee AVANT compute_sliding_windows().
         Fonctionne que Detection soit exclue ou non (utilise GYRO_Z_INDEX dynamique).
@@ -453,11 +464,16 @@ class ZumiControlDataset(Dataset):
         self._ir_offset = ir_offset
 
         n = len(self.captures)
+        raw_dim = self.captures.shape[1]
         ir_bot_r = self.captures[:, 1]
         ir_bot_l = self.captures[:, 3]
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
         gyro_z_raw = self.captures[:, GYRO_Z_INDEX]
 
+        # Camera features: toujours les 2 derniers indices du vecteur brut
+        line_camera_offset = self.captures[:, raw_dim - 2]
+
+        # --- Features originales ---
         calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
         line_visible = (ir_sum < GAP_THRESHOLD).astype(np.float32)
         cal_error_norm = calibrated_error / (ir_sum + 1e-6)
@@ -465,18 +481,52 @@ class ZumiControlDataset(Dataset):
         gyro_z_rate = np.zeros(n, dtype=np.float32)
         gyro_z_rate[1:] = gyro_z_raw[1:] - gyro_z_raw[:-1]
 
-        # Mettre a zero les frontieres de sequence
+        # Detecter les frontieres de sequence
+        boundaries = np.zeros(n, dtype=bool)
+        boundaries[0] = True
         if self.sequence_ids is not None:
-            boundaries = np.zeros(n, dtype=bool)
-            boundaries[0] = True
             boundaries[1:] = self.sequence_ids[1:] != self.sequence_ids[:-1]
-            gyro_z_rate[boundaries] = 0.0
+        gyro_z_rate[boundaries] = 0.0
 
         heading_drift = gyro_z_rate * (1.0 - line_visible)
 
+        # --- Nouvelles features ---
+
+        # ir_error_derivative: delta calibrated_error (vitesse de derive laterale)
+        ir_error_derivative = np.zeros(n, dtype=np.float32)
+        ir_error_derivative[1:] = calibrated_error[1:] - calibrated_error[:-1]
+        ir_error_derivative[boundaries] = 0.0
+
+        # ir_error_integral: moyenne glissante de calibrated_error sur INTEGRAL_WINDOW pas
+        ir_error_integral = np.zeros(n, dtype=np.float32)
+        # Trouver les debuts de chaque segment de sequence
+        seg_starts = np.where(boundaries)[0]
+        seg_ends = np.concatenate([seg_starts[1:], [n]])
+        for s, e in zip(seg_starts, seg_ends):
+            seg = calibrated_error[s:e]
+            cumsum = np.cumsum(seg)
+            padded = np.concatenate([[0.0], cumsum])
+            idx = np.arange(len(seg))
+            starts = np.maximum(0, idx - INTEGRAL_WINDOW + 1)
+            counts = (idx - starts + 1).astype(np.float32)
+            ir_error_integral[s:e] = (padded[idx + 1] - padded[starts]) / counts
+
+        # gyro_z_accel: delta gyro_z_rate (virage qui s'intensifie ou se relache)
+        gyro_z_accel = np.zeros(n, dtype=np.float32)
+        gyro_z_accel[1:] = gyro_z_rate[1:] - gyro_z_rate[:-1]
+        gyro_z_accel[boundaries] = 0.0
+        # Aussi zero au pas juste apres une frontiere (gyro_z_rate[boundary]=0 est artificiel)
+        boundary_plus1 = np.zeros(n, dtype=bool)
+        boundary_plus1[1:] = boundaries[:-1]
+        gyro_z_accel[boundary_plus1] = 0.0
+
+        # lookahead_delta: discordance entre camera (ligne devant) et IR (ligne dessous)
+        lookahead_delta = (line_camera_offset - cal_error_norm) * line_visible
+
         new_features = np.column_stack([
             calibrated_error, line_visible, cal_error_norm,
-            gyro_z_rate, heading_drift
+            gyro_z_rate, heading_drift,
+            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
         ]).astype(np.float32)
 
         original_dim = self.captures.shape[1]

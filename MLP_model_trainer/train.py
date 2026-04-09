@@ -74,6 +74,39 @@ def load_environment_config(script_dir: Path) -> dict:
     return config
 
 # ══════════════════════════════════════════════════════════════
+#  Loss anti-compression
+# ══════════════════════════════════════════════════════════════
+
+class RangeAwareLoss(nn.Module):
+    """MSE + pénalité quand les prédictions sont plus compressées que les cibles.
+
+    Le terme var_penalty utilise torch.relu (= max(0, x)) comme opération
+    mathématique pour s'assurer que la pénalité est >= 0. L'architecture
+    du modèle (GELU) ne change pas.
+
+    Args:
+        lambda_var: Poids de la pénalité de variance (0.1 = point de départ).
+            - 0.0  : MSE pur (compression maximale)
+            - 0.05 : léger encouragement
+            - 0.1  : recommandé
+            - 0.2  : pression forte
+            - 0.5  : agressif (risque d'instabilité)
+    """
+    def __init__(self, lambda_var=0.1):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.lambda_var = lambda_var
+
+    def forward(self, pred, target):
+        mse_loss = self.mse(pred, target)
+        pred_var = pred.var(dim=0).mean()
+        target_var = target.var(dim=0).mean()
+        # Pénalise seulement quand les prédictions sont plus compressées que les cibles
+        var_penalty = torch.relu(target_var - pred_var)
+        return mse_loss + self.lambda_var * var_penalty
+
+
+# ══════════════════════════════════════════════════════════════
 #  Classe Trainer
 # ══════════════════════════════════════════════════════════════
 
@@ -100,7 +133,7 @@ class Trainer:
         self.base_lr = lr
         self.warmup_epochs = warmup_epochs
 
-        self.criterion = nn.MSELoss()
+        self.criterion = RangeAwareLoss(lambda_var=0.1)
         self.optimizer = optim.AdamW(
             model.parameters(),
             lr=lr,
@@ -1044,7 +1077,7 @@ def run_training(script_dir: Path, state: dict):
         batch_size=config.get('batch_size', 32),
         seed=seed,
         deduplicate=True,
-        balanced_sampling=True,
+        balanced_sampling=False,
         window_size=window_size,
         trim_stops=3
     )
@@ -1091,6 +1124,7 @@ def run_training(script_dir: Path, state: dict):
         input_dim=dataset.input_dim,
         output_dim=dataset.output_dim,
         hidden_dims=config.get('hidden_dims', [64, 32]),
+        dropout=0.15,
         use_batchnorm=True
     )
 

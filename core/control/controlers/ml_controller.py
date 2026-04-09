@@ -31,8 +31,9 @@ class MLController(ControllerBase):
 
     # Fenetre glissante (defauts, ecrases par normalization_stats.json)
     WINDOW_SIZE = 25           # Nombre de pas dans la fenetre (1.25s a 20Hz)
-    WINDOW_FEATURE_DIM = 26    # 21 raw + 5 engineered par pas (detection exclue)
+    WINDOW_FEATURE_DIM = 30    # 21 raw + 9 engineered par pas (detection exclue)
     TEMPORAL_DECAY = 0.95      # Decay exponentiel (1.0 = pas de decay)
+    INTEGRAL_WINDOW = 5        # Fenetre pour ir_error_integral
 
     def __init__(self, vision_adapter, model_path=None):
         """
@@ -56,6 +57,8 @@ class MLController(ControllerBase):
         # Buffer circulaire pour la fenetre glissante
         self._window_buffer = collections.deque(maxlen=self.WINDOW_SIZE)
         self._prev_gyro_z = None  # Pour le calcul du gyro_z_rate
+        self._prev_calibrated_error = None  # Pour ir_error_derivative
+        self._prev_gyro_z_rate = None  # Pour gyro_z_accel
 
         # Exclusion des features Detection (indices 8-15 dans le vecteur brut 29-dim)
         self._exclude_detection = False
@@ -267,7 +270,7 @@ class MLController(ControllerBase):
             keep_mask = [i for i in range(len(raw_vector)) if i not in self._detection_indices]
             raw_vector = raw_vector[keep_mask]
 
-        # Features engineered PID-inspired (5 features)
+        # Features engineered PID-inspired (9 features)
         calibrated_error = (ir_bot_r - ir_bot_l) - (-self.IR_OFFSET_BOTTOM)
         line_visible = 1.0 if ir_sum < self.GAP_THRESHOLD else 0.0
         cal_error_norm = calibrated_error / (ir_sum + 1e-6)
@@ -282,9 +285,34 @@ class MLController(ControllerBase):
 
         heading_drift = gyro_z_rate * (1.0 - line_visible)
 
+        # ir_error_derivative: delta calibrated_error
+        ir_error_derivative = 0.0
+        if self._prev_calibrated_error is not None:
+            ir_error_derivative = calibrated_error - self._prev_calibrated_error
+        self._prev_calibrated_error = calibrated_error
+
+        # ir_error_integral: moyenne glissante sur INTEGRAL_WINDOW pas
+        raw_dim = len(raw_vector)
+        recent_errors = []
+        for vec in list(self._window_buffer)[-(self.INTEGRAL_WINDOW - 1):]:
+            recent_errors.append(vec[raw_dim + 0])  # calibrated_error index
+        recent_errors.append(calibrated_error)
+        ir_error_integral = sum(recent_errors) / len(recent_errors)
+
+        # gyro_z_accel: delta gyro_z_rate
+        gyro_z_accel = 0.0
+        if self._prev_gyro_z_rate is not None:
+            gyro_z_accel = gyro_z_rate - self._prev_gyro_z_rate
+        self._prev_gyro_z_rate = gyro_z_rate
+
+        # lookahead_delta: discordance camera (ligne devant) vs IR (ligne dessous)
+        line_camera_offset = raw_vector[raw_dim - 2] if raw_dim >= 2 else 0.0
+        lookahead_delta = (line_camera_offset - cal_error_norm) * line_visible
+
         engineered = np.array([
             calibrated_error, line_visible, cal_error_norm,
-            gyro_z_rate, heading_drift
+            gyro_z_rate, heading_drift,
+            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
         ], dtype=np.float32)
 
         return np.concatenate([raw_vector, engineered])
@@ -407,6 +435,8 @@ class MLController(ControllerBase):
         self._inference_count = 0
         self._window_buffer.clear()  # Reset la fenetre glissante
         self._prev_gyro_z = None
+        self._prev_calibrated_error = None
+        self._prev_gyro_z_rate = None
         if self._interpreter is None and self.model_path:
             self._load_model()
             self._load_normalization_stats()

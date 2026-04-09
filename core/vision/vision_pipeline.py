@@ -134,6 +134,20 @@ class VisionPipeline:
         """ ajouter un détecteur au pipeline de vision """
         self._passive_detectors.append(detectors)
 
+    def set_passive_detectors(self, detectors):
+        """Remplace la liste des détecteurs passifs (thread-safe).
+
+        Utilisé pour changer dynamiquement les détecteurs selon le mode:
+        - Onglet Contrôle: Line detector seulement
+        - Onglet Vision: Haar classifiers seulement
+        """
+        was_paused = not self._passive_pause_event.is_set()
+        if not was_paused and self._passive_running:
+            self.pause_passive_detection()
+        self._passive_detectors = list(detectors)
+        if not was_paused and self._passive_running:
+            self.resume_passive_detection()
+
     def process_frame(self, frame, detector_index=0, filename=None):
         """ traiter un frame spécifique avec un détecteur spécifique """
 

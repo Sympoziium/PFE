@@ -366,10 +366,10 @@ def run_per_category_metrics(model, stats, data_dir: Path):
 def get_feature_groups(exclude_detection: bool = True) -> dict:
     """Retourne les groupes de features selon que Detection est exclue ou non.
 
-    Avec Detection (34-dim/pas):
-        IR bruts 0-5, IR diff/sum 6-7, Detection 8-15, IMU 16-26, Camera 27-28, Engineered 29-33
-    Sans Detection (26-dim/pas):
-        IR bruts 0-5, IR diff/sum 6-7, IMU 8-18, Camera 19-20, Engineered 21-25
+    Avec Detection (38-dim/pas):
+        IR bruts 0-5, IR diff/sum 6-7, Detection 8-15, IMU 16-26, Camera 27-28, Engineered 29-37
+    Sans Detection (30-dim/pas):
+        IR bruts 0-5, IR diff/sum 6-7, IMU 8-18, Camera 19-20, Engineered 21-29
     """
     if exclude_detection:
         return {
@@ -377,7 +377,7 @@ def get_feature_groups(exclude_detection: bool = True) -> dict:
             'IR diff/sum (6-7)':  list(range(6, 8)),
             'IMU (8-18)':         list(range(8, 19)),
             'Camera (19-20)':     list(range(19, 21)),
-            'Engineered (21-25)': list(range(21, 26)),
+            'Engineered (21-29)': list(range(21, 30)),
         }
     else:
         return {
@@ -386,7 +386,7 @@ def get_feature_groups(exclude_detection: bool = True) -> dict:
             'Detection (8-15)':   list(range(8, 16)),
             'IMU (16-26)':        list(range(16, 27)),
             'Camera (27-28)':     list(range(27, 29)),
-            'Engineered (29-33)': list(range(29, 34)),
+            'Engineered (29-37)': list(range(29, 38)),
         }
 
 # Defaut: detection exclue (coherent avec WINDOW_FEATURE_DIM=26)
