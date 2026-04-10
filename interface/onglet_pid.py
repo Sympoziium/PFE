@@ -321,6 +321,7 @@ def render_pid_tab(title="Asservissement PID"):
                     <button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
                     <button class='primary-btn' data-path="/onglet_control" onclick="navigateTo('/onglet_control')">Contrôle</button>
                     <button class='primary-btn' data-path="/pid" onclick="navigateTo('/pid')">PID</button>
+                    <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>                
                 </div>
             </div>
 
