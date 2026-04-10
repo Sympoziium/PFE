@@ -27,7 +27,7 @@ from pathlib import Path
 from datetime import datetime
 
 
-# Indices des 6 capteurs IR bruts dans le vecteur 29-dim
+# Indices des 6 capteurs IR bruts dans le vecteur brut
 IR_SENSOR_INDICES = [0, 1, 2, 3, 4, 5]
 IR_DIFF_INDEX = 6
 IR_SUM_INDEX = 7

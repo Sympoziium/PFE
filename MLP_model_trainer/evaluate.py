@@ -67,7 +67,7 @@ def load_model_and_stats(checkpoints_dir: Path):
 
 
 def inference(model, vector, stats):
-    """Inference sur un vecteur 680-dim. Applique z-score, passe au modele."""
+    """Inference sur un vecteur windowed (WINDOW_SIZE * WINDOW_FEATURE_DIM dims). Applique z-score, passe au modele."""
     mean = stats['feature_mean']
     std = stats['feature_std'].copy()
     std[std < 1e-6] = 1.0
@@ -80,9 +80,9 @@ def inference(model, vector, stats):
 
 
 def build_windowed_vector(window_buffer):
-    """Construit le vecteur 680-dim a partir du buffer glissant (20 x 34).
+    """Construit le vecteur windowed a partir du buffer glissant (WINDOW_SIZE x WINDOW_FEATURE_DIM).
 
-    Le buffer est un deque(maxlen=WINDOW_SIZE) de vecteurs 34-dim.
+    Le buffer est un deque(maxlen=WINDOW_SIZE) de vecteurs WINDOW_FEATURE_DIM-dim.
     Les positions non encore remplies restent a zero (zero-padding),
     identique au comportement du training pipeline aux frontieres de sequence.
     """
@@ -96,7 +96,7 @@ def build_windowed_vector(window_buffer):
 
 
 def compute_engineered_features(raw_vector, prev_vec34=None, ir_offset=IR_OFFSET_DEFAULT):
-    """Calcule les 5 features PID-inspired a partir d'un vecteur 29-dim -> 34-dim."""
+    """Calcule les 9 features engineered a partir d'un vecteur brut -> +9 dim."""
     ir_bot_r = raw_vector[1]
     ir_bot_l = raw_vector[3]
     ir_sum = (ir_bot_l + ir_bot_r) / 2.0
@@ -389,7 +389,7 @@ def get_feature_groups(exclude_detection: bool = True) -> dict:
             'Engineered (29-37)': list(range(29, 38)),
         }
 
-# Defaut: detection exclue (coherent avec WINDOW_FEATURE_DIM=26)
+# Defaut: detection exclue (coherent avec WINDOW_FEATURE_DIM=30)
 FEATURE_GROUPS = get_feature_groups(exclude_detection=True)
 
 
@@ -441,7 +441,7 @@ def run_permutation_importance(model, stats, data_dir: Path, save_dir: Path = No
     std[std < 1e-6] = 1.0
     dataset.captures = ((dataset.captures - mean) / std).astype(np.float32)
 
-    X = dataset.captures  # (N, 680)
+    X = dataset.captures  # (N, WINDOW_SIZE * WINDOW_FEATURE_DIM)
     Y = dataset.labels     # (N, 2)
 
     # MSE de base
@@ -452,13 +452,13 @@ def run_permutation_importance(model, stats, data_dir: Path, save_dir: Path = No
     mse_base = float(((preds_base - Y) ** 2).mean())
     print(f"\n  MSE de base: {mse_base:.6f}")
 
-    # Pour chaque groupe, calculer les indices dans le vecteur 680-dim
-    # (le groupe couvre les 20 pas de la fenetre)
+    # Pour chaque groupe, calculer les indices dans le vecteur windowed
+    # (le groupe couvre les WINDOW_SIZE pas de la fenetre)
     results = {}
     print(f"\n  {'Groupe':25s} {'Importance':>12s} {'MSE brouille':>14s}")
     print(f"  {'-'*55}")
 
-    step_dim = WINDOW_FEATURE_DIM  # 26 si detection exclue, 34 sinon
+    step_dim = WINDOW_FEATURE_DIM  # 30 si detection exclue, 38 sinon
 
     for group_name, step_indices in feature_groups.items():
         # Indices dans le vecteur plat: pour chaque pas w, offset = w * step_dim + idx

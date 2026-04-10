@@ -26,8 +26,8 @@ class MLController(ControllerBase):
     MOTOR_SPEED_MAX = 50.0
 
     # Constantes de feature engineering (defauts, ecrasees par normalization_stats.json)
-    IR_OFFSET_BOTTOM = -17.0
-    GAP_THRESHOLD = 195.0
+    IR_OFFSET_BOTTOM = 8.8       # Mesuré via Sensor Profiler (zumi_1, 2026-03-28)
+    GAP_THRESHOLD = 210.8        # Seuil IR pour ligne visible (idem)
 
     # Fenetre glissante (defauts, ecrases par normalization_stats.json)
     WINDOW_SIZE = 25           # Nombre de pas dans la fenetre (1.25s a 20Hz)
@@ -52,8 +52,6 @@ class MLController(ControllerBase):
         # Normalisation z-score (chargees depuis normalization_stats.json)
         self._feature_mean = None
         self._feature_std = None
-        self._feature_version = 1  # 1=ancien (2 features), 2=PID-inspired (5 features)
-
         # Buffer circulaire pour la fenetre glissante
         self._window_buffer = collections.deque(maxlen=self.WINDOW_SIZE)
         self._prev_gyro_z = None  # Pour le calcul du gyro_z_rate
@@ -100,11 +98,6 @@ class MLController(ControllerBase):
                 self._interpreter = tf.lite.Interpreter(
                     model_path=self.model_path
                 )
-                # Appliquer num_threads pour TensorFlow
-                try:
-                    self._interpreter._load_delegate(None)
-                except Exception:
-                    pass
 
             self._interpreter.allocate_tensors()
             self._input_details = self._interpreter.get_input_details()
@@ -179,17 +172,13 @@ class MLController(ControllerBase):
             self._feature_std[self._feature_std < 1e-6] = 1.0
 
             # Charger les constantes de feature engineering
-            self._feature_version = stats.get('feature_version', 1)
-            if self._feature_version >= 2:
-                self.IR_OFFSET_BOTTOM = stats.get('ir_offset_bottom', -17.0)
-                self.GAP_THRESHOLD = stats.get('gap_threshold', 195.0)
-                print(f"[MLController] Feature v2: ir_offset={self.IR_OFFSET_BOTTOM:.1f}, "
-                      f"gap={self.GAP_THRESHOLD}")
+            self.IR_OFFSET_BOTTOM = stats.get('ir_offset_bottom', self.IR_OFFSET_BOTTOM)
+            self.GAP_THRESHOLD = stats.get('gap_threshold', self.GAP_THRESHOLD)
 
             # Charger les parametres de la fenetre glissante
-            self.WINDOW_SIZE = stats.get('window_size', 25)
-            self.WINDOW_FEATURE_DIM = stats.get('window_feature_dim', 26)
-            self.TEMPORAL_DECAY = stats.get('temporal_decay', 0.95)
+            self.WINDOW_SIZE = stats.get('window_size', self.WINDOW_SIZE)
+            self.WINDOW_FEATURE_DIM = stats.get('window_feature_dim', self.WINDOW_FEATURE_DIM)
+            self.TEMPORAL_DECAY = stats.get('temporal_decay', self.TEMPORAL_DECAY)
             # Reinitialiser le buffer avec la bonne taille
             self._window_buffer = collections.deque(maxlen=self.WINDOW_SIZE)
 
@@ -207,16 +196,15 @@ class MLController(ControllerBase):
                 self._decay_weights = None
 
             print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features "
-                  f"(version={self._feature_version}, "
-                  f"fenetre={self.WINDOW_SIZE}x{self.WINDOW_FEATURE_DIM}, "
+                  f"(fenetre={self.WINDOW_SIZE}x{self.WINDOW_FEATURE_DIM}, "
                   f"decay={self.TEMPORAL_DECAY}, "
+                  f"ir_offset={self.IR_OFFSET_BOTTOM:.1f}, "
                   f"exclude_det={self._exclude_detection})")
 
         except Exception as e:
             print(f"[MLController] Erreur chargement normalization_stats: {e}")
             self._feature_mean = None
             self._feature_std = None
-            self._feature_mask = None
 
     def _apply_zscore(self, vector: np.ndarray) -> np.ndarray:
         """Applique la normalisation z-score au vecteur d'état.
@@ -481,8 +469,8 @@ class MLController(ControllerBase):
             expected_dim = self._input_details[0]['shape'][1]
             print(f"[MLController] Demarré: {self.model_path}")
             print(f"[MLController] TFLite input: {expected_dim}-dim, "
-                  f"feature_version={self._feature_version}, "
                   f"fenetre={self.WINDOW_SIZE}x{self.WINDOW_FEATURE_DIM}, "
+                  f"decay={self.TEMPORAL_DECAY}, "
                   f"ir_offset={self.IR_OFFSET_BOTTOM:.1f}")
         else:
             print("[MLController] Démarré SANS modèle (commandes = 0)")

@@ -658,8 +658,8 @@ def _count_params(input_dim, hidden_dims, output_dim=2):
 def suggest_training_profile(dataset) -> dict:
     """Analyse le dataset et propose un profil d'entrainement adapte a la fenetre glissante.
 
-    Calcule les hidden_dims pour maintenir un ratio samples/params >= 2.5.
-    L'entree effective est (raw_active + engineered) * WINDOW_SIZE (~680 dims).
+    Calcule les hidden_dims pour maintenir un ratio samples/params >= 5.
+    L'entree effective est (raw_active + engineered) * WINDOW_SIZE (~750 dims).
     Avertit quand le dataset est insuffisant et suggere l'augmentation.
     """
     n_samples = len(dataset)

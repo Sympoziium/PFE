@@ -140,7 +140,7 @@ def analyze_dataset(captures, labels, save_dir=None, sequence_ids=None):
         "imu_rot_y",            # 24
         "imu_rot_z",            # 25
         "imu_tilt_state",       # 26
-        # 5 engineered features (indices 27-31)
+        # First 5 of 9 engineered features (indices 27-31)
         "calibrated_error",     # 27
         "line_visible",         # 28
         "cal_error_norm",       # 29
@@ -156,7 +156,7 @@ def analyze_dataset(captures, labels, save_dir=None, sequence_ids=None):
         for _src in _delta_source_names:
             feature_names.append(f"d{_step}_{_src}")  # 32..76
 
-    # Support des anciens datasets 27-dim (sans deltas)
+    # Support des anciens datasets (sans all engineered features)
     for i in range(captures.shape[1]):
         feature_data = captures[:, i]
         name = feature_names[i] if i < len(feature_names) else f"feature_{i}"

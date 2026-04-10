@@ -4,11 +4,11 @@
 Modèle MLP pour le contrôle du robot Zumi.
 
 Architecture configurable pour l'apprentissage par imitation:
-- Entrée: vecteur d'état normalisé (fenêtre glissante, typiquement 650 dimensions)
+- Entrée: vecteur d'état normalisé (fenêtre glissante, typiquement 750 dimensions)
 - Sortie: commandes moteur normalisées [left, right] dans [-1, 1]
 - Les couches cachées sont configurées dynamiquement par le profil adaptatif
   ou manuellement via le mode custom.
-- BatchNorm optionnel entre Linear et ReLU pour une convergence plus rapide.
+- BatchNorm optionnel entre Linear et GELU pour une convergence plus rapide.
 """
 
 import copy
@@ -21,7 +21,7 @@ class ZumiMLP(nn.Module):
     """Réseau de neurones MLP pour le contrôle du robot Zumi.
 
     Architecture:
-        Input -> [FC -> BN -> ReLU -> Dropout] x N -> FC -> Tanh -> Output
+        Input -> [FC -> BN -> GELU -> Dropout] x N -> FC -> Tanh -> Output
 
     La couche de sortie utilise Tanh pour garantir des sorties dans [-1, 1],
     ce qui correspond directement aux commandes moteur normalisées.
@@ -43,7 +43,7 @@ class ZumiMLP(nn.Module):
             output_dim: Dimension de sortie (2 = vitesses gauche/droite)
             hidden_dims: Liste des dimensions des couches cachées
             dropout: Taux de dropout pour régularisation
-            use_batchnorm: Utiliser BatchNorm entre Linear et ReLU
+            use_batchnorm: Utiliser BatchNorm entre Linear et GELU
         """
         super().__init__()
 
@@ -183,7 +183,7 @@ class ZumiMLP(nn.Module):
                     src_idx += 1
                     dst_idx += 1
             else:
-                # ReLU, Dropout, Tanh — avancer dans les deux
+                # GELU, Dropout, Tanh — avancer dans les deux
                 src_idx += 1
                 if dst_idx < len(dst_modules) and type(src_layer) == type(dst_modules[dst_idx]):
                     dst_idx += 1

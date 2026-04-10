@@ -545,7 +545,7 @@ class IRSensorModel:
     def read_imu(self, robot, dt):
         """Genere des valeurs IMU simulees.
 
-        Mapping vers le vecteur 27-dim (indices 16-26):
+        Mapping vers le vecteur brut 29-dim (indices 16-26):
           [16] gyro_x: vitesse angulaire X (faible, bruit)
           [17] gyro_y: vitesse angulaire Y (faible, bruit)
           [18] gyro_z: vitesse angulaire Z = omega en deg/s (SIGNAL CLE pour le modele)
@@ -871,17 +871,17 @@ def compute_engineered(vec_raw, prev_vec=None, ir_offset=IR_OFFSET_DEFAULT, wind
 
 
 def build_windowed_vector(window_buffer):
-    """Construit le vecteur 680-dim a partir du buffer glissant (20 x 34).
+    """Construit le vecteur windowed a partir du buffer glissant (WINDOW_SIZE x WINDOW_FEATURE_DIM).
 
-    Le buffer est un deque(maxlen=WINDOW_SIZE) de vecteurs 34-dim.
+    Le buffer est un deque(maxlen=WINDOW_SIZE) de vecteurs WINDOW_FEATURE_DIM-dim.
     Les positions non encore remplies restent a zero (zero-padding),
     identique au comportement du training pipeline aux frontieres de sequence.
 
     Args:
-        window_buffer: collections.deque de np.arrays 26-dim, maxlen=WINDOW_SIZE
+        window_buffer: collections.deque de np.arrays WINDOW_FEATURE_DIM-dim, maxlen=WINDOW_SIZE
 
     Returns:
-        np.array de shape (WINDOW_SIZE * WINDOW_FEATURE_DIM,) = (650,)
+        np.array de shape (WINDOW_SIZE * WINDOW_FEATURE_DIM,)
     """
     flat = np.zeros(WINDOW_SIZE * WINDOW_FEATURE_DIM, dtype=np.float32)
     n = len(window_buffer)

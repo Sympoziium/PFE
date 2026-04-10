@@ -63,6 +63,49 @@ conservateur pour 2.6M+ echantillons.
 
 ---
 
+## [Non publie] — Debug boucle fermee, cleanup legacy et rapport (2026-04-10)
+
+### Contexte
+Le deploiement du modele 750-dim a revele un probleme de dimension (le modele deploye etait encore
+en 650-dim). Une fois corrige, le modele s'est avere fonctionnel en boucle fermee — premier modele
+a reagir correctement aux lignes sur le robot physique. Le split des detecteurs passifs a eu une
+consequence inattendue : la detection de ligne se fait maintenant a chaque frame (plus d'interdecoupage
+avec Haar), rendant le `line_offset` beaucoup plus stable et continu.
+
+### Added
+- **Debug logging MLController** (`ml_controller.py`, `control_manager.py`, `server_controller.py`,
+  `flask_router.py`, `onglet_control.py`): instrumentation complete du controleur ML.
+  - Timing d'inference (ms par tick)
+  - Features intermediaires (calibrated_error, gyro_z_rate, lookahead_delta, etc.)
+  - Sortie modele + delta entre ticks consecutifs
+  - Suivi des overrides WASD dans le log (distingues des ticks ML)
+  - Bouton toggle dans l'UI de controle (route `/controller/debug/toggle`)
+  - Resume console a l'arret + sauvegarde `debug_log.json`
+  - Alerte automatique si `output_delta` proche de zero (modele qui ne reagit pas)
+
+### Changed
+- **Validation IMU** (`vision_adapter.py`): les angles cumulatifs (gyro_x/y/z, rot_x/y/z) ne sont
+  plus valides contre la plage [-360, 360] — ils s'accumulent naturellement au-dela apres quelques
+  tours de circuit. Seuls les angles non-cumulatifs (acc_x/y, comp_x/y) sont valides.
+- **Temporal decay** (`dataset.py`): 0.95 -> 0.85 pour prioriser davantage le present par rapport
+  a l'historique dans la fenetre glissante.
+
+### Removed (cleanup legacy)
+- **Concept `feature_version`** (`ml_controller.py`): le systeme de versionnement des features
+  (v1=2 features, v2=5 features) est retire. Les constantes IR_OFFSET_BOTTOM et GAP_THRESHOLD
+  sont maintenant chargees inconditionnellement depuis `normalization_stats.json`.
+- **Delegate fallback mort** (`ml_controller.py`): `_interpreter._load_delegate(None)` dans un
+  try/except qui ne faisait rien — retire.
+- **`_feature_mask` orphelin** (`ml_controller.py`): variable referencee dans le gestionnaire
+  d'erreur mais jamais definie — retiree.
+- **Defaults stale** (`ml_controller.py`): `IR_OFFSET_BOTTOM=-17.0` et `GAP_THRESHOLD=195.0`
+  remplaces par les valeurs mesurees (8.8 et 210.8). Les fallbacks dans `_load_normalization_stats()`
+  utilisent maintenant les valeurs de classe au lieu de valeurs hardcodees differentes.
+- **Commentaires stale**: mise a jour des docstrings dans tous les fichiers du module
+  (dimensions 26->30, 650->750, 5->9 features, ReLU->GELU, Huber->RangeAwareLoss).
+
+---
+
 ## [Non publie] — Migration simulateur + refonte evaluations (2026-04-04)
 
 ### Contexte

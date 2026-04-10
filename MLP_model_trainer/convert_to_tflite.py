@@ -49,7 +49,7 @@ def load_pytorch_model(model_path: Path) -> tuple:
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
-    # Fusionner BatchNorm pour export (le modele TF ne contient que Dense+ReLU)
+    # Fusionner BatchNorm pour export (le modele TF ne contient que Dense+GELU)
     if use_batchnorm:
         print(f"[Load] BatchNorm detecte, fusion dans les couches Linear...")
         model = model.fuse_batchnorm()

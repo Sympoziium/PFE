@@ -149,7 +149,7 @@ class ZumiControlDataset(Dataset):
     """Dataset pour l'apprentissage par imitation du contrôle Zumi.
 
     Format des données:
-        - captures.jsonl: vecteurs d'état (dim = 29)
+        - captures.jsonl: vecteurs d'état bruts (dim = 29, ou 21 si detection exclue)
         - labels.jsonl: commandes moteur normalisées [left, right] dans [-1, 1]
         - sequence_ids.jsonl: ID de séquence par échantillon (généré par aggregate_sequences.py)
     """
