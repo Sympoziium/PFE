@@ -235,9 +235,12 @@ class VisionAdapter:
     def validate_imu(self, state: np.ndarray) -> bool:
         imu_start = 13 + len(self.classes)
         imu_values = state[imu_start : imu_start + IMU_DIM]
-        # Les angles IMU sont en degrés bruts, plage raisonnable [-360, 360]
-        if np.any(np.abs(imu_values[:10]) > 360.0):
-            print("[VisionAdapter] Valeurs IMU hors plage (>360 deg) : {}".format(imu_values))
+        # Indices non-cumulatifs: acc_x(3), acc_y(4), comp_x(5), comp_y(6)
+        # Les angles cumulatifs (gyro_x/y/z, rot_x/y/z) peuvent depasser 360 deg
+        non_cumulative = [3, 4, 5, 6]
+        if np.any(np.abs(imu_values[non_cumulative]) > 360.0):
+            print("[VisionAdapter] Valeurs IMU hors plage (>360 deg) : {}".format(
+                imu_values[non_cumulative]))
             return False
         # tilt_state: -1 à 7
         if imu_values[10] < -2.0 or imu_values[10] > 8.0:
