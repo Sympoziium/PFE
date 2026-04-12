@@ -29,6 +29,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+# Fix "Too many open files" sur les serveurs Linux avec beaucoup de workers
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 from dataset import ZumiControlDataset, create_data_loaders
 from model import ZumiMLP
 
@@ -787,7 +790,7 @@ def choose_training_profile(dataset=None) -> dict:
             print(f"    {w}")
 
         # Tableau des architectures possibles
-        print(f"\n  Architectures possibles (ratio cible >= {2.5}:1) :")
+        print(f"\n  Architectures possibles (ratio cible >= {5}:1) :")
         for line in arch_table:
             print(line)
 

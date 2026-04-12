@@ -270,19 +270,21 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
     history_path = output_dir / "split_history.json"
     known_train = set()
     known_val = set()
-    if history_path.exists():
+    load_split_history = input("Charger l'historique de split ? (y/n): ").lower() == 'y'  # A activer pour conserver les splits entre runs (utile pour augmentation)
+    
+    if history_path.exists() and load_split_history:
         with open(history_path, 'r') as f:
             history = json.load(f)
         known_train = set(history.get('train_sequences', []))
         known_val = set(history.get('val_sequences', []))
         if verbose:
-            print(f"[SPLIT] Historique charge: {len(known_train)} train, {len(known_val)} val")
+            print(f"[SPLIT] Historique chargé: {len(known_train)} train, {len(known_val)} val")
 
     train_seqs = [s for s in unique_seqs if s in known_train]
     val_seqs = [s for s in unique_seqs if s in known_val]
     new_seqs = [s for s in unique_seqs if s not in known_train and s not in known_val]
 
-    # Repartir les nouvelles sequences (80/20)
+    # Repartir les nouvelles sequences (85/15)
     if new_seqs:
         rng = __import__('random')
         rng.seed(42)
@@ -295,7 +297,7 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
 
         train_n = sum(seq_sample_counts.get(s, 0) for s in train_seqs)
         total_n = len(global_seq_ids)
-        target_train = int(total_n * 0.8)
+        target_train = int(total_n * 0.85)
 
         for sid in new_seqs:
             if train_n < target_train:
