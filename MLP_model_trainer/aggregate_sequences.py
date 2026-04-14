@@ -9,11 +9,11 @@ séquences sampling_* organisés par scénario.
 Structure de répertoires supportée:
     sequences/
       baseline/
-        sampling_01/ -> captures.jsonl, labels.jsonl
-        sampling_02/
+        sampling 01/ -> captures.jsonl, labels.jsonl
+        sampling 02/
         ...
       pieton/
-        sampling_01/
+        sampling 01/
         ...
       ...
 
