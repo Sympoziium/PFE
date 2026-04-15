@@ -8,28 +8,28 @@
 # choix de scénarios et les boutons de contrôle du pont levis.
 
 def render_accueil_tab(title: str = "Accueil") -> str:
-    """Retourne la page HTML complète de l'onglet d'accueil."""
-    
-    html = """<!DOCTYPE html><html lang='fr'>
-    <head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <title>{title}</title>
-    <link rel='icon' href='data:,'>
-    <style>
+	"""Retourne la page HTML complète de l'onglet d'accueil."""
+
+	html = """<!DOCTYPE html><html lang='fr'>
+	<head>
+	<meta charset='UTF-8'>
+	<meta name='viewport' content='width=device-width, initial-scale=1'>
+	<title>{title}</title>
+	<link rel='icon' href='data:,'>
+	<style>
     body {
         margin: 0; padding: 0;
-        width: 100vw; height: 100vh;
+        width: 100vw; min-height: 100vh;
         font-family: 'Segoe UI', Arial, sans-serif;
         /* Ton background préféré rose et bleu pastel */
         background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
         color: #333; display: flex; flex-direction: column;
-        overflow: hidden;
+        overflow-y: auto;
     }
 
     .container {
         display: flex; justify-content: center; align-items: flex-start;
-        padding: 2vh; height: 96vh;
+        padding: 2vh; min-height: 96vh;
     }
 
     .tab-shell {
@@ -40,7 +40,8 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         box-shadow: 0 8px 20px rgba(0,0,0,0.08);
         width: 90%; 
         max-width: 1100px;
-        height: 85%;
+        min-height: fit-content;
+        margin-bottom: 4vh;
         display: flex;
         flex-direction: column;
     }
@@ -63,11 +64,9 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         border: 3px dashed #B5FFFC;
         border-radius: 15px;
         padding: 3%;
-        flex-grow: 1;
         background: #FFFDF0; 
         display: flex;
         gap: 3%;
-        overflow-y: auto;
     }
 
     .left-panel, .right-panel {
@@ -75,6 +74,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         display: flex;
         flex-direction: column;
         align-items: center;
+        width: 0; /* force flex child to respect flex:1 without overflow */
     }
     
         #log-box {
@@ -203,18 +203,83 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     /* --- Live Feed --- */
 
     .live-feed {
-        display: none; 
-        width: 90%; 
-        margin-top: 2vh; 
-        padding: 10px; 
+        display: none;
+        width: 92%;
+        margin-top: 2vh;
+        padding: 10px;
         background: white;
-        border-radius: 20px; 
+        border-radius: 20px;
         border: 4px solid #B5FFFC;
-        text-align: center; 
+        text-align: center;
+        box-sizing: border-box;
     }
 
     .live-feed img {
         width: 100%; border-radius: 10px;
+        display: block;
+    }
+
+    /* --- QR Code popover --- */
+    .qr-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+        margin-right: 20px; /* gap plus grand que les 8px entre boutons */
+    }
+
+    .qr-icon-btn {
+        background: rgba(247, 253, 255, 0.9);
+        border: 2px solid #B5FFFC;
+        border-radius: 12px;
+        width: 42px; height: 42px;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 0 #9be8e4;
+        transition: transform 0.15s;
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .qr-icon-btn:hover { transform: translateY(-2px); }
+    .qr-icon-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #9be8e4; }
+
+    .qr-popover {
+        display: none;
+        position: absolute;
+        top: calc(100% + 10px);
+        left: 0;
+        background: rgba(247, 253, 255, 0.98);
+        border: 2px solid #B5FFFC;
+        border-radius: 16px;
+        padding: 14px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        z-index: 100;
+        text-align: center;
+        width: 180px;
+    }
+
+    .qr-popover.visible { display: block; }
+
+    .qr-popover p {
+        margin: 8px 0 0 0;
+        font-size: 12px;
+        color: #888;
+        line-height: 1.4;
+    }
+
+    #qrCanvas, #qrCanvas img, #qrCanvas canvas {
+        display: block;
+        margin: 0 auto;
+    }
+
+    /* Petite flèche vers le haut, alignée sur l'icône */
+    .qr-popover::before {
+        content: '';
+        position: absolute;
+        top: -8px; left: 13px;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-bottom: 8px solid #B5FFFC;
     }
     </style>
 
@@ -227,6 +292,14 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                 <h2 class='tab-title'>{title}</h2>
                 <div class='tab-nav'>
                 <!-- Boutons de navigation entre onglets -->
+                <!-- QR Code popover — dans le tab-nav, avant le premier bouton -->
+                <div class='qr-wrapper' id='qrWrapper'>
+                    <button class='qr-icon-btn' id='qrIconBtn' title='Scanner pour se connecter'>&#x1F4F1;</button>
+                    <div class='qr-popover' id='qrPopover'>
+                        <div id='qrCanvas'></div>
+                        <p>Scanner pour<br>ouvrir l'interface</p>
+                    </div>
+                </div>
                 <button class='primary-btn' data-path="/">Accueil</button>
                 <button class='primary-btn' data-path="/vision">Vision</button>
         		<button class='primary-btn' data-path="/onglet_control">Contrôle</button>
@@ -274,25 +347,48 @@ def render_accueil_tab(title: str = "Accueil") -> str:
                             </button>
                         </div>
                     </div>
-                    <hr style="width:100%; margin: 20px 0; border: 1px solid #ccc;">
+                    <div class='driving-mode' style='margin-top: 20px;'>
+                        <h3 style='margin: 0 0 16px 0;'>🌉 Pont Levis</h3>
 
-                    <h3>🌉 Pont Levis</h3>
+                        <!-- Grille 2x2 : [Toggle Auto | Bouton pont] / [Feu Vert | Feu Rouge] -->
+                        <div style='display:grid; grid-template-columns:1fr 1fr; gap:10px; width:100%;'>
 
-                    <div style="margin-bottom:15px; display:flex; align-items:center; gap:10px;">
-                        <span style="font-weight:bold;">Mode Auto:</span>
-                        <label class="switch">
-                        <input type="checkbox" id="autoCheck" checked>
-                        <span class="slider round"></span>
-                        </label>
-                    </div>
+                            <!-- Ligne 1 col 1 : Toggle Mode Auto -->
+                            <div style='display:flex; align-items:center; justify-content:center; gap:8px;
+                                        background:rgba(247,253,255,0.6); border-radius:12px; padding:10px;
+                                        border:2px solid #B5FFFC;'>
+                                <span style='font-weight:bold; color:#555; font-size:0.9rem; white-space:nowrap;'>Mode Auto</span>
+                                <div id='autoToggle' onclick='toggleAuto(!autoIsOn)' style='
+                                    width:52px; height:28px; border-radius:14px; flex-shrink:0;
+                                    background:#A8E6CF; cursor:pointer; position:relative;
+                                    box-shadow:0 3px 0 #74C69D; transition:background 0.2s;'>
+                                    <div id='autoToggleThumb' style='
+                                        position:absolute; top:4px; left:28px;
+                                        width:20px; height:20px; border-radius:50%;
+                                        background:white; box-shadow:0 2px 4px rgba(0,0,0,0.2);
+                                        transition:left 0.2s;'></div>
+                                </div>
+                                <span id='autoToggleLabel' style='font-size:0.9rem; color:#2d6a4f; font-weight:bold;'>ON</span>
+                                <input type='checkbox' id='autoCheck' checked style='display:none;'>
+                            </div>
 
-                    <div style="margin-bottom:10px;">
-                        <button class='command-button btn-green' onclick="fetch('/bridge/green', {method:'POST'})">Feu Vert</button>
-                        <button class='command-button btn-red' onclick="fetch('/bridge/red', {method:'POST'})">Feu Rouge</button>
-                    </div>
-                    <div>
-                        <button id="btnOpen" class='command-button btn-blue disabled' onclick="fetch('/bridge/open', {method:'POST'})">Ouvrir ⬆️</button>
-                        <button id="btnClose" class='command-button btn-blue disabled' onclick="fetch('/bridge/close', {method:'POST'})">Fermer ⬇️</button>
+                            <!-- Ligne 1 col 2 : Bouton pont -->
+                            <button class='toggle-btn' id='bridgeToggleBtn' onclick='toggleBridge()'
+                                    style='width:100%; white-space:nowrap;'>
+                                🌉 Ouvrir le pont
+                            </button>
+
+                            <!-- Ligne 2 col 1 : Feu Vert -->
+                            <button class='primary-btn' style='background:#A8E6CF; color:#2d6a4f;
+                                box-shadow:0 4px 0 #74C69D; white-space:nowrap;'
+                                onclick="fetch('/bridge/green', {method:'POST'})">🟢 Feu Vert</button>
+
+                            <!-- Ligne 2 col 2 : Feu Rouge -->
+                            <button class='primary-btn' style='background:#F4A0A0; color:#7a1f1f;
+                                box-shadow:0 4px 0 #d97070; white-space:nowrap;'
+                                onclick="fetch('/bridge/red', {method:'POST'})">🔴 Feu Rouge</button>
+
+                        </div>
                     </div>
                 </div>    
             </div>
@@ -366,21 +462,58 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         }
     }
 
-    // --- MODE AUTO ET GESTION UI ---
+    // --- MODE AUTO, PONT LEVIS ET GESTION UI ---
+    var autoIsOn = true;   // mode auto ON par defaut
+    var bridgeIsOpen = false; // pont ferme par defaut
+
     function toggleAuto(isAuto) {
+        autoIsOn = isAuto;
         var val = isAuto ? '1' : '0';
         fetch('/bridge/mode_auto/' + val, { method: 'POST' })
-            .then(function() { console.log('Mode auto changé: ' + val); })
             .catch(function(err) { console.error('toggleAuto error:', err); });
 
-        var btnOpen = document.getElementById('btnOpen');
-        var btnClose = document.getElementById('btnClose');
+        // Mise a jour du toggle visuel
+        var track = document.getElementById('autoToggle');
+        var thumb = document.getElementById('autoToggleThumb');
+        var label = document.getElementById('autoToggleLabel');
+        var check = document.getElementById('autoCheck');
         if (isAuto) {
-            btnOpen.classList.add('disabled');
-            btnClose.classList.add('disabled');
+            track.style.background = '#A8E6CF';
+            track.style.boxShadow = '0 3px 0 #74C69D';
+            thumb.style.left = '28px';
+            label.textContent = 'ON';
+            label.style.color = '#2d6a4f';
+            check.checked = true;
         } else {
-            btnOpen.classList.remove('disabled');
-            btnClose.classList.remove('disabled');
+            track.style.background = '#F4A0A0';
+            track.style.boxShadow = '0 3px 0 #d97070';
+            thumb.style.left = '4px';
+            label.textContent = 'OFF';
+            label.style.color = '#7a1f1f';
+            check.checked = false;
+        }
+
+        // Activer/desactiver le bouton pont manuel
+        var btn = document.getElementById('bridgeToggleBtn');
+        if (btn) {
+            btn.style.opacity = isAuto ? '0.4' : '1';
+            btn.style.cursor  = isAuto ? 'not-allowed' : 'pointer';
+        }
+    }
+
+    function toggleBridge() {
+        if (autoIsOn) return; // bloque si mode auto actif
+        var btn = document.getElementById('bridgeToggleBtn');
+        if (bridgeIsOpen) {
+            // Fermer le pont
+            fetch('/bridge/close', { method: 'POST' });
+            bridgeIsOpen = false;
+            btn.textContent = '🌉 Ouvrir le pont';
+        } else {
+            // Ouvrir le pont
+            fetch('/bridge/open', { method: 'POST' });
+            bridgeIsOpen = true;
+            btn.textContent = '🌉 Fermer le pont';
         }
     }
         
@@ -496,6 +629,51 @@ def render_accueil_tab(title: str = "Accueil") -> str:
         if (centerBtn) centerBtn.addEventListener('click', stopMove);
     });
 
+    // --- QR Code ---
+    (function() {
+        var btn = document.getElementById('qrIconBtn');
+        var popover = document.getElementById('qrPopover');
+        var generated = false;
+
+        function generateQR() {
+            if (generated) return;
+            generated = true;
+            var url = window.location.origin + '/';
+            var script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+            script.onload = function() {
+                new QRCode(document.getElementById('qrCanvas'), {
+                    text: url,
+                    width: 148,
+                    height: 148,
+                    colorDark: '#5A99C7',
+                    colorLight: '#FFFDF0',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            };
+            document.head.appendChild(script);
+        }
+
+        // Survol souris
+        btn.addEventListener('mouseenter', function() {
+            generateQR();
+            popover.classList.add('visible');
+        });
+        document.getElementById('qrWrapper').addEventListener('mouseleave', function() {
+            popover.classList.remove('visible');
+        });
+
+        // Clic (mobile / toggle)
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            generateQR();
+            popover.classList.toggle('visible');
+        });
+        document.addEventListener('click', function() {
+            popover.classList.remove('visible');
+        });
+    })();
+
     // Exposer les fonctions au scope global (pour les onclick inline restants)
     window.navigateTo = navigateTo;
     window.toggleCamera = toggleCamera;
@@ -506,5 +684,4 @@ def render_accueil_tab(title: str = "Accueil") -> str:
     </script>
     </body></html>
     """
-
-    return html.replace("{title}", title)
+	return html.replace("{title}", title)

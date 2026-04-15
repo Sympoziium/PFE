@@ -27,106 +27,99 @@ def render_template_tab(title: str = "Onglet générique") -> str:
     <style>
     body {
         margin: 0; padding: 0;
-        width: 100vw; height: 100vh;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(135deg, #40E0D0, #00BFFF);
+        width: 100vw; min-height: 100vh;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
         color: #333; display: flex; flex-direction: column;
+        overflow-y: auto;
     }
 
-    /* --- Déclarations des différents styles de conteneurs --- */
-
-    /* Container principal des éléments de l'onglet */
     .container {
         display: flex; justify-content: center; align-items: flex-start;
-        padding: 20px; height: calc(100vh - 40px);
+        padding: 2vh; min-height: 96vh;
     }
 
-    /* Shell de l'onglet avec fond blanc et ombre */
     .tab-shell {
-        background: rgba(255,255,255,0.92);
-        border-radius: 16px;
-        padding: 18px;
-        box-shadow: 0 0 15px rgba(0,0,0,0.12);
-        width: min(980px, 100%);
+        background: rgba(247, 253, 255, 0.95);
+        border-radius: 20px;
+        padding: 2%;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        width: 92%; max-width: 1100px;
+        min-height: fit-content; margin-bottom: 4vh;
+        display: flex; flex-direction: column;
     }
 
-    /* Boite d'entête */
     .tab-header {
         display: flex; align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 2vh;
+        padding-bottom: 1vh;
+        border-bottom: 2px solid #e0f4ff;
     }
 
-    /* Boite de boutons de navigation entre onglets */
     .tab-nav {
         display: flex; align-items: center;
-        gap: 4px;
-        margin-left: auto; /* pousse la nav à droite */
+        gap: 8px;
+        margin-left: auto;
     }
 
-    /* Boite de contenu, contour pointillé */
     .tab-content {
-        border: 2px dashed #bcdffb;
-        border-radius: 12px;
-        padding: 16px;
-        min-height: 200px;
-        background: #f7fbff;
+        border: 3px dashed #B5FFFC;
+        border-radius: 15px;
+        padding: 3%;
+        background: #FFFDF0;
+        margin-bottom: 16px;
     }
 
-    /* Ligne horizontale pour agencer des éléments */
     .tab-row {
-        display: flex; align-items: flex-start; gap: 12px;
+        display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
     }
 
-    /* --- Styles pour les différents types de texte --- */
-    
-    /* Boite de texte format titre */
     .tab-title {
-        font-size: 22px; font-weight: bold; margin: 0;
+        font-size: 1.8rem; font-weight: bold; color: #5A99C7; margin: 0;
     }
 
-    /* Boite de texte format sous-titre */
     .tab-subtitle {
-        font-size: 18px; font-weight: bold; margin: 0;
+        font-size: 1.3rem; font-weight: bold; color: #666; margin-bottom: 15px; margin-top: 0;
     }
 
-    /* Boite de texte format texte normal */
     .tab-text {
-        font-size: 16px; font-weight: normal; margin: 0;
+        font-size: 1.1rem; color: #444;
     }
 
-    /* --- Déclarations des différents styles de widgets --- */
-
-    /* style bouton cliquable principal */
     .primary-btn {
-        background: #007acc; color: white; border: none;
-        padding: 10px 18px; border-radius: 10px;
-        cursor: pointer; font-size: 15px;
+        background: #87C7F1; color: white; border: none;
+        padding: 12px 20px; border-radius: 12px;
+        cursor: pointer; font-size: 1rem; font-weight: bold;
+        transition: transform 0.2s, background 0.2s;
+        box-shadow: 0 4px 0 #6BAED6;
     }
 
-    .primary-btn:hover { background: #005fa3; }
+    .primary-btn:hover {
+        background: #76B9E4;
+        transform: translateY(-2px);
+    }
 
-    /* état actif pour le bouton d'onglet courant */
+    .primary-btn:active {
+        transform: translateY(2px);
+        box-shadow: 0 2px 0 #6BAED6;
+    }
+
     .primary-btn.active {
-        background: #00528a;
-        box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
+        background: #5A99C7;
+        box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
     }
 
-    /* style bouton toggle */
     .toggle-btn {
-        background: #007acc; 
-        color: white; 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 10px; 
-        cursor: pointer; 
-        margin-top: 15px; 
-        font-size: 15px;
+        background: #FFB7D5; color: white; border: none;
+        padding: 12px 24px; border-radius: 12px;
+        cursor: pointer; font-weight: bold; font-size: 1rem;
+        box-shadow: 0 4px 0 #E896B9;
+        transition: transform 0.2s, background 0.2s;
     }
 
-    .toggle-btn:hover { background: #005fa3; } 
+    .toggle-btn:hover { background: #FFA3C8; transform: translateY(-2px); }
+    .toggle-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #E896B9; }
 
-    /* --- Arrangements des éléments de l'interface --- */
-    
     </style>
     </head>
     <body>
@@ -135,42 +128,32 @@ def render_template_tab(title: str = "Onglet générique") -> str:
             <div class='tab-header'>
                 <h2 class='tab-title'>{title}</h2>
                 <div class='tab-nav'>
-                <!-- Boutons de navigation entre onglets -->
-                <button class='primary-btn' data-path="/" onclick="location.href='/'">Accueil</button>
-                <button class='primary-btn' data-path="/vision" onclick="location.href='/vision'">Vision</button>
-                <button class='primary-btn' data-path="/onglet_template" onclick="location.href='/onglet_template'">Template</button>
-                <button class='primary-btn' data-path="/pid" onclick="location.href='/pid'">PID</button>
-                </div>
+                <button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
+                <button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
+                <button class='primary-btn' data-path="/pid" onclick="navigateTo('/pid')">PID</button>
+                                </div>
             </div>
 
             <div class='tab-content'>
                 <!-- AJOUTER VOS BOUTONS ICI -->
-                <!-- Exemple :
-                <button class='primary-btn' onclick="fetch('/start_camera', {{method:'POST'}})">Start Camera</button>
-                <button class='primary-btn' onclick="fetch('/capture_image', {{method:'POST'}})">Capture</button>
-                <div id='zone-resultats'></div>
-                -->
             </div>
         </div>
     </div>
 
-    <!-- --- Scripts JavaScript pour les interactions --- -->
-
     <script>
-    // Active l'état du bouton d'onglet selon l'URL courante
     (function() {
-        const norm = p => (p || '').replace(/\/+$/,'') || '/';
-        const here = norm(location.pathname);
-        document.querySelectorAll('.tab-nav .primary-btn').forEach(btn => {
-            const p = norm(btn.dataset ? btn.dataset.path : btn.getAttribute('data-path'));
+        var norm = function(p) { return (p || '').replace(/\/+$/,'') || '/'; };
+        var here = norm(location.pathname);
+        var btns = document.querySelectorAll('.tab-nav .primary-btn');
+        Array.prototype.forEach.call(btns, function(btn) {
+            var p = norm(btn.getAttribute('data-path'));
             if (p === here) btn.classList.add('active');
         });
     })();
 
-    // Ajoutez ici vos callbacks JS pour câbler les boutons au backend Flask.
-    // Exemple :
-        async function startCamera() { await fetch('/start_camera', { method: 'POST' }); }
-        async function capture() { const r = await fetch('/capture_image', { method: 'POST' }); const j = await r.json(); console.log(j); }
+    function navigateTo(path) {
+        location.href = path;
+    }
     </script>
     </body></html>
     """

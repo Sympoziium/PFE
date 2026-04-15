@@ -58,12 +58,14 @@ def register_routes(ctrl):
     app.add_url_rule('/start_sampling', 'start_sampling', lambda: ctrl.start_sampling(), methods=['POST'])
     app.add_url_rule('/stop_sampling', 'stop_sampling', lambda: ctrl.stop_sampling(), methods=['POST'])
     app.add_url_rule('/sampling/download', 'sampling_download', lambda: ctrl.download_sampling(), methods=['GET'])
+    app.add_url_rule('/sampling/feature_kill', 'sampling_feature_kill', lambda: ctrl.sampling_feature_kill(), methods=['GET', 'POST'])
     app.add_url_rule('/manual/settings', 'manual_settings', lambda: ctrl.manual_settings(), methods=['GET', 'POST'])
     app.add_url_rule('/controller/start', 'controller_start', lambda: ctrl.start_controller(), methods=['POST'])
     app.add_url_rule('/controller/stop', 'controller_stop', lambda: ctrl.stop_controller(), methods=['POST'])
     app.add_url_rule('/controller/status', 'controller_status_route', lambda: ctrl.controller_status())
     app.add_url_rule('/controller/list', 'controller_list', lambda: ctrl.controller_list())
     app.add_url_rule('/controller/params', 'controller_params', lambda: ctrl.controller_params(), methods=['GET', 'POST'])
+    app.add_url_rule('/controller/debug/toggle', 'controller_debug_toggle', lambda: ctrl.toggle_ml_debug(), methods=['POST'])
 
     # Routes PID
     # app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])
@@ -95,6 +97,20 @@ def register_routes(ctrl):
     app.add_url_rule('/robot/reset_gyro', 'robot_reset_gyro', lambda: ctrl.robot_reset_gyro(), methods=['POST'])
     app.add_url_rule('/robot/reset_pid', 'robot_reset_pid', lambda: ctrl.robot_reset_pid(), methods=['POST'])
     app.add_url_rule('/controller/calibrate_ir', 'calibrate_ir', lambda: ctrl.calibrate_ir(), methods=['POST'])
+
+    # Sensor Profiler
+    app.add_url_rule('/robot/sensor_profile/start', 'sp_start', lambda: ctrl.sensor_profile_start(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/status', 'sp_status', lambda: ctrl.sensor_profile_status(), methods=['GET'])
+    app.add_url_rule('/robot/sensor_profile/record', 'sp_record', lambda: ctrl.sensor_profile_record(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/run', 'sp_run', lambda: ctrl.sensor_profile_run(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/run_status', 'sp_run_status', lambda: ctrl.sensor_profile_run_status(), methods=['GET'])
+    app.add_url_rule('/robot/sensor_profile/next', 'sp_next', lambda: ctrl.sensor_profile_next(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/stop', 'sp_stop', lambda: ctrl.sensor_profile_stop(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/results', 'sp_results', lambda: ctrl.sensor_profile_results(), methods=['GET'])
+    app.add_url_rule('/robot/sensor_profile/manual_start', 'sp_manual_start', lambda: ctrl.sensor_profile_manual_start(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/manual_stop', 'sp_manual_stop', lambda: ctrl.sensor_profile_manual_stop(), methods=['POST'])
+    app.add_url_rule('/robot/sensor_profile/summary', 'sp_summary', lambda: ctrl.sensor_profile_summary(), methods=['GET'])
+    app.add_url_rule('/robot/sensor_profile/download', 'sp_download', lambda: ctrl.sensor_profile_download(), methods=['GET'])
 
     # --- PONT (Nouveaux liens) ---
     app.add_url_rule('/bridge/open', 'bridge_open', lambda: ctrl.bridge_open(), methods=['POST'])

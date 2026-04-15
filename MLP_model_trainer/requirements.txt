@@ -1,19 +1,22 @@
-# Requirements pour l'entraînement du MLP (côté PC)
+# Requirements pour l'entraînement du MLP (côté PC/VPS)
 # Installation: pip install -r requirements.txt
 #
-# ⚠️ IMPORTANTE: Ce projet nécessite Python 3.11 ou 3.12 (pas 3.13)
-#    La librairie onnx-tf n'a pas de support Python 3.13
-#    Créez un venv: python -m venv venv
-#                    venv\Scripts\activate
+# Python 3.11 ou 3.12 recommandé
+# Setup:  python -m venv venv
+#         source venv/bin/activate        (Linux)
+#         venv\Scripts\activate           (Windows)
+#         pip install -r requirements.txt
 
-# Framework d'entraînement
+# ── Core (entrainement) ──────────────────────────────────────
 torch>=2.0.0
-numpy>=1.24.0
+numpy<=1.26.4
+matplotlib>=3.7.0
 
-# Conversion vers TFLite
+# ── Conversion vers TFLite ───────────────────────────────────
 tensorflow>=2.13.0
 
-# Utilitaires (optionnel)
-tqdm>=4.65.0
-matplotlib>=3.7.0
-pygame>=2.6.0 # simulation 2D du Zumi pour visualiser les trajectoires d'entraînement
+# ── Analyse & simulation (optionnel) ────────────────────────
+scipy>=1.10.0            # analyze_dataset.py (spearmanr)
+scikit-learn>=1.2.0      # simulate.py, analyze_dataset.py (ablation features)
+pygame>=2.6.0            # simulator_2d.py (visualisation 2D des trajectoires)
+psutil>=5.9.0            # validate_env.py (detection RAM/CPU)

@@ -30,22 +30,34 @@ from model import ZumiMLP
 def load_pytorch_model(model_path: Path) -> tuple:
     """Charge le modèle PyTorch depuis un checkpoint.
 
+    Si le modèle utilise BatchNorm, les couches BN sont automatiquement
+    fusionnées dans les couches Linear pour l'export TFLite.
+
     Returns:
         tuple: (model, checkpoint_data)
     """
     checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
 
+    use_batchnorm = checkpoint.get('use_batchnorm', False)
+
     model = ZumiMLP(
         input_dim=checkpoint['input_dim'],
         output_dim=checkpoint['output_dim'],
-        hidden_dims=checkpoint['hidden_dims']
+        hidden_dims=checkpoint['hidden_dims'],
+        use_batchnorm=use_batchnorm
     )
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
 
+    # Fusionner BatchNorm pour export (le modele TF ne contient que Dense+GELU)
+    if use_batchnorm:
+        print(f"[Load] BatchNorm detecte, fusion dans les couches Linear...")
+        model = model.fuse_batchnorm()
+
     print(f"[Load] Modèle chargé: {model_path}")
     print(f"       Input: {checkpoint['input_dim']}, Output: {checkpoint['output_dim']}")
     print(f"       Hidden: {checkpoint['hidden_dims']}")
+    print(f"       BatchNorm: {use_batchnorm} (fusionne pour export)")
     print(f"       Val loss: {checkpoint['val_loss']:.6f}")
 
     return model, checkpoint
@@ -77,12 +89,12 @@ def export_to_savedmodel(model: torch.nn.Module, input_dim: int, output_path: Pa
         shutil.rmtree(output_path)
 
     # Créer un modèle TensorFlow équivalent dynamiquement
-    # Architecture: Input → [Dense(hidden, ReLU)] × N → Dense(output, Tanh)
+    # Architecture: Input → [Dense(hidden, GELU)] × N → Dense(output, Tanh)
     tf_model = tf.keras.Sequential()
     tf_model.add(tf.keras.layers.Input(shape=(input_dim,)))
 
     for hidden_dim in hidden_dims:
-        tf_model.add(tf.keras.layers.Dense(hidden_dim, activation='relu'))
+        tf_model.add(tf.keras.layers.Dense(hidden_dim, activation='gelu'))
 
     tf_model.add(tf.keras.layers.Dense(output_dim, activation='tanh'))
 
@@ -229,6 +241,20 @@ def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
         "input_dim": checkpoint['input_dim'],
         "feature_mask": checkpoint.get('feature_mask'),
         "motor_speed_max": checkpoint.get('motor_speed_max', 50.0),
+        # Constantes de feature engineering (pour ml_controller.py)
+        "ir_offset_bottom": checkpoint.get('ir_offset_bottom', -17.0),
+        "gap_threshold": checkpoint.get('gap_threshold', 195.0),
+        "off_road_threshold": checkpoint.get('off_road_threshold', 120.0),
+        "grass_threshold": checkpoint.get('grass_threshold', 140.0),
+        "feature_version": checkpoint.get('feature_version', 1),
+        # Metadonnees fenetre glissante
+        "mode": checkpoint.get('mode', 'sliding_window'),
+        "window_size": checkpoint.get('window_size', 25),
+        "window_feature_dim": checkpoint.get('window_feature_dim', 26),
+        "temporal_decay": checkpoint.get('temporal_decay', 0.95),
+        # Exclusion detection
+        "exclude_detection": checkpoint.get('exclude_detection', False),
+        "detection_indices": checkpoint.get('detection_indices', list(range(8, 16))),
     }
 
     stats_path = output_dir / "normalization_stats.json"
@@ -240,6 +266,43 @@ def export_normalization_stats(checkpoint: dict, output_dir: Path) -> bool:
           f"{len(stats['feature_mean'])} features")
 
     return True
+
+
+def deploy_to_models_dir(export_dir: Path, script_dir: Path):
+    """Copie les fichiers exportes vers core/control/controlers/models/.
+
+    Remplace les fichiers existants pour que le modele soit pret a
+    etre stage et push via git pour deploiement sur le robot.
+    """
+    models_dir = script_dir.parent / "core" / "control" / "controlers" / "models"
+    if not models_dir.exists():
+        print(f"[Deploy] Repertoire non trouve: {models_dir}")
+        return False
+
+    files_to_deploy = [
+        ("zumi_mlp.tflite", "zumi_mlp.tflite"),
+        ("normalization_stats.json", "normalization_stats.json"),
+    ]
+
+    deployed = 0
+    for src_name, dst_name in files_to_deploy:
+        src = export_dir / src_name
+        dst = models_dir / dst_name
+
+        if not src.exists():
+            print(f"[Deploy] Source non trouvee: {src}")
+            continue
+
+        # Supprimer l'ancien fichier s'il existe
+        if dst.exists():
+            dst.unlink()
+
+        shutil.copy2(src, dst)
+        deployed += 1
+        print(f"[Deploy] {src_name} -> {dst}")
+
+    print(f"[Deploy] {deployed} fichier(s) deploye(s) dans {models_dir}")
+    return deployed > 0
 
 
 def main():
@@ -266,7 +329,7 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Chemins de sortie
+    # Chemins de sortie (toujours zumi_mlp.tflite, meme avec quantization)
     savedmodel_path = output_dir / "zumi_mlp_tf"
     tflite_name = "zumi_mlp.tflite"
     tflite_path = output_dir / tflite_name
@@ -294,14 +357,14 @@ def main():
     if not args.skip_verification:
         verify_tflite_model(tflite_path, input_dim)
 
+    # 6. Deployer vers core/control/controlers/models/
+    print()
+    deploy_to_models_dir(output_dir, script_dir)
+
     print("\n" + "=" * 60)
     print("Conversion terminée!")
     print(f"Fichier TFLite: {tflite_path}")
     print("=" * 60)
-
-    # Instructions de déploiement
-    print("\nPour déployer sur le robot:")
-    print(f"  scp {tflite_path} normalization_stats.json pi@<ip_robot>:~/robot/models/")
 
 
 if __name__ == "__main__":

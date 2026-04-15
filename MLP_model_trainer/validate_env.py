@@ -182,7 +182,6 @@ def generate_recommendations(system_info: dict, pytorch_info: dict, tf_info: dic
         "weight_decay": 1e-4,
         "num_epochs": 100,
         "early_stopping_patience": 20,
-        "model_size": "medium",
         "inference_latency_target_ms": None,
     }
 
@@ -194,15 +193,6 @@ def generate_recommendations(system_info: dict, pytorch_info: dict, tf_info: dic
         recommendations["batch_size"] = 32
     else:
         recommendations["batch_size"] = 64
-
-    # Adapter model_size selon les capacités
-    cpu_count = system_info.get("cpu_count", 4)
-    if cpu_count <= 1:
-        recommendations["model_size"] = "small"
-    elif cpu_count <= 4:
-        recommendations["model_size"] = "medium"
-    else:
-        recommendations["model_size"] = "large"
 
     # Cible de latence pour TFLite
     if is_raspberry_pi():
@@ -278,7 +268,6 @@ def generate_config(verbose: bool = False) -> dict:
     print()
 
     print("💡 RECOMMANDATIONS")
-    print(f"  Model Size: {recommendations['model_size']}")
     print(f"  Batch Size: {recommendations['batch_size']}")
     print(f"  Learning Rate: {recommendations['learning_rate']}")
     if recommendations['inference_latency_target_ms']:
