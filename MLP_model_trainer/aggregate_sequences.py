@@ -284,7 +284,7 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
     val_seqs = [s for s in unique_seqs if s in known_val]
     new_seqs = [s for s in unique_seqs if s not in known_train and s not in known_val]
 
-    # Repartir les nouvelles sequences (85/15)
+    # Repartir les nouvelles sequences (90/10)
     if new_seqs:
         rng = __import__('random')
         rng.seed(42)
@@ -297,7 +297,7 @@ def aggregate_all_scenarios(sequences_root: Path, output_dir: Path,
 
         train_n = sum(seq_sample_counts.get(s, 0) for s in train_seqs)
         total_n = len(global_seq_ids)
-        target_train = int(total_n * 0.85)
+        target_train = int(total_n * 0.90)
 
         for sid in new_seqs:
             if train_n < target_train:
