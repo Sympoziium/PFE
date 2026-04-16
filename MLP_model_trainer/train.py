@@ -746,7 +746,7 @@ def suggest_training_profile(dataset) -> dict:
     elif n_samples < 1500000:
         epochs, batch_size, lr, wd = 150, 512, 1e-5, 1e-4
     else:
-        epochs, batch_size, lr, wd = 100, 128, 1e-4, 1e-5
+        epochs, batch_size, lr, wd = 100, 128, 1e-5, 1e-5
 
     profile = {
         'name': 'Adaptatif',
