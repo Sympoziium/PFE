@@ -311,7 +311,7 @@ def render_accueil_tab(title: str = "Accueil") -> str:
             <div class='tab-content'>
                 <!-- AJOUTER VOS BOUTONS ICI -->
                 <div class='left-panel'>
-                    <button class='toggle-btn' id='cameraToggleBtn' onclick='toggleCamera()'>🎥 Allume la caméra !</button>
+                    <button class='toggle-btn' id='cameraToggleBtn'>🎥 Allume la caméra !</button>
                     <div id='zone-resultats'>
                         <!-- Conteneur du flux vidéo en direct -->
                         <div class='live-feed' id='liveFeed' style = 'display:none;'>
