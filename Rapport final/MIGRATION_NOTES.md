@@ -1,6 +1,6 @@
 # Notes de migration — Pi Zero W (V1) → Pi Zero 2W (V2)
 
-> **Statut :** Terminé — le robot fonctionne désormais sur le Pi Zero 2W avec une image Bookworm propre.
+> **Statut :** En cours  
 > **Objectif :** Migrer l'environnement du robot Zumi du Raspberry Pi Zero W (ARM11, 32-bit, monocœur) vers le Raspberry Pi Zero 2W (Cortex-A53, 64-bit, quad-core) avec Raspberry Pi OS Bookworm Lite 64-bit et Python 3.11.
 
 ---
@@ -109,7 +109,7 @@ https://win32diskimager.org
 **Utilisation :**
 dans win32 il sufit de naviguer jusqu'au dossier de destination de notre image dans "image file", de sélectionner notre lecteur de carte SD dans "device" puis de cliquer sur "read" pour faire la copie de l'image du V1 vers notre PC.
 
-that's it! on a maintenant une sauvegarde de l'image du V1 sur notre PC au cas ou on aurait besoin d'y revenir.
+that's it! on a maintenant une sauvegarde de l'image du V1 sur notre PC au cas ou on aurait besoin d'y revenir. maintenant on peut passer à l'installation propre de Bookworm Lite 64-bit pour le V2.
 
 ### Étape 1 — Activer I2C
 

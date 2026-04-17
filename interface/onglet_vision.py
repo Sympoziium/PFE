@@ -2,156 +2,171 @@
 # -*- coding: utf-8 -*-
 # onglet_vision.py
 # ------------------
-# ce module défini un onglet de l'interface web dédié au fonctionnalitées du module de vision
+# ce module defini un onglet de l'interface web dedie au fonctionnalitees du module de vision
 # ------------------
 
 def render_vision_tab(title: str = "Vision du Zumi") -> str:
-    """Retourne une page HTML complète avec les widgets pour l'onglet de vision."""
+    """Retourne une page HTML complete avec les widgets pour l'onglet de vision."""
 
     html = """<!DOCTYPE html><html lang='fr'>
-    <head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <title>{title}</title>
-    <link rel='icon' href='data:,'>
-    <style>
+	<head>
+	<meta charset='UTF-8'>
+	<meta name='viewport' content='width=device-width, initial-scale=1'>
+	<title>{title}</title>
+	<link rel='icon' href='data:,'>
+	<style>
     body {
         margin: 0; padding: 0;
-        width: 100vw; height: 100vh;
-        font-family: Arial, sans-serif;
-        background: linear-gradient(135deg, #40E0D0, #00BFFF);
+        width: 100vw; min-height: 100vh;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        background: linear-gradient(135deg, #FFDEE9 0%, #B5FFFC 100%);
         color: #333; display: flex; flex-direction: column;
+        overflow-y: auto;
     }
 
     .container {
         display: flex; justify-content: center; align-items: flex-start;
-        padding: 20px; height: calc(100vh - 40px);
+        padding: 2vh; min-height: 96vh;
     }
 
     .tab-shell {
-        background: rgba(255,255,255,0.92);
-        border-radius: 16px;
-        padding: 18px;
-        box-shadow: 0 0 15px rgba(0,0,0,0.12);
-        width: min(980px, 100%);
+        background: rgba(247, 253, 255, 0.95);
+        border-radius: 20px;
+        padding: 2%;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        width: 92%; max-width: 1100px;
+        min-height: fit-content; margin-bottom: 4vh;
+        display: flex; flex-direction: column;
     }
 
     .tab-header {
         display: flex; align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 2vh;
+        padding-bottom: 1vh;
+        border-bottom: 2px solid #e0f4ff;
+    }
+
+    .tab-title {
+        font-size: 1.8rem; font-weight: bold; color: #5A99C7; margin: 0;
     }
 
     .tab-nav {
         display: flex; align-items: center;
-        gap: 4px;
-        margin-left: auto; /* pousse la nav à droite */
-    }
-
-    .tab-btn-group {
-        display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
         gap: 8px;
-        border: 2px solid #000000;
-        background: #e0e0e0;
-        padding: 8px;
-    }
-
-    .tab-row {
-        display: flex; align-items: flex-start; gap: 12px;
+        margin-left: auto;
     }
 
     .tab-content {
-        border: 2px solid #bcdffb;
-        border-radius: 12px;
-        padding: 16px;
-        min-height: 200px;
-        background: #f7fbff;
+        border: 3px dashed #B5FFFC;
+        border-radius: 15px;
+        padding: 3%;
+        background: #FFFDF0;
+        margin-bottom: 16px;
     }
 
-    /* --- Styles pour les différents types de texte --- */
-    
-    /* Boite de texte format titre */
-    .tab-title {
-        font-size: 22px; font-weight: bold; margin: 0;
-    }
-
-    /* Boite de texte format sous-titre */
     .tab-subtitle {
-        font-size: 18px; font-weight: bold; margin: 0;
+        font-size: 1.3rem; font-weight: bold; color: #666; margin-bottom: 15px; margin-top: 0;
     }
 
-    /* Boite de texte format texte normal */
     .tab-text {
-        font-size: 16px; font-weight: normal; margin: 0;
+        font-size: 1.1rem; color: #444;
     }
 
-    /* --- Déclarations des différents styles de widgets --- */
-
-    /* style bouton cliquable principal */
     .primary-btn {
-        background: #007acc; color: white; border: none;
-        padding: 10px 18px; border-radius: 10px;
-        cursor: pointer; font-size: 15px;
+        background: #87C7F1; color: white; border: none;
+        padding: 12px 20px; border-radius: 12px;
+        cursor: pointer; font-size: 1rem; font-weight: bold;
+        transition: transform 0.2s, background 0.2s;
+        box-shadow: 0 4px 0 #6BAED6;
     }
 
-    .primary-btn:hover { background: #005fa3; }
+    .primary-btn:hover {
+        background: #76B9E4;
+        transform: translateY(-2px);
+    }
 
-    /* état actif pour le bouton d'onglet courant */
+    .primary-btn:active {
+        transform: translateY(2px);
+        box-shadow: 0 2px 0 #6BAED6;
+    }
+
     .primary-btn.active {
-        background: #00528a;
-        box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset;
+        background: #5A99C7;
+        box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
     }
+
+    .toggle-btn {
+        background: #FFB7D5; color: white; border: none;
+        padding: 12px 24px; border-radius: 12px;
+        cursor: pointer; font-weight: bold; font-size: 1rem;
+        box-shadow: 0 4px 0 #E896B9;
+        transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-btn:hover { background: #FFA3C8; transform: translateY(-2px); }
+    .toggle-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #E896B9; }
 
     .detector-btn {
-        background: #28a745; color: white; border: none; /* vert */
-        padding: 10px 18px; border-radius: 10px;
-        cursor: pointer; font-size: 15px;
-        active_detector: none;
+        background: #A8E6CF; color: #2d6a4f; border: none;
+        padding: 12px 20px; border-radius: 12px;
+        cursor: pointer; font-size: 1rem; font-weight: bold;
+        box-shadow: 0 4px 0 #74C69D;
+        transition: transform 0.2s, background 0.2s;
     }
 
-    .detector-btn:hover { background: #218838; } /* vert foncé au survol */
+    .detector-btn:hover { background: #95D9C0; transform: translateY(-2px); }
+    .detector-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #74C69D; }
 
-
-
-    /* style bouton toggle */
     .remoteDL-toggle-btn {
-        color: white; 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 10px; 
-        cursor: pointer; 
-        font-size: 15px;
+        color: white; border: none;
+        padding: 12px 18px; border-radius: 12px;
+        cursor: pointer; font-size: 1rem; font-weight: bold;
+        transition: transform 0.2s, background 0.2s;
     }
 
-    /* Etats explicites pour plus de robustesse */
-    .remoteDL-toggle-btn.off { background: #dc3545; }
-    .remoteDL-toggle-btn.off:hover { background: #bd2130; }
-    .remoteDL-toggle-btn.on { background: #28a745; }
-    .remoteDL-toggle-btn.on:hover { background: #218838; }
+    .remoteDL-toggle-btn.off {
+        background: #F4A0A0; color: #7a1f1f;
+        box-shadow: 0 4px 0 #d97070;
+    }
+    .remoteDL-toggle-btn.off:hover { background: #ee8a8a; transform: translateY(-2px); }
 
-    /* style bouton toggle */
-    .toggle-btn {
-        background: #007acc; /* bleu par défaut */
-        color: white; 
-        border: none; 
-        padding: 10px 18px; 
-        border-radius: 10px; 
-        cursor: pointer; 
-        font-size: 15px;
+    .remoteDL-toggle-btn.on {
+        background: #A8E6CF; color: #2d6a4f;
+        box-shadow: 0 4px 0 #74C69D;
+    }
+    .remoteDL-toggle-btn.on:hover { background: #95D9C0; transform: translateY(-2px); }
+
+    .select-detector {
+        padding: 10px 14px; border-radius: 12px;
+        border: 2px solid #B5FFFC;
+        background: #fff; font-size: 1rem;
+        color: #444;
+        box-shadow: 0 2px 0 #d0d0d0;
     }
 
-    .toggle-btn:hover { background: #005fa3; } 
+    .tab-row {
+        display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+    }
 
-    /* --- Styles pour le live feed vidéo --- */
+    .tab-btn-group {
+        display: flex; flex-direction: column; align-items: stretch;
+        gap: 10px;
+        background: rgba(247, 253, 255, 0.8);
+        border: 2px solid #B5FFFC;
+        border-radius: 15px;
+        padding: 16px;
+    }
 
     .live-feed {
-        display: none; 
-        width: 100%; 
-        margin-top: 20px; 
-        padding: 10px; 
-        background-color: #f0f8ff; 
-        border-radius: 20px; 
-        box-shadow: 0 0 10px rgba(0,0,0,0.15); 
-        text-align: center; 
+        display: none;
+        width: 100%;
+        margin-top: 20px;
+        padding: 10px;
+        background: white;
+        border-radius: 20px;
+        border: 4px solid #B5FFFC;
+        text-align: center;
+        box-sizing: border-box;
     }
 
     .live-feed img {
@@ -165,96 +180,58 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         border: 4px solid #00BFFF; 
     }
 
-    /* Exemple de style additionnel pour les boutons et zones de résultats */
-    /* container : conteneur principal de l'onglet
-       tab-shell : "coquille" de l'onglet avec le fond blanc et les arrondis
-       tab-header : entête de l'onglet avec le titre et les actions globales
-       tab-title : titre de l'onglet
-       tab-content : zone principale de contenu de l'onglet
-       L'ordre des classes CSS suit l'ordre d'apparition dans le HTML.
-       Sections délimitées par <div class='XXX'> ... </div> */
-
-    /* Ajout styles pour select */
-    .select-detector {
-        padding: 8px; border-radius: 8px; border: 1px solid #aaa; background: #fff; font-size: 14px;
-    }
-
-    /* --- Stop Detection UI panel --- */
     .stop-detect-panel {
-        display: none; /* visible seulement pour le détecteur stop */
-        flex: 1;
-        border: 2px solid #00b894;
-        border-radius: 12px;
-        padding: 12px;
-        background: #f7fbff;
-    }
-
-    .stop-detect-layout {
-        display: flex; gap: 12px; align-items: flex-start;
-    }
-
-    .captured-box {
-        position: relative;
-        flex: 2;
-        background: #f0f8ff;
-        border-radius: 12px;
-        padding: 10px;
-        text-align: center;
-    }
-
-    .captured-box img {
-        max-width: 100%; height: auto; border-radius: 8px; border: 4px solid #00BFFF;
-    }
-
-    /*
-    #bboxOverlay {
-        position: absolute;
-        border: 4px solid #00FF00;
-        border-radius: 4px;
         display: none;
-        box-shadow: 0 0 8px rgba(0, 255, 0, 0.6);
-        pointer-events: none;
+        flex: 1;
+        border: 3px dashed #B5FFFC;
+        border-radius: 15px;
+        padding: 16px;
+        background: #FFFDF0;
     }
-    */
 
     .indicator-and-terminal {
         flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: stretch;
     }
 
     .detect-indicator {
-        border-radius: 10px; padding: 10px; text-align: center; font-weight: bold; color: #fff;
-        background: #bdc3c7; /* défaut: gris */
+        border-radius: 12px; padding: 12px; text-align: center;
+        font-weight: bold; color: #fff; font-size: 1rem;
+        background: #ccc;
     }
 
-    .detect-indicator.on { background: #2ecc71; }
-    .detect-indicator.off { background: #e74c3c; }
+    .detect-indicator.on  { background: #A8E6CF; color: #2d6a4f; box-shadow: 0 3px 0 #74C69D; }
+    .detect-indicator.off { background: #F4A0A0; color: #7a1f1f; box-shadow: 0 3px 0 #d97070; }
 
     .log-terminal {
-        background: #000; color: #fff; font-family: Consolas, monospace; font-size: 13px;
-        border-radius: 10px; padding: 10px;
-        min-height: 200px; max-height: 50vh; min-width: 100px;
+        background: #1a1a2e; color: #a8d8ea;
+        font-family: 'Courier New', Consolas, monospace; font-size: 13px;
+        border-radius: 12px; padding: 12px;
+        min-height: 200px; max-height: 50vh;
         overflow-y: auto; overflow-x: auto;
         white-space: pre-wrap; word-wrap: break-word;
+        border: 2px solid #B5FFFC;
     }
 
-    /* --- Toast notifications --- */
     .toast-container {
         position: fixed; top: 20px; right: 20px; z-index: 9999;
         display: flex; flex-direction: column; gap: 8px;
     }
+
     .toast {
-        padding: 12px 20px; border-radius: 8px;
-        color: #fff; font-size: 14px; font-family: Arial, sans-serif;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        padding: 12px 20px; border-radius: 12px;
+        color: #fff; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif;
+        box-shadow: 0 4px 0 rgba(0,0,0,0.15);
         opacity: 0; transform: translateX(80px);
         transition: opacity 0.3s, transform 0.3s;
         max-width: 380px; word-wrap: break-word;
+        font-weight: bold;
     }
+
     .toast.show { opacity: 1; transform: translateX(0); }
-    .toast.warning { background: #e67e22; }
-    .toast.error { background: #e74c3c; }
-    .toast.info { background: #3498db; }
-    .toast.success { background: #27ae60; }
+    .toast.warning { background: #FFD166; color: #7a4f00; box-shadow: 0 4px 0 #e6b800; }
+    .toast.error   { background: #F4A0A0; color: #7a1f1f; box-shadow: 0 4px 0 #d97070; }
+    .toast.info    { background: #87C7F1; color: #1a3a5c; box-shadow: 0 4px 0 #6BAED6; }
+    .toast.success { background: #A8E6CF; color: #2d6a4f; box-shadow: 0 4px 0 #74C69D; }
 
     /* --- Panneau paramètres détecteur de ligne --- */
     .line-params-panel {
@@ -284,22 +261,19 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         <div class='tab-shell'>
             <div class='tab-header'>
                 <h2 class='tab-title'>{title}</h2>
-                <!-- Boutons de navigation entre onglets -->
                 <div class='tab-nav'>
                     <button class='primary-btn' data-path="/" onclick="navigateTo('/')">Accueil</button>
                     <button class='primary-btn' data-path="/vision" onclick="navigateTo('/vision')">Vision</button>
                     <button class='primary-btn' data-path="/onglet_control" onclick="navigateTo('/onglet_control')">Contrôle</button>
                     <button class='primary-btn' data-path="/pid" onclick="navigateTo('/pid')">PID</button>
+                    <button class='primary-btn' onclick="fetch('/exit', {method:'POST'})">EXIT</button>
                 </div>
             </div>
 
             <div class='tab-content'>
-                <div class='tab-header'>
-                    <h3 class='tab-subtitle'>Capture image</h3>
-                </div>
-                <!-- AJOUT DES FONCTIONS DE CAPTURE -->
-                <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;'>
-                    <button class='toggle-btn' id='cameraToggleBtn'>▶️ Start Camera</button>
+                <h3 class='tab-subtitle'>Capture image</h3>
+                <div style='display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px;'>
+                    <button class='toggle-btn' id='cameraToggleBtn'>🎥 Start Camera</button>
                     <button class='primary-btn' id='captureImageBtn'>📸 Capture Image</button>
                     <button class='remoteDL-toggle-btn off' id='toggleDownloadCapturedBtn' aria-pressed='false'> 💾 Off</button>
                     <select id='resolutionSelect' class='select-detector' title='Résolution caméra'>
@@ -319,7 +293,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center;'>
                     <button class='remoteDL-toggle-btn off' id='togglePassiveDetectionBtn' aria-pressed='false'> Start Passive Detection</button>
                     <button class='remoteDL-toggle-btn off' id='toggleMiningBtn' aria-pressed='false'>⛏️ Mining Off</button>
-                    <span id='miningBadge' style='display:none; background:#8e44ad; color:#fff; padding:4px 10px; border-radius:8px; font-size:13px; font-weight:bold;'>0 crops</span>
+                    <span id='miningBadge' style='display:none; background:#c9a0dc; color:#4a1a6a; padding:5px 12px; border-radius:12px; font-size:13px; font-weight:bold; box-shadow:0 3px 0 #a76ec4;'>0 crops</span>
                     <button class='primary-btn' id='downloadMiningBtn' style='display:none;'>📦 Download Crops</button>
                 </div>
                 <div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px;'>
@@ -330,35 +304,29 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                     <button class='primary-btn' id='setPassiveRateBtn'>Appliquer</button>
                 </div>
                 <div id='zone-resultats'></div>
-                <!-- Conteneur unifié pour livefeed et image capturée -->
                 <div class='live-feed' id='mainImageDisplay' style='display:none;'>
                     <img id='mainImage' alt='Image principale'>
                 </div>
             </div>
 
             <div class='tab-content'>
-                <div class='tab-header'>
-                    <h3 class='tab-subtitle'>Image Detection</h3>
-                </div>
-                <!-- AJOUT DES FONCTIONS DE DÉTECTION -->
+                <h3 class='tab-subtitle'>Image Detection</h3>
                 <div class='tab-row'>
                     <div class='tab-btn-group'>
-                        <label for='detectorSelect' class='tab-text'>Choix du détecteur</label>
+                        <label for='detectorSelect' class='tab-text'>Choix du detecteur</label>
                         <select id='detectorSelect' class='select-detector'>
                             <!-- options remplies dynamiquement -->
                         </select>
-                        <button class='detector-btn' id='runDetectionBtn'>Lancer Détection</button>
-                        <button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Détecteur</button>
+                        <button class='detector-btn' id='runDetectionBtn'>Lancer Detection</button>
+                        <button class='detector-btn' id='runDiagnosticsBtn'>Diagnostique Detecteur</button>
                     </div>
-                    <!-- Stop detection diagnostic panel -->
                     <div class='stop-detect-panel' id='stopDetectPanel'>
                         <div class='tab-subtitle'>Diagnostic Stop</div>
                         <div class='indicator-and-terminal'>
-                            <div id='stopDetectIndicator' class='detect-indicator'>Aucune détection</div>
+                            <div id='stopDetectIndicator' class='detect-indicator'>Aucune detection</div>
                             <div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
                         </div>
                     </div>
-                    <!-- ajouter la dernière image capturée -->
                 </div>
                 <!-- Panneau paramètres du détecteur de ligne -->
                 <div class='line-params-panel' id='lineParamsPanel'>
@@ -385,10 +353,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
         </div>
     </div>
 
-    <!-- Toast container -->
     <div class='toast-container' id='toastContainer'></div>
-
-    <!-- --- Scripts JavaScript pour les interactions --- -->
 
     <script>
     // Active l'état du bouton d'onglet selon l'URL courante (compat ES5)
@@ -1174,5 +1139,5 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     </body></html>
     """
 
-    # Remplacer uniquement le titre sans interpréter les autres accolades
+    # Remplacer uniquement le titre sans interpreter les autres accolades
     return html.replace("{title}", title)

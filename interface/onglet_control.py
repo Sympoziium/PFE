@@ -338,6 +338,13 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         <button class='primary-btn' id='samplingDownloadBtn'>⬇️ Télécharger</button>
                     </div>
 
+                    <div style='width:85%; margin-top:8px; display:flex; align-items:center; gap:8px;'>
+                        <button class='toggle-btn' id='featureKillBtn' style='flex:1; font-size:12px; padding:6px 8px;'>
+                            Détection passive : ON
+                        </button>
+                        <span style='font-size:11px; color:#aaa;' title='Quand actif, les features HAAR et caméra-ligne sont forcées à 0 dans les échantillons'>?</span>
+                    </div>
+
                     <div style='width:85%; margin-top:12px;'>
                         <select id='controllerSelect' style='width:100%; padding:10px; border-radius:10px; border:2px solid #B5FFFC; font-weight:bold;'>
                             <option value='line_follower'>line_follower</option>
@@ -345,6 +352,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         </select>
                     </div>
                     <button class='primary-btn' id='controllerToggleBtn' style='margin-top:10px; width:85%;'>▶ Activer le contrôleur</button>
+                    <button class='toggle-btn' id='mlDebugBtn' style='margin-top:6px; width:85%; font-size:12px; padding:6px 8px;'>ML Debug: OFF</button>
 
                     <!-- Conteneur du menu de réglages adaptatif -->
                     <div class='settings-menu-container' style='margin-top:12px;'>
@@ -375,6 +383,42 @@ def render_control_tab(title: str = "Contrôle") -> str:
                             <button class='primary-btn' id='btnResetGyro' style='width:100%; margin-top:8px;'>Reset Gyro</button>
                             <button class='primary-btn' id='btnResetPID' style='width:100%; margin-top:8px;'>Reset PID</button>
                             <button class='primary-btn' id='btnCalibrateIR' style='width:100%; margin-top:8px;'>Calibration IR (offset capteurs)</button>
+                        </div>
+                    </div>
+
+                    <!-- Sensor Profiler -->
+                    <div class='panel' style='margin-top: 16px; padding: 12px; background: #1a1a2e; border-radius: 8px;'>
+                        <h4 style='color: #e94560; margin: 0 0 12px 0;'>Sensor Profiler</h4>
+
+                        <!-- Robot ID dropdown -->
+                        <div style='margin-bottom: 8px;'>
+                            <label style='color: #aaa; font-size: 12px;'>Robot:</label>
+                            <select id='profilerRobotId' style='margin-left: 8px; padding: 4px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;'>
+                                <option value='zumi_1'>zumi_1</option>
+                                <option value='zumi_2'>zumi_2</option>
+                            </select>
+                        </div>
+
+                        <!-- Status display -->
+                        <div id='profilerStatus' style='background: #0f0f23; padding: 8px; border-radius: 4px; margin-bottom: 8px; min-height: 60px;'>
+                            <div style='color: #888; font-size: 13px;'>Profiler inactif. Sélectionnez le robot et appuyez sur Démarrer.</div>
+                        </div>
+
+                        <!-- Progress bar -->
+                        <div style='background: #333; border-radius: 4px; height: 6px; margin-bottom: 8px;'>
+                            <div id='profilerProgress' style='background: #e94560; height: 100%; border-radius: 4px; width: 0%; transition: width 0.3s;'></div>
+                        </div>
+
+                        <!-- Samples indicator -->
+                        <div id='profilerSamples' style='display:none; text-align:center; color:#2ecc71; font-size:13px; font-weight:bold; margin-bottom:6px;'></div>
+
+                        <!-- Single contextual button -->
+                        <button id='btnProfilerAction' style='width:100%; padding:10px; font-size:14px; border:none; border-radius:6px; color:#fff; background:#27ae60; cursor:pointer;'>Démarrer le profiling</button>
+
+                        <!-- End buttons (hidden until profiling complete) -->
+                        <div id='profilerEndButtons' style='display:none; gap:6px; margin-top:6px;'>
+                            <button id='btnProfilerApply' style='flex:1; padding:10px; font-size:13px; border:none; border-radius:6px; color:#fff; background:#27ae60; cursor:pointer;'>Appliquer la calibration</button>
+                            <button id='btnProfilerDownload' style='flex:1; padding:10px; font-size:13px; border:none; border-radius:6px; color:#fff; background:#3498db; cursor:pointer;'>Telecharger le profil</button>
                         </div>
                     </div>
                 </div>
@@ -493,6 +537,29 @@ def render_control_tab(title: str = "Contrôle") -> str:
         }
     }
 
+    // Modes cycliques: 0=all, 1=line only (haar killé), 2=haar only (line killé)
+    var _featureKillMode = 0;
+    var _featureKillModes = [
+        { groups: [],               label: 'Passif: tout actif',      cls: '' },
+        { groups: ['haar'],         label: 'Passif: ligne seulement', cls: 'active' },
+        { groups: ['line_camera'],  label: 'Passif: HAAR seulement',  cls: 'active' }
+    ];
+
+    function toggleFeatureKill() {
+        _featureKillMode = (_featureKillMode + 1) % 3;
+        var mode = _featureKillModes[_featureKillMode];
+        var btn = document.getElementById('featureKillBtn');
+        fetch('/sampling/feature_kill', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({groups: mode.groups})
+        }).then(function(r) { return r.json(); }).then(function() {
+            btn.className = 'toggle-btn' + (mode.cls ? ' ' + mode.cls : '');
+            btn.style.cssText = 'flex:1; font-size:12px; padding:6px 8px;';
+            btn.textContent = mode.label;
+        });
+    }
+
     function downloadSampling() {
         fetch('/sampling/download')
             .then(function(resp) {
@@ -558,6 +625,22 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 })
                 .catch(function(e) { console.error('toggleController stop error:', e); });
         }
+    }
+
+    function toggleMLDebug() {
+        fetch('/controller/debug/toggle', { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var btn = document.getElementById('mlDebugBtn');
+                if (data.debug) {
+                    btn.classList.add('active');
+                    btn.textContent = 'ML Debug: ON';
+                } else {
+                    btn.classList.remove('active');
+                    btn.textContent = 'ML Debug: OFF';
+                }
+            })
+            .catch(function(e) { console.error('toggleMLDebug error:', e); });
     }
 
     // ================================================================
@@ -1179,10 +1262,17 @@ def render_control_tab(title: str = "Contrôle") -> str:
 
         var samplingDownloadBtn = document.getElementById('samplingDownloadBtn');
         if (samplingDownloadBtn) samplingDownloadBtn.addEventListener('click', downloadSampling);
+
+        var featureKillBtn = document.getElementById('featureKillBtn');
+        if (featureKillBtn) featureKillBtn.addEventListener('click', toggleFeatureKill);
         
         // Controller toggle
         var ctrlBtn = document.getElementById('controllerToggleBtn');
         if (ctrlBtn) ctrlBtn.addEventListener('click', toggleController);
+
+        // ML Debug toggle
+        var mlDebugBtn = document.getElementById('mlDebugBtn');
+        if (mlDebugBtn) mlDebugBtn.addEventListener('click', toggleMLDebug);
 
         var controllerSelect = document.getElementById('controllerSelect');
         if (controllerSelect) {
@@ -1273,6 +1363,260 @@ def render_control_tab(title: str = "Contrôle") -> str:
         if (btnResetPID) btnResetPID.addEventListener('click', function() { postReset('/robot/reset_pid', this); });
         var btnCalibrateIR = document.getElementById('btnCalibrateIR');
         if (btnCalibrateIR) btnCalibrateIR.addEventListener('click', function() { postReset('/controller/calibrate_ir', this); });
+
+        // === Sensor Profiler (un seul bouton contextuel) ===
+        var profilerPolling = null;
+        var profilerState = 'idle';
+        var profilerPhaseType = 'static';
+
+        var btnAction = document.getElementById('btnProfilerAction');
+        btnAction.addEventListener('click', function() {
+            if (profilerState === 'idle') {
+                // Démarrer le profiling
+                var robotId = document.getElementById('profilerRobotId').value;
+                setBtnStyle('busy', 'Démarrage...');
+                fetch('/robot/sensor_profile/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({robot_id: robotId})
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.status === 'started') {
+                        profilerState = 'ready';
+                        startProfilerPolling();
+                        updateButtonForPhase();
+                    }
+                });
+            }
+            else if (profilerState === 'ready') {
+                // Exécuter la phase courante
+                profilerState = 'executing';
+
+                if (profilerPhaseType === 'static') {
+                    setBtnStyle('busy', 'Enregistrement...');
+                    fetch('/robot/sensor_profile/record', {method: 'POST'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) {
+                            setBtnStyle('ready', 'Erreur — Réessayer');
+                            profilerState = 'ready';
+                        } else {
+                            profilerState = 'done';
+                            showSamples(data.n_samples || 0);
+                            setBtnStyle('ready', 'Suivant');
+                        }
+                    });
+                }
+                else if (profilerPhaseType.indexOf('auto_') === 0) {
+                    setBtnStyle('busy', 'Manoeuvre en cours...');
+                    fetch('/robot/sensor_profile/run', {method: 'POST'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) {
+                            setBtnStyle('ready', 'Erreur — Réessayer');
+                            profilerState = 'ready';
+                            return;
+                        }
+                        // Poll pour détecter la fin de la manoeuvre
+                        var pollTimer = setInterval(function() {
+                            fetch('/robot/sensor_profile/run_status')
+                            .then(function(r) { return r.json(); })
+                            .then(function(rs) {
+                                if (!rs.running) {
+                                    clearInterval(pollTimer);
+                                    profilerState = 'done';
+                                    showSamples(rs.n_samples || 0);
+                                    setBtnStyle('ready', 'Suivant');
+                                }
+                            });
+                        }, 500);
+                    });
+                }
+                else if (profilerPhaseType === 'manual_sampling') {
+                    setBtnStyle('busy', 'Enregistrement... Pilotez avec WASD');
+                    fetch('/robot/sensor_profile/manual_start', {method: 'POST'})
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) {
+                            setBtnStyle('ready', 'Erreur — Réessayer');
+                            profilerState = 'ready';
+                        } else {
+                            profilerState = 'manual_recording';
+                            setBtnStyle('ready', 'Arrêter enregistrement');
+                        }
+                    });
+                }
+            }
+            else if (profilerState === 'manual_recording') {
+                // Arrêter l'enregistrement manuel
+                setBtnStyle('busy', 'Validation...');
+                fetch('/robot/sensor_profile/manual_stop', {method: 'POST'})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    showSamples(data.n_samples || 0);
+                    if (data.quality === 'valid') {
+                        if (data.phase_complete) {
+                            profilerState = 'done';
+                            setBtnStyle('ready', 'Runs valides OK — Suivant');
+                        } else {
+                            profilerState = 'ready';
+                            setBtnStyle('ready', 'Run valide (' + data.valid_count + '/' + data.min_valid + ') — Encore');
+                        }
+                    } else {
+                        profilerState = 'ready';
+                        setBtnStyle('ready', 'Rejeté: ' + (data.reason || '?') + ' — Réessayer');
+                    }
+                });
+            }
+            else if (profilerState === 'done') {
+                // Passer à la phase suivante
+                setBtnStyle('busy', 'Chargement...');
+                fetch('/robot/sensor_profile/next', {method: 'POST'})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.status === 'completed') {
+                        profilerState = 'completed';
+                        stopProfilerPolling();
+                        document.getElementById('profilerProgress').style.width = '100%';
+                        // Charger le résumé
+                        fetch('/robot/sensor_profile/summary')
+                        .then(function(r) { return r.json(); })
+                        .then(function(s) {
+                            var html = '<div style="color:#2ecc71;font-size:16px;font-weight:bold;margin-bottom:8px;">Profiling terminé!</div>';
+                            html += '<div style="color:#fff;font-size:13px;">Robot: ' + (s.robot_id || '?') + ' | Phases: ' + (s.n_phases_completed || 0) + '/18 | Total: <b>' + (s.total_samples || 0) + ' echantillons</b></div>';
+                            if (s.ir_offsets) {
+                                html += '<div style="color:#3498db;font-size:12px;margin-top:6px;">IR offsets: bottom=' + s.ir_offsets.bottom + ', front=' + s.ir_offsets.front + ', back=' + s.ir_offsets.back + '</div>';
+                            }
+                            if (s.thresholds) {
+                                html += '<div style="color:#e67e22;font-size:12px;">Seuils: gap=' + (s.thresholds.gap_threshold || '?') + ', off_road=' + (s.thresholds.off_road_threshold || '?') + '</div>';
+                            }
+                            if (s.motor_asymmetry) {
+                                var speeds = Object.keys(s.motor_asymmetry);
+                                html += '<div style="color:#9b59b6;font-size:12px;">Asymetrie moteur: ';
+                                speeds.forEach(function(k) { html += k + '=' + s.motor_asymmetry[k].drift_deg_per_s + ' deg/s '; });
+                                html += '</div>';
+                            }
+                            document.getElementById('profilerStatus').innerHTML = html;
+                        });
+                        // Afficher les deux boutons
+                        hideSamples();
+                        btnAction.style.display = 'none';
+                        document.getElementById('profilerEndButtons').style.display = 'flex';
+                    } else {
+                        profilerState = 'ready';
+                        hideSamples();
+                        updateButtonForPhase();
+                    }
+                });
+            }
+        });
+
+        function setBtnStyle(mode, text) {
+            btnAction.textContent = text;
+            if (mode === 'ready') {
+                btnAction.style.background = '#27ae60';
+                btnAction.disabled = false;
+            } else if (mode === 'busy') {
+                btnAction.style.background = '#2980b9';
+                btnAction.disabled = true;
+            }
+        }
+
+        function showSamples(n) {
+            var el = document.getElementById('profilerSamples');
+            if (el) { el.textContent = n + ' échantillons enregistrés'; el.style.display = 'block'; }
+        }
+
+        function hideSamples() {
+            var el = document.getElementById('profilerSamples');
+            if (el) { el.style.display = 'none'; }
+        }
+
+        function updateButtonForPhase() {
+            hideSamples();
+            // Cacher les boutons de fin, montrer le bouton principal
+            document.getElementById('profilerEndButtons').style.display = 'none';
+            btnAction.style.display = 'block';
+            if (profilerPhaseType === 'static') {
+                setBtnStyle('ready', 'Robot en place — Enregistrer');
+            } else if (profilerPhaseType.indexOf('auto_') === 0) {
+                setBtnStyle('ready', 'Robot en place — Exécuter la manoeuvre');
+            } else if (profilerPhaseType === 'manual_sampling') {
+                setBtnStyle('ready', 'Commencer le pilotage manuel');
+            }
+        }
+
+        // Boutons de fin
+        document.getElementById('btnProfilerApply').addEventListener('click', function() {
+            this.textContent = 'Application...';
+            this.disabled = true;
+            // Relancer la calibration IR avec les données du profil
+            fetch('/controller/calibrate_ir', {method: 'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('btnProfilerApply').textContent = 'Calibration appliquee!';
+                // Remettre le bouton principal
+                setTimeout(function() {
+                    document.getElementById('profilerEndButtons').style.display = 'none';
+                    btnAction.style.display = 'block';
+                    profilerState = 'idle';
+                    setBtnStyle('ready', 'Demarrer le profiling');
+                }, 2000);
+            });
+        });
+
+        document.getElementById('btnProfilerDownload').addEventListener('click', function() {
+            window.location.href = '/robot/sensor_profile/download';
+        });
+
+        function startProfilerPolling() {
+            if (profilerPolling) clearInterval(profilerPolling);
+            profilerPolling = setInterval(updateProfilerStatus, 500);
+            updateProfilerStatus();
+        }
+
+        function stopProfilerPolling() {
+            if (profilerPolling) { clearInterval(profilerPolling); profilerPolling = null; }
+        }
+
+        function updateProfilerStatus() {
+            fetch('/robot/sensor_profile/status')
+            .then(function(r) { return r.json(); })
+            .then(function(s) {
+                if (!s.active) return;
+
+                profilerPhaseType = s.phase_type || 'static';
+
+                var pct = Math.round((s.current_phase / s.total_phases) * 100);
+                document.getElementById('profilerProgress').style.width = pct + '%';
+
+                var groupColors = {A:'#3498db', B:'#e67e22', C:'#9b59b6', D:'#2ecc71'};
+                var color = groupColors[s.phase_group] || '#e94560';
+
+                var html = '<div style="color:' + color + ';font-size:14px;font-weight:bold;">Phase ' + s.current_phase + '/' + s.total_phases + ' [' + s.phase_group + ']</div>';
+                html += '<div style="color:#fff;font-size:13px;margin-top:6px;">' + s.instruction + '</div>';
+                html += '<div style="color:#888;font-size:11px;margin-top:4px;">' + s.description + '</div>';
+
+                if (s.auto_running) {
+                    html += '<div style="color:#f39c12;font-size:12px;margin-top:4px;">Manoeuvre en cours... (' + (s.auto_samples || 0) + ' samples)</div>';
+                }
+
+                if (s.phase_type === 'manual_sampling') {
+                    var v = s.manual_valid_runs || 0;
+                    var m = s.manual_min_runs || 3;
+                    var t = s.manual_total_runs || 0;
+                    html += '<div style="color:#3498db;font-size:13px;margin-top:6px;font-weight:bold;">Runs valides: ' + v + '/' + m;
+                    if (t > v) html += ' (' + (t - v) + ' rejetés)';
+                    html += '</div>';
+                }
+
+                document.getElementById('profilerStatus').innerHTML = html;
+
+                // Mettre à jour le texte du bouton si on est en état ready
+                if (profilerState === 'ready') {
+                    updateButtonForPhase();
+                }
+            });
+        }
     });
 
     // Exposer les fonctions au scope global (pour les onclick inline restants)

@@ -5,6 +5,214 @@ Toutes les modifications notables apportées à ce projet sont documentées dans
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 
+## [Non publie] — Anti-compression, features engineered v2 et split detecteurs (2026-04-09)
+
+### Contexte
+Le MLP (R²=0.51, val_loss=0.0092) souffrait de compression des predictions vers la moyenne:
+les scatter plots montraient des predictions regroupees en bande horizontale au lieu de suivre
+la diagonale. Le modele predisait des valeurs conservatrices, incapable de produire des commandes
+franches (virages marques, arrets nets, marche arriere). Diagnostic: (1) le MSE pur incite le
+modele a predire la moyenne conditionnelle, (2) les features ne capturaient pas assez de signal
+predictif (derivees, integrales, anticipation camera-IR), (3) le dropout 0.3 etait trop
+conservateur pour 2.6M+ echantillons.
+
+### Added
+- **RangeAwareLoss** (`train.py`): nouvelle loss MSE + penalite de variance. Penalise le modele
+  quand la variance de ses predictions est inferieure a celle des cibles (`torch.relu(target_var -
+  pred_var)`). Parametre `lambda_var=0.1` (ajustable: 0.05-0.2). Adresse directement la compression
+  des predictions sans revenir a Huber (qui discretisait les sorties avec delta=0.1).
+
+- **4 nouvelles features engineered** (`dataset.py`, `simulator_2d.py`, `ml_controller.py`):
+  le vecteur passe de 26-dim/pas (21 raw + 5 eng.) a **30-dim/pas** (21 raw + 9 eng.),
+  fenetre glissante 25x30 = **750-dim d'entree** (etait 650-dim).
+  - `ir_error_derivative`: `calibrated_error[t] - calibrated_error[t-1]` — vitesse de derive
+    laterale. Permet au modele de savoir si la ligne s'eloigne rapidement ou lentement.
+  - `ir_error_integral`: moyenne glissante de `calibrated_error` sur 5 pas — biais persistant
+    accumule. Indique un decentrage soutenu (terme I du PID).
+  - `gyro_z_accel`: `gyro_z_rate[t] - gyro_z_rate[t-1]` — acceleration angulaire. Indique si
+    un virage s'intensifie ou se relache (courbure du trajet).
+  - `lookahead_delta`: `(line_camera_offset - cal_error_norm) * line_visible` — discordance
+    entre la position de la ligne vue par la camera (devant le robot) et celle vue par les IR
+    (sous le robot). Signal d'anticipation: quand la camera voit la ligne a droite mais les IR
+    la voient au centre, un virage a droite approche.
+
+- **Split detecteurs passifs** (`vision_pipeline.py`, `server_controller.py`):
+  nouvelle methode `set_passive_detectors()` pour changer dynamiquement les detecteurs passifs.
+  - Onglet Controle: detection passive = **Line detector seulement** (economie CPU, Haar inutile)
+  - Onglet Vision: detection passive = **Haar classifiers seulement** (monitoring objets)
+  - Garde-fou dans `start_passive_detection()`: si aucun controleur actif, force Haar.
+
+### Changed
+- **Dropout** (`train.py`): reduit de 0.3 a 0.15. Avec 2.6M+ echantillons, le dropout elevé
+  empechait le modele de faire des predictions confiantes vers les extremes.
+- **Loss function** (`train.py`): `nn.MSELoss()` -> `RangeAwareLoss(lambda_var=0.1)`
+- **Dimension d'entree MLP**: 650-dim -> 750-dim (necessite re-agregation du dataset)
+- **WINDOW_FEATURE_DIM** (`dataset.py`, `ml_controller.py`): 26 -> 30
+- **Groupes permutation importance** (`evaluate.py`): Engineered 21-25 -> 21-29
+
+### Notes techniques
+- Toutes les nouvelles features respectent les frontieres de sequence (zero aux transitions).
+- `ir_error_integral` utilise une somme cumulee vectorisee par segment (O(n), pas de boucle Python
+  sur les echantillons individuels).
+- `lookahead_delta` est conditionne par `line_visible` pour eviter du bruit quand la camera ne
+  detecte pas de ligne.
+- Le `compute_engineered()` du simulateur et du ml_controller recoit maintenant le `window_buffer`
+  pour calculer l'integrale sur les pas precedents.
+- **Compatibilite**: l'ancien modele (650-dim) n'est PAS compatible. Il faut re-agreger (option 1)
+  puis re-entrainer (option 4).
+
+---
+
+## [Non publie] — Debug boucle fermee, cleanup legacy et rapport (2026-04-10)
+
+### Contexte
+Le deploiement du modele 750-dim a revele un probleme de dimension (le modele deploye etait encore
+en 650-dim). Une fois corrige, le modele s'est avere fonctionnel en boucle fermee — premier modele
+a reagir correctement aux lignes sur le robot physique. Le split des detecteurs passifs a eu une
+consequence inattendue : la detection de ligne se fait maintenant a chaque frame (plus d'interdecoupage
+avec Haar), rendant le `line_offset` beaucoup plus stable et continu.
+
+### Added
+- **Debug logging MLController** (`ml_controller.py`, `control_manager.py`, `server_controller.py`,
+  `flask_router.py`, `onglet_control.py`): instrumentation complete du controleur ML.
+  - Timing d'inference (ms par tick)
+  - Features intermediaires (calibrated_error, gyro_z_rate, lookahead_delta, etc.)
+  - Sortie modele + delta entre ticks consecutifs
+  - Suivi des overrides WASD dans le log (distingues des ticks ML)
+  - Bouton toggle dans l'UI de controle (route `/controller/debug/toggle`)
+  - Resume console a l'arret + sauvegarde `debug_log.json`
+  - Alerte automatique si `output_delta` proche de zero (modele qui ne reagit pas)
+
+### Changed
+- **Validation IMU** (`vision_adapter.py`): les angles cumulatifs (gyro_x/y/z, rot_x/y/z) ne sont
+  plus valides contre la plage [-360, 360] — ils s'accumulent naturellement au-dela apres quelques
+  tours de circuit. Seuls les angles non-cumulatifs (acc_x/y, comp_x/y) sont valides.
+- **Temporal decay** (`dataset.py`): 0.95 -> 0.85 pour prioriser davantage le present par rapport
+  a l'historique dans la fenetre glissante.
+
+### Removed (cleanup legacy)
+- **Concept `feature_version`** (`ml_controller.py`): le systeme de versionnement des features
+  (v1=2 features, v2=5 features) est retire. Les constantes IR_OFFSET_BOTTOM et GAP_THRESHOLD
+  sont maintenant chargees inconditionnellement depuis `normalization_stats.json`.
+- **Delegate fallback mort** (`ml_controller.py`): `_interpreter._load_delegate(None)` dans un
+  try/except qui ne faisait rien — retire.
+- **`_feature_mask` orphelin** (`ml_controller.py`): variable referencee dans le gestionnaire
+  d'erreur mais jamais definie — retiree.
+- **Defaults stale** (`ml_controller.py`): `IR_OFFSET_BOTTOM=-17.0` et `GAP_THRESHOLD=195.0`
+  remplaces par les valeurs mesurees (8.8 et 210.8). Les fallbacks dans `_load_normalization_stats()`
+  utilisent maintenant les valeurs de classe au lieu de valeurs hardcodees differentes.
+- **Commentaires stale**: mise a jour des docstrings dans tous les fichiers du module
+  (dimensions 26->30, 650->750, 5->9 features, ReLU->GELU, Huber->RangeAwareLoss).
+
+---
+
+## [Non publie] — Migration simulateur + refonte evaluations (2026-04-04)
+
+### Contexte
+Le simulateur 2D et le module d'evaluation referençaient encore l'ancien systeme de deltas
+temporels supprime le 2026-04-02. Le vecteur de base 29-dim (ajout line_offset/line_detected)
+n'etait pas reflete dans le simulateur. Les tests d'evaluation etaient obsoletes.
+
+### Changed
+- **simulator_2d.py**: migration deltas -> fenetre glissante (20x34=680-dim), vecteur 27->29-dim
+  avec zero-padding identique au training pipeline
+- **simulate.py [1]**: tests scenariques synthetiques -> evaluation sur sequences reelles du dataset
+  avec visualisation predictions vs labels (graphique temporel par segment)
+- **simulate.py [2]**: pipeline corrige (compute_engineered_features + compute_sliding_windows),
+  categorisation par gyroscope (classify_actions) au lieu des commandes moteur
+- **simulate.py [3]**: ablation regression lineaire -> permutation importance sur le vrai MLP,
+  par groupe de features (IR, IMU, engineered, etc.) avec bar chart et repetitions pour robustesse
+- **Menu option 5**: "Simulation & evaluation avancee" -> "Evaluation avancee"
+
+### Added
+- **Menu option [7] Importer et convertir un modele (TFLite)**: telecharge un modele depuis
+  le VPS (root@38.69.13.3) via SCP ou copie depuis un chemin local, puis convertit en TFLite.
+  Utile pour recuperer un modele entraine sur le serveur.
+
+### Removed
+- simulate.py [4] "Simulation boucle ouverte" — redondant avec le simulateur 2D (option 6)
+- References aux constantes DELTA_* dans simulator_2d.py et simulate.py
+- Regression lineaire sklearn dans l'ablation (remplacee par permutation importance)
+
+---
+
+## [Non publié] — Fenetre glissante, Huber Loss et augmentation de donnees (2026-04-02)
+
+### Contexte
+Le MLP avec deltas temporels (82-dim, R²=0.48) sous-apprenait : l'ecart train/val etait quasi nul,
+indiquant un probleme de representation. La ligne blanche pointillee disparait aux capteurs IR quand
+le robot est centre, creant des etats ambigus que 5 pas de deltas ne suffisent pas a resoudre.
+
+### Added
+- **Fenetre glissante** (`dataset.py`): remplace les deltas temporels par une fenetre de 20 pas
+  consecutifs (1 seconde a 20Hz) de vecteurs 34-dim (29 raw + 5 engineered) = **680-dim d'entree**.
+  Le modele recoit 1 seconde complete de contexte temporel brut au lieu de differences ponderees.
+  - `compute_sliding_windows()`: construction vectorisee avec detection de frontieres de sequence
+    et zero-padding aux limites
+  - Buffer circulaire 20 pas dans `ml_controller.py` pour l'inference temps reel
+- **ZumiMLPWindow** (`model.py`): variante [256, 128, 64] avec dropout 0.15, ~210K params,
+  dimensionnee pour les 680-dim d'entree. Accessible via `create_model(size="window")`.
+- **Module d'augmentation de donnees** (`augment.py`, nouveau):
+  - `augment_ir_noise()`: bruit gaussien N(0, sigma) sur les 6 capteurs IR, sigma=[1.5, 3.0, 4.5]
+  - `augment_ir_scaling()`: facteurs multiplicatifs [0.85, 0.92, 1.08, 1.15] simulant des variations d'eclairage
+  - `augment_ir_dropout()`: zero-out aleatoire des capteurs IR bottom sur des patches de 3 frames
+  - `augment_combined()`: bruit + scaling combine, multiplicateur ~4x
+  - Menu interactif avec resume, validation, et log de tracabilite (`augmentation_log.json`)
+  - **Contrainte respectee**: les labels moteur ne sont jamais modifies (preservation du PID asymetrique)
+- **Menu [3] Augmenter les donnees** dans `train.py`: sous-menu pour choisir et appliquer les techniques
+  d'augmentation avant l'entrainement
+
+### Changed
+- **Huber Loss** (`train.py`): `nn.SmoothL1Loss(beta=0.1)` remplace `nn.MSELoss()`. Le MSE causait
+  une regression vers la moyenne sur les etats ambigus (ligne invisible entre les tirets). Huber
+  penalise lineairement les grands ecarts, produisant des predictions plus tranchees.
+- **`suggest_training_profile()`** refactore:
+  - Calcule `effective_dim = step_dim * WINDOW_SIZE` (680-dim) pour le budget de parametres
+  - Ratio cible ajuste a 2.5:1 (vs 3:1) pour les entrees fortement correlees
+  - Affiche un tableau des architectures possibles avec le nombre d'echantillons requis pour chacune
+  - Warning explicite quand les donnees sont insuffisantes + recommande l'augmentation
+- **`choose_training_profile()`** simplifie: [1] Adaptatif + [2] Custom. Le profil fenetre en dur est retire.
+- **`export_normalization_stats()`** inclut les metadonnees de fenetre (`mode`, `window_size`, `window_feature_dim`)
+- **Menu principal** renumerote: [3]=Augmentation, [4]=Entrainement, [5]=Simulation, [6]=Simulateur 2D
+
+### Removed
+- `compute_deltas()` et constantes `DELTA_FEATURE_INDICES`, `DELTA_STEPS`, `DELTA_WEIGHTS` de `dataset.py`
+- Profil statique `'fenetre'` de `TRAINING_PROFILES`
+- Ancien buffer de deltas dans `ml_controller.py` (remplace par `_window_buffer`)
+
+### Resultats premier entrainement (fenetre, avant augmentation)
+- **R² = 0.35** (vs 0.48 avec deltas) — regression due a l'overfitting (215K params / 72K samples = ratio 0.3:1)
+- Train/Val gap: 0.032 vs 0.060 — **overfitting confirme** (le modele memorise)
+- Conclusion: le modele fenetre a besoin de significativement plus de donnees.
+  L'augmentation (x4-6) devrait amener le ratio a un niveau sain.
+
+---
+
+## [Non publié] — Feature engineering PID-inspired et vecteur 95-dim (2026-03-26)
+
+### Added
+- Systeme de calibration IR: mesure les baselines et offsets des 6 capteurs IR (mode light N=50 auto, heavy N=200 manuel)
+- 8 features PID-inspired remplacent les 2 anciennes (line_position, line_confidence):
+  - calibrated_error, line_visible, cal_error_norm, approaching_line, on_road, grass_detect, gyro_z_rate, heading_drift
+- Deltas temporels etendus: 12 features x 5 pas (60 colonnes, vs 7x3=21 avant)
+- Vecteur d'entree total: 95-dim (27 raw + 8 engineered + 60 deltas)
+- Modele cible plus gros: [128, 64, 32] ~14K params, ~50-60KB TFLite
+- Section [PID-FEATURES] dans analyze_dataset.py pour evaluer les nouvelles features
+- Auto-deploy des fichiers TFLite vers core/control/controlers/models/
+
+### Changed
+- Categorisation des actions basee sur l'IMU (delta gyro_z) au lieu des commandes moteur
+- Deduplication intelligente: seuls les groupes >= 5 echantillons consecutifs identiques sont retires
+- Simulation moteur: asymetrie du moteur gauche (efficiency=0.928) au lieu du biais droit
+- Calibration IR automatique (light) avant chaque activation de controleur
+- Constantes de feature engineering synchronisees via normalization_stats.json
+
+### Fixed
+- WeightedRandomSampler desactive (causait une regression du suivi de ligne)
+- Nom du fichier TFLite toujours zumi_mlp.tflite (plus de _quant)
+
+---
+
 ## [Non publié] — Optimisation pipeline MLP : normalisation z-score, profil adaptatif et feature engineering (2026-03-21)
 
 ### Objectif

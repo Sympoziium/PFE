@@ -25,7 +25,6 @@ from core.control.IO_drivers.motor_command import MotorCommand, CommandType
 from core.control.IO_drivers.sensor_driver import SensorDriver
 from core.control.IO_drivers.motor_driver import MotorDriver
 from core.control.controlers.manual_controller import ManualController
-from core.control.controlers.ml_controller import MLController
 
 class ControlManager:
     """
@@ -185,9 +184,9 @@ class ControlManager:
             self._motor_driver = MotorDriver(self.robot)
 
     def _init_robot_sensors(self):
-        """Initialise les capteurs du robot (MPU, IR, batterie)."""
-        self.robot.calibrate_sensors() # initialisation des capteurs (gyro, MPU, PID, etc.)
-        self.update_sensors() # lecture initiale pour remplir last_sensor_data
+        """Lecture initiale des capteurs pour remplir last_sensor_data.
+        La calibration MPU/gyro est faite dans robot.__init__(), pas ici."""
+        self.update_sensors()
 
     # ------------------------------------------------------------------
     #  Mise à jours des capteurs
@@ -195,13 +194,11 @@ class ControlManager:
     def update_sensors(self):
         """Met à jour les données des capteurs du robot (MPU, IR, batterie).
 
-        Note: En mode manuel ou ML, la détection de ligne est désactivée pour
-        réduire l'overhead CPU. Ces contrôleurs n'utilisent pas cette information.
+        La détection de ligne par caméra est active pour tous les contrôleurs
+        car le MLP utilise le line_offset comme feature d'entrée.
         """
         if self._sensor_driver is not None:
-            # Auto-détection: skip line detection en mode manuel ou ML pour économiser le CPU
-            is_manual_or_ml = isinstance(self._active_controller, (ManualController, MLController))
-            state = self._sensor_driver.read(Line_detection=not is_manual_or_ml)
+            state = self._sensor_driver.read(Line_detection=True)
             with self._data_lock:
                 self.last_sensor_data = state
     
@@ -311,6 +308,14 @@ class ControlManager:
                 self.last_left_speed = command.left_speed
                 self.last_right_speed = command.right_speed
                 self.last_motor_command = command
+            # Logger l'override dans le debug du contrôleur actif
+            ctrl = self._active_controller
+            if hasattr(ctrl, '_debug_enabled') and ctrl._debug_enabled:
+                ctrl._debug_log.append({
+                    'tick': getattr(ctrl, '_inference_count', 0),
+                    'override': True,
+                    'command': [command.left_speed, command.right_speed],
+                })
             return state, command
 
         # Si l'override vient d'expirer, nettoyer

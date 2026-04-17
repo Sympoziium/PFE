@@ -53,9 +53,9 @@ class PIDIRController(ControllerBase):
     def __init__(
         self,
         base_speed=5,
-        kp=0.12,
+        kp=0.0475,
         ki=0.0,
-        kd=-0.58,
+        kd=-0.00463,
         max_correction=8,
         line_lost_threshold=80.0,
         ir_offset=0.0,

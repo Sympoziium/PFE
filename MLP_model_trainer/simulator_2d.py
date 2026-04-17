@@ -22,7 +22,9 @@ except ImportError:
     pygame = None
 
 from dataset import (
-    DELTA_FEATURE_INDICES, DELTA_STEPS, DELTA_WEIGHTS, ENGINEERED_FEATURE_NAMES,
+    ENGINEERED_FEATURE_NAMES, WINDOW_SIZE, WINDOW_FEATURE_DIM,
+    IR_OFFSET_DEFAULT, GAP_THRESHOLD, GYRO_Z_INDEX,
+    DETECTION_INDICES,
 )
 
 
@@ -543,7 +545,7 @@ class IRSensorModel:
     def read_imu(self, robot, dt):
         """Genere des valeurs IMU simulees.
 
-        Mapping vers le vecteur 27-dim (indices 16-26):
+        Mapping vers le vecteur brut 29-dim (indices 16-26):
           [16] gyro_x: vitesse angulaire X (faible, bruit)
           [17] gyro_y: vitesse angulaire Y (faible, bruit)
           [18] gyro_z: vitesse angulaire Z = omega en deg/s (SIGNAL CLE pour le modele)
@@ -769,56 +771,125 @@ class SimMetrics:
 # ============================================================
 
 def build_state_vector(ir_data, imu_data):
-    """Construit le vecteur 27-dim comme le vision_adapter."""
-    vec = np.zeros(27, dtype=np.float32)
+    """Construit le vecteur 21-dim (detection exclue: indices 8-15 retires).
+
+    Layout apres exclusion:
+      0-5: IR values, 6: diff, 7: sum
+      8-18: IMU (gyro, acc, comp, rot, tilt)
+      19-20: camera (line_offset, line_detected)
+    """
+    vec29 = np.zeros(29, dtype=np.float32)
     # IR: indices 0-7
-    vec[0] = ir_data['values'][0]  # front_r
-    vec[1] = ir_data['values'][1]  # bot_r
-    vec[2] = ir_data['values'][2]  # back_r
-    vec[3] = ir_data['values'][3]  # bot_l
-    vec[4] = ir_data['values'][4]  # back_l
-    vec[5] = ir_data['values'][5]  # front_l
-    vec[6] = ir_data['diff']
-    vec[7] = ir_data['sum']
-    # Detection: indices 8-15 (pas de detection)
+    vec29[0] = ir_data['values'][0]  # front_r
+    vec29[1] = ir_data['values'][1]  # bot_r
+    vec29[2] = ir_data['values'][2]  # back_r
+    vec29[3] = ir_data['values'][3]  # bot_l
+    vec29[4] = ir_data['values'][4]  # back_l
+    vec29[5] = ir_data['values'][5]  # front_l
+    vec29[6] = ir_data['diff']
+    vec29[7] = ir_data['sum']
+    # Detection: indices 8-15 (pas de detection en simulation)
     # IMU: indices 16-26
-    vec[16] = imu_data['gyro_x']
-    vec[17] = imu_data['gyro_y']
-    vec[18] = imu_data['gyro_z']
-    vec[19] = imu_data['acc_x']
-    vec[20] = imu_data['acc_y']
-    vec[21] = imu_data['comp_x']
-    vec[22] = imu_data['comp_y']
-    vec[23] = imu_data['rot_x']
-    vec[24] = imu_data['rot_y']
-    vec[25] = imu_data['rot_z']
-    vec[26] = imu_data['tilt_state']
-    return vec
+    vec29[16] = imu_data['gyro_x']
+    vec29[17] = imu_data['gyro_y']
+    vec29[18] = imu_data['gyro_z']
+    vec29[19] = imu_data['acc_x']
+    vec29[20] = imu_data['acc_y']
+    vec29[21] = imu_data['comp_x']
+    vec29[22] = imu_data['comp_y']
+    vec29[23] = imu_data['rot_x']
+    vec29[24] = imu_data['rot_y']
+    vec29[25] = imu_data['rot_z']
+    vec29[26] = imu_data['tilt_state']
+    # Camera: indices 27-28
+    vec29[27] = 0.0  # line_offset
+    vec29[28] = 0.0  # line_detected
+    # Exclure detection (indices 8-15) -> 21-dim
+    keep_mask = [i for i in range(29) if i not in DETECTION_INDICES]
+    return vec29[keep_mask]
 
 
-def compute_engineered(vec27):
-    """Ajoute line_position et line_confidence -> 29-dim."""
-    ir_bot_r = vec27[1]
-    ir_bot_l = vec27[3]
-    line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
-    line_conf = abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
-    return np.append(vec27, [line_pos, line_conf]).astype(np.float32)
+def compute_engineered(vec_raw, prev_vec=None, ir_offset=IR_OFFSET_DEFAULT, window_buffer=None):
+    """Ajoute 9 features PID-inspired -> 30-dim (detection exclue).
+
+    Args:
+        vec_raw: Vecteur 21-dim (detection exclue)
+        prev_vec: Vecteur 30-dim precedent (pour derivees)
+        ir_offset: Offset IR bottom (bot_left - bot_right)
+        window_buffer: Buffer des vecteurs precedents (pour ir_error_integral)
+    """
+    raw_dim = len(vec_raw)
+    ir_bot_r = vec_raw[1]
+    ir_bot_l = vec_raw[3]
+    ir_sum = (ir_bot_l + ir_bot_r) / 2.0
+    gyro_z = vec_raw[GYRO_Z_INDEX]
+    line_camera_offset = vec_raw[raw_dim - 2]  # camera toujours avant-dernier
+
+    calibrated_error = (ir_bot_r - ir_bot_l) - (-ir_offset)
+    line_visible = 1.0 if ir_sum < GAP_THRESHOLD else 0.0
+    cal_error_norm = calibrated_error / (ir_sum + 1e-6)
+
+    gyro_z_rate = 0.0
+    if prev_vec is not None:
+        rate = gyro_z - prev_vec[GYRO_Z_INDEX]
+        if abs(rate) < 150.0:
+            gyro_z_rate = rate
+
+    heading_drift = gyro_z_rate * (1.0 - line_visible)
+
+    # --- Nouvelles features ---
+    # ir_error_derivative: delta calibrated_error
+    ir_error_derivative = 0.0
+    if prev_vec is not None:
+        ir_error_derivative = calibrated_error - prev_vec[raw_dim + 0]  # prev calibrated_error
+
+    # ir_error_integral: moyenne glissante sur 5 pas
+    from dataset import INTEGRAL_WINDOW
+    recent_errors = []
+    if window_buffer is not None:
+        for vec in list(window_buffer)[-(INTEGRAL_WINDOW - 1):]:
+            recent_errors.append(vec[raw_dim + 0])  # calibrated_error index
+    recent_errors.append(calibrated_error)
+    ir_error_integral = sum(recent_errors) / len(recent_errors)
+
+    # gyro_z_accel: delta gyro_z_rate
+    gyro_z_accel = 0.0
+    if prev_vec is not None:
+        prev_gyro_z_rate = prev_vec[raw_dim + 3]  # prev gyro_z_rate
+        gyro_z_accel = gyro_z_rate - prev_gyro_z_rate
+
+    # lookahead_delta: discordance camera vs IR
+    lookahead_delta = (line_camera_offset - cal_error_norm) * line_visible
+
+    engineered = np.array([
+        calibrated_error, line_visible, cal_error_norm,
+        gyro_z_rate, heading_drift,
+        ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
+    ], dtype=np.float32)
+
+    return np.concatenate([vec_raw, engineered]).astype(np.float32)
 
 
-def build_full_vector(raw_29, prev_vectors, feature_mask=None):
-    """Construit le vecteur complet avec deltas multi-pas."""
-    all_deltas = []
-    for step, weight in enumerate(DELTA_WEIGHTS):
-        d = np.zeros(len(DELTA_FEATURE_INDICES), dtype=np.float32)
-        if step < len(prev_vectors):
-            prev = prev_vectors[-(step + 1)]
-            d = (raw_29[DELTA_FEATURE_INDICES] - prev[DELTA_FEATURE_INDICES]) * weight
-        all_deltas.append(d)
+def build_windowed_vector(window_buffer):
+    """Construit le vecteur windowed a partir du buffer glissant (WINDOW_SIZE x WINDOW_FEATURE_DIM).
 
-    full = np.concatenate([raw_29] + all_deltas)
-    if feature_mask is not None:
-        full = full[feature_mask]
-    return full
+    Le buffer est un deque(maxlen=WINDOW_SIZE) de vecteurs WINDOW_FEATURE_DIM-dim.
+    Les positions non encore remplies restent a zero (zero-padding),
+    identique au comportement du training pipeline aux frontieres de sequence.
+
+    Args:
+        window_buffer: collections.deque de np.arrays WINDOW_FEATURE_DIM-dim, maxlen=WINDOW_SIZE
+
+    Returns:
+        np.array de shape (WINDOW_SIZE * WINDOW_FEATURE_DIM,)
+    """
+    flat = np.zeros(WINDOW_SIZE * WINDOW_FEATURE_DIM, dtype=np.float32)
+    n = len(window_buffer)
+    start_slot = WINDOW_SIZE - n
+    for i, vec in enumerate(window_buffer):
+        offset = (start_slot + i) * WINDOW_FEATURE_DIM
+        flat[offset:offset + WINDOW_FEATURE_DIM] = vec
+    return flat
 
 
 # ============================================================
@@ -997,12 +1068,11 @@ def run_simulator(script_dir, state, track_mode='loop'):
 
     # Charger le modele
     checkpoints_dir = script_dir / "checkpoints"
-    from simulate import load_model_and_stats
+    from evaluate import load_model_and_stats
     model, stats = load_model_and_stats(checkpoints_dir)
     if model is None:
         return
 
-    feature_mask = stats.get('feature_mask')
     mean = stats['feature_mean']
     std = stats['feature_std'].copy()
     std[std < 1e-6] = 1.0
@@ -1023,8 +1093,8 @@ def run_simulator(script_dir, state, track_mode='loop'):
     robot = SimRobot(start_pos[0], start_pos[1], start_heading,
                      motor_efficiency_left=motor_efficiency_left)
 
-    # Buffer pour deltas
-    prev_vectors = collections.deque(maxlen=DELTA_STEPS)
+    # Buffer glissant pour fenetre temporelle
+    window_buffer = collections.deque(maxlen=WINDOW_SIZE)
 
     # Metriques
     metrics = SimMetrics()
@@ -1058,7 +1128,7 @@ def run_simulator(script_dir, state, track_mode='loop'):
                 elif event.key == pygame.K_r:
                     robot = SimRobot(start_pos[0], start_pos[1], start_heading,
                                      motor_efficiency_left=robot.motor_efficiency_left)
-                    prev_vectors.clear()
+                    window_buffer.clear()
                     metrics = SimMetrics()
                 elif event.key == pygame.K_1:
                     sim_speed = 0.5
@@ -1082,14 +1152,19 @@ def run_simulator(script_dir, state, track_mode='loop'):
                 ir_data = sensor_model.read_all(robot)
                 imu_data = sensor_model.read_imu(robot, SIM_DT)
 
-                # 2. Vecteur 27-dim
+                # 2. Vecteur 21-dim (detection exclue)
                 state_vec = build_state_vector(ir_data, imu_data)
 
-                # 3. Features engineered + deltas
-                state_29 = compute_engineered(state_vec)
-                full = build_full_vector(state_29, prev_vectors, feature_mask)
+                # 3. Features engineered (21 -> 30)
+                prev_vec = window_buffer[-1] if len(window_buffer) > 0 else None
+                ir_offset = stats.get('ir_offset_bottom', IR_OFFSET_DEFAULT)
+                state_30 = compute_engineered(state_vec, prev_vec, ir_offset, window_buffer)
 
-                # 4. Z-score + inference
+                # 4. Buffer glissant -> vecteur windowed
+                window_buffer.append(state_30.copy())
+                full = build_windowed_vector(window_buffer)
+
+                # 5. Z-score + inference
                 normalized = ((full - mean) / std).astype(np.float32)
                 with torch.no_grad():
                     inp = torch.tensor(normalized).unsqueeze(0)
@@ -1098,11 +1173,10 @@ def run_simulator(script_dir, state, track_mode='loop'):
                 left_speed = max(-50, min(50, float(pred[0]) * 50))
                 right_speed = max(-50, min(50, float(pred[1]) * 50))
 
-                # 5. Physique
+                # 6. Physique
                 robot.update(left_speed, right_speed, SIM_DT)
-                prev_vectors.append(state_29.copy())
 
-                # 6. Metriques
+                # 7. Metriques
                 _, signed_dist, _, seg_idx = track.closest_point_on_track((robot.x, robot.y))
                 on_road = abs(signed_dist) < ROAD_HALF
                 turn_angle = track.get_turn_angle_at(seg_idx)

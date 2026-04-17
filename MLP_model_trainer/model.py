@@ -3,10 +3,15 @@
 """
 Modèle MLP pour le contrôle du robot Zumi.
 
-Architecture simple mais efficace pour l'apprentissage par imitation:
-- Entrée: vecteur d'état normalisé (17 + N dimensions)
+Architecture configurable pour l'apprentissage par imitation:
+- Entrée: vecteur d'état normalisé (fenêtre glissante, typiquement 750 dimensions)
 - Sortie: commandes moteur normalisées [left, right] dans [-1, 1]
+- Les couches cachées sont configurées dynamiquement par le profil adaptatif
+  ou manuellement via le mode custom.
+- BatchNorm optionnel entre Linear et GELU pour une convergence plus rapide.
 """
+
+import copy
 
 import torch
 import torch.nn as nn
@@ -16,10 +21,12 @@ class ZumiMLP(nn.Module):
     """Réseau de neurones MLP pour le contrôle du robot Zumi.
 
     Architecture:
-        Input -> FC -> ReLU -> Dropout -> FC -> ReLU -> Dropout -> FC -> Tanh -> Output
+        Input -> [FC -> BN -> GELU -> Dropout] x N -> FC -> Tanh -> Output
 
     La couche de sortie utilise Tanh pour garantir des sorties dans [-1, 1],
     ce qui correspond directement aux commandes moteur normalisées.
+    BatchNorm est optionnel et peut être fusionné dans les couches Linear
+    pour l'export TFLite via fuse_batchnorm().
     """
 
     def __init__(
@@ -27,7 +34,8 @@ class ZumiMLP(nn.Module):
         input_dim: int,
         output_dim: int = 2,
         hidden_dims: list = None,
-        dropout: float = 0.1
+        dropout: float = 0.3,
+        use_batchnorm: bool = True
     ):
         """
         Args:
@@ -35,6 +43,7 @@ class ZumiMLP(nn.Module):
             output_dim: Dimension de sortie (2 = vitesses gauche/droite)
             hidden_dims: Liste des dimensions des couches cachées
             dropout: Taux de dropout pour régularisation
+            use_batchnorm: Utiliser BatchNorm entre Linear et GELU
         """
         super().__init__()
 
@@ -44,17 +53,18 @@ class ZumiMLP(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_dims = hidden_dims
+        self.use_batchnorm = use_batchnorm
 
         # Construction des couches
         layers = []
         prev_dim = input_dim
 
         for hidden_dim in hidden_dims:
-            layers.extend([
-                nn.Linear(prev_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(dropout)
-            ])
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            if use_batchnorm:
+                layers.append(nn.BatchNorm1d(hidden_dim))
+            layers.append(nn.GELU())
+            layers.append(nn.Dropout(dropout))
             prev_dim = hidden_dim
 
         # Couche de sortie avec Tanh pour borner à [-1, 1]
@@ -91,8 +101,9 @@ class ZumiMLP(nn.Module):
 
     def summary(self) -> str:
         """Retourne un résumé de l'architecture."""
+        bn_str = " + BN" if self.use_batchnorm else ""
         lines = [
-            f"ZumiMLP:",
+            f"ZumiMLP{bn_str}:",
             f"  Input dim: {self.input_dim}",
             f"  Hidden dims: {self.hidden_dims}",
             f"  Output dim: {self.output_dim}",
@@ -101,68 +112,111 @@ class ZumiMLP(nn.Module):
         ]
         return "\n".join(lines)
 
+    def fuse_batchnorm(self) -> 'ZumiMLP':
+        """Retourne une copie du modèle avec BatchNorm fusionné dans les couches Linear.
 
-class ZumiMLPLarge(ZumiMLP):
-    """Version plus large du MLP pour des tâches plus complexes."""
+        Fusionne chaque paire (Linear, BatchNorm1d) en un seul Linear équivalent.
+        Le modèle résultant n'a plus de BatchNorm et produit des sorties identiques
+        (à la précision float32 près). Utile pour l'export TFLite où BatchNorm
+        n'est pas supporté nativement.
 
-    def __init__(self, input_dim: int, output_dim: int = 2, dropout: float = 0.2):
-        super().__init__(
-            input_dim=input_dim,
-            output_dim=output_dim,
-            hidden_dims=[128, 64, 32],
-            dropout=dropout
+        Formules de fusion:
+            W_fused = (gamma / sqrt(var + eps)) * W
+            b_fused = gamma * (b - mean) / sqrt(var + eps) + beta
+
+        Returns:
+            ZumiMLP: Nouveau modèle sans BatchNorm avec poids fusionnés.
+        """
+        if not self.use_batchnorm:
+            return copy.deepcopy(self)
+
+        # Créer un modèle sans BN
+        fused_model = ZumiMLP(
+            input_dim=self.input_dim,
+            output_dim=self.output_dim,
+            hidden_dims=self.hidden_dims,
+            use_batchnorm=False
         )
 
+        # Parcourir les couches du modèle source et fusionner
+        src_modules = list(self.network.children())
+        dst_modules = list(fused_model.network.children())
 
-class ZumiMLPSmall(ZumiMLP):
-    """Version compacte du MLP optimisée pour le déploiement sur Pi Zero."""
+        src_idx = 0
+        dst_idx = 0
 
-    def __init__(self, input_dim: int, output_dim: int = 2, dropout: float = 0.05):
-        super().__init__(
-            input_dim=input_dim,
-            output_dim=output_dim,
-            hidden_dims=[32, 16],
-            dropout=dropout
-        )
+        while src_idx < len(src_modules):
+            src_layer = src_modules[src_idx]
 
+            if isinstance(src_layer, nn.Linear):
+                # Vérifier si la couche suivante est un BatchNorm
+                if src_idx + 1 < len(src_modules) and isinstance(src_modules[src_idx + 1], nn.BatchNorm1d):
+                    bn = src_modules[src_idx + 1]
+                    linear = src_layer
 
-def create_model(
-    input_dim: int,
-    output_dim: int = 2,
-    model_size: str = "medium"
-) -> ZumiMLP:
-    """Factory function pour créer le modèle approprié.
+                    # Fusionner BN dans Linear
+                    gamma = bn.weight.data           # scale
+                    beta = bn.bias.data              # shift
+                    mean = bn.running_mean            # moyenne mobile
+                    var = bn.running_var               # variance mobile
+                    eps = bn.eps
 
-    Args:
-        input_dim: Dimension d'entrée
-        output_dim: Dimension de sortie
-        model_size: "small", "medium" ou "large"
+                    inv_std = gamma / torch.sqrt(var + eps)
 
-    Returns:
-        Instance de ZumiMLP
-    """
-    if model_size == "small":
-        return ZumiMLPSmall(input_dim, output_dim)
-    elif model_size == "large":
-        return ZumiMLPLarge(input_dim, output_dim)
-    else:  # medium (default)
-        return ZumiMLP(input_dim, output_dim)
+                    # W_fused = inv_std.unsqueeze(1) * W
+                    w_fused = inv_std.unsqueeze(1) * linear.weight.data
+                    # b_fused = inv_std * (b - mean) + beta
+                    b_fused = inv_std * (linear.bias.data - mean) + beta
+
+                    # Copier dans le modèle destination
+                    dst_linear = dst_modules[dst_idx]
+                    dst_linear.weight.data.copy_(w_fused)
+                    dst_linear.bias.data.copy_(b_fused)
+
+                    src_idx += 2  # skip Linear + BN
+                    dst_idx += 1  # avancer dans le dst (Linear seul)
+                else:
+                    # Linear sans BN (couche de sortie)
+                    dst_linear = dst_modules[dst_idx]
+                    dst_linear.weight.data.copy_(src_layer.weight.data)
+                    dst_linear.bias.data.copy_(src_layer.bias.data)
+                    src_idx += 1
+                    dst_idx += 1
+            else:
+                # GELU, Dropout, Tanh — avancer dans les deux
+                src_idx += 1
+                if dst_idx < len(dst_modules) and type(src_layer) == type(dst_modules[dst_idx]):
+                    dst_idx += 1
+
+        fused_model.eval()
+        return fused_model
 
 
 if __name__ == "__main__":
-    # Test des différentes architectures
-    input_dim = 21  # 6 IR + 1 flag + 4 classes + 4 bbox + 6 IMU
+    # Test de l'architecture MLP avec differentes configurations
+    print("=== Test ZumiMLP ===\n")
 
-    print("=== Test des architectures MLP ===\n")
-
-    for size in ["small", "medium", "large"]:
-        model = create_model(input_dim, model_size=size)
-        print(f"--- {size.upper()} ---")
+    for hidden_dims in [[64, 32], [128, 64, 32], [384, 192, 96, 48]]:
+        model = ZumiMLP(input_dim=650, hidden_dims=hidden_dims, use_batchnorm=True)
         print(model.summary())
 
-        # Test forward pass
-        batch = torch.randn(4, input_dim)
-        output = model(batch)
+        # Faire quelques passes en train mode pour accumuler les running stats BN
+        batch = torch.randn(32, 650)
+        for _ in range(10):
+            _ = model(torch.randn(32, 650))
+
+        # Test forward pass en eval mode
+        model.eval()
+        with torch.no_grad():
+            output = model(batch)
         print(f"  Test output shape: {output.shape}")
         print(f"  Output range: [{output.min().item():.3f}, {output.max().item():.3f}]")
+
+        # Test fusion BatchNorm (eval mode requis pour running stats stables)
+        fused = model.fuse_batchnorm()
+        with torch.no_grad():
+            fused_output = fused(batch)
+        diff = (output - fused_output).abs().max().item()
+        print(f"  BN fusion max diff: {diff:.8f} (should be < 1e-5)")
+        print(f"  Fused params: {fused.count_parameters():,} (no BN)")
         print()

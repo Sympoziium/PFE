@@ -25,12 +25,15 @@ class MLController(ControllerBase):
     # Plage utile des moteurs (correspond au VisionAdapter, plafond ML)
     MOTOR_SPEED_MAX = 50.0
 
-    # Indices des features pour le calcul des deltas temporels
-    # Doit correspondre à DELTA_FEATURE_INDICES dans dataset.py
-    # Note: indices 27-28 sont line_position et line_confidence (ajoutees dynamiquement)
-    DELTA_FEATURE_INDICES = [1, 3, 6, 7, 18, 27, 28]
-    DELTA_STEPS = 3
-    DELTA_WEIGHTS = [1.0, 0.5, 0.25]
+    # Constantes de feature engineering (defauts, ecrasees par normalization_stats.json)
+    IR_OFFSET_BOTTOM = 8.8       # Mesuré via Sensor Profiler (zumi_1, 2026-03-28)
+    GAP_THRESHOLD = 210.8        # Seuil IR pour ligne visible (idem)
+
+    # Fenetre glissante (defauts, ecrases par normalization_stats.json)
+    WINDOW_SIZE = 25           # Nombre de pas dans la fenetre (1.25s a 20Hz)
+    WINDOW_FEATURE_DIM = 30    # 21 raw + 9 engineered par pas (detection exclue)
+    TEMPORAL_DECAY = 0.85      # Decay exponentiel (1.0 = pas de decay)
+    INTEGRAL_WINDOW = 5        # Fenetre pour ir_error_integral
 
     def __init__(self, vision_adapter, model_path=None):
         """
@@ -46,13 +49,26 @@ class MLController(ControllerBase):
         self._input_details = None
         self._output_details = None
 
-        # Normalisation z-score et masque (chargés depuis normalization_stats.json)
+        # Normalisation z-score (chargees depuis normalization_stats.json)
         self._feature_mean = None
         self._feature_std = None
-        self._feature_mask = None
+        # Buffer circulaire pour la fenetre glissante
+        self._window_buffer = collections.deque(maxlen=self.WINDOW_SIZE)
+        self._prev_gyro_z = None  # Pour le calcul du gyro_z_rate
+        self._prev_calibrated_error = None  # Pour ir_error_derivative
+        self._prev_gyro_z_rate = None  # Pour gyro_z_accel
 
-        # Buffer circulaire pour calcul des deltas temporels multi-pas
-        self._prev_vectors = collections.deque(maxlen=self.DELTA_STEPS)
+        # Debug logging (activé via UI ou set_debug())
+        self._debug_enabled = False
+        self._debug_log = []
+        self._debug_interval = 1  # log every tick (changer a 5-10 si le log est trop gros)
+        self._prev_output = None
+        self._last_step_debug = {}
+
+        # Exclusion des features Detection (indices 8-15 dans le vecteur brut 29-dim)
+        self._exclude_detection = False
+        self._detection_indices = list(range(8, 16))
+        self._decay_weights = None  # Precalcule apres chargement des stats
 
         # Debug info
         self._last_input = None
@@ -82,11 +98,6 @@ class MLController(ControllerBase):
                 self._interpreter = tf.lite.Interpreter(
                     model_path=self.model_path
                 )
-                # Appliquer num_threads pour TensorFlow
-                try:
-                    self._interpreter._load_delegate(None)
-                except Exception:
-                    pass
 
             self._interpreter.allocate_tensors()
             self._input_details = self._interpreter.get_input_details()
@@ -160,20 +171,40 @@ class MLController(ControllerBase):
             # Protéger contre division par zéro (features mortes)
             self._feature_std[self._feature_std < 1e-6] = 1.0
 
-            # Masque de features (indices des features actives a conserver)
-            if stats.get('feature_mask') is not None:
-                self._feature_mask = np.array(stats['feature_mask'], dtype=np.int64)
-                print(f"[MLController] Masque chargé: {len(self._feature_mask)} features actives")
-            else:
-                print("[MLController] PAS DE MASQUE (toutes les features utilisées)")
+            # Charger les constantes de feature engineering
+            self.IR_OFFSET_BOTTOM = stats.get('ir_offset_bottom', self.IR_OFFSET_BOTTOM)
+            self.GAP_THRESHOLD = stats.get('gap_threshold', self.GAP_THRESHOLD)
 
-            print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features")
+            # Charger les parametres de la fenetre glissante
+            self.WINDOW_SIZE = stats.get('window_size', self.WINDOW_SIZE)
+            self.WINDOW_FEATURE_DIM = stats.get('window_feature_dim', self.WINDOW_FEATURE_DIM)
+            self.TEMPORAL_DECAY = stats.get('temporal_decay', self.TEMPORAL_DECAY)
+            # Reinitialiser le buffer avec la bonne taille
+            self._window_buffer = collections.deque(maxlen=self.WINDOW_SIZE)
+
+            # Charger les parametres d'exclusion Detection
+            self._exclude_detection = stats.get('exclude_detection', False)
+            self._detection_indices = stats.get('detection_indices', list(range(8, 16)))
+
+            # Precalculer les poids de decay temporel
+            if self.TEMPORAL_DECAY < 1.0:
+                self._decay_weights = np.array([
+                    self.TEMPORAL_DECAY ** (self.WINDOW_SIZE - 1 - w)
+                    for w in range(self.WINDOW_SIZE)
+                ], dtype=np.float32)
+            else:
+                self._decay_weights = None
+
+            print(f"[MLController] Z-score chargé: {len(self._feature_mean)} features "
+                  f"(fenetre={self.WINDOW_SIZE}x{self.WINDOW_FEATURE_DIM}, "
+                  f"decay={self.TEMPORAL_DECAY}, "
+                  f"ir_offset={self.IR_OFFSET_BOTTOM:.1f}, "
+                  f"exclude_det={self._exclude_detection})")
 
         except Exception as e:
             print(f"[MLController] Erreur chargement normalization_stats: {e}")
             self._feature_mean = None
             self._feature_std = None
-            self._feature_mask = None
 
     def _apply_zscore(self, vector: np.ndarray) -> np.ndarray:
         """Applique la normalisation z-score au vecteur d'état.
@@ -188,22 +219,20 @@ class MLController(ControllerBase):
             return vector
         return (vector - self._feature_mean) / self._feature_std
 
-    def _build_state_vector(self, state) -> np.ndarray:
-        """Construit le vecteur d'état à partir du SensorState.
+    def _build_step_vector(self, state) -> np.ndarray:
+        """Construit le vecteur d'etat pour un seul pas temporel.
 
-        Pipeline: VisionAdapter (27-dim) → deltas (32-dim) → masque (N-dim) → z-score
+        Pipeline: VisionAdapter (29-dim) -> exclusion Detection (21-dim)
+                  -> engineered features (26-dim)
 
         Args:
-            state: SensorState contenant les données des capteurs.
+            state: SensorState contenant les donnees des capteurs.
 
         Returns:
-            np.ndarray: Vecteur d'état normalisé prêt pour l'inférence.
+            np.ndarray: Vecteur 26-dim (21 raw + 5 engineered) ou 34-dim si detection incluse.
         """
         vision_result = {"detections": state.detections or []}
 
-        # Construire le dict IMU complet à partir de gyro_angles (11 valeurs)
-        # zumi.update_angles() → [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y,
-        #                          Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt_state]
         imu_data = {}
         if state.gyro_angles and len(state.gyro_angles) >= 11:
             a = state.gyro_angles
@@ -222,34 +251,115 @@ class MLController(ControllerBase):
             }
 
         ir_data = state.ir_sensors if state.ir_sensors else [0] * 6
+        line_off = state.line_offset if hasattr(state, 'line_offset') else None
+        raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data, line_offset=line_off)
 
-        raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data)
+        # Extraire les valeurs avant l'exclusion (indices stables dans le vecteur 29-dim)
+        ir_bot_r = raw_vector[1]   # IR_bottom_right
+        ir_bot_l = raw_vector[3]   # IR_bottom_left
+        ir_sum = (ir_bot_l + ir_bot_r) / 2.0
+        gyro_z = raw_vector[18]    # gyro_z cumulatif (toujours index 18 dans le 29-dim)
 
-        # Features engineered: line_position et line_confidence
-        ir_bot_r = raw_vector[1]  # IR_bottom_right
-        ir_bot_l = raw_vector[3]  # IR_bottom_left
-        line_pos = (ir_bot_l - ir_bot_r) / (ir_bot_l + ir_bot_r + 1e-6)
-        line_conf = abs(ir_bot_l - ir_bot_r) / ((ir_bot_l + ir_bot_r) / 2 + 1e-6)
-        raw_vector = np.concatenate([raw_vector, np.array([line_pos, line_conf], dtype=np.float32)])
-        # raw_vector est maintenant 29-dim
+        # Appliquer le masque d'exclusion Detection
+        if self._exclude_detection:
+            keep_mask = [i for i in range(len(raw_vector)) if i not in self._detection_indices]
+            raw_vector = raw_vector[keep_mask]
 
-        # Calculer les deltas temporels multi-pas
-        all_deltas = []
-        for step, weight in enumerate(self.DELTA_WEIGHTS):
-            d = np.zeros(len(self.DELTA_FEATURE_INDICES), dtype=np.float32)
-            if step < len(self._prev_vectors):
-                prev = self._prev_vectors[-(step + 1)]
-                d = (raw_vector[self.DELTA_FEATURE_INDICES] - prev[self.DELTA_FEATURE_INDICES]) * weight
-            all_deltas.append(d)
-        self._prev_vectors.append(raw_vector.copy())
+        # Features engineered PID-inspired (9 features)
+        calibrated_error = (ir_bot_r - ir_bot_l) - (-self.IR_OFFSET_BOTTOM)
+        line_visible = 1.0 if ir_sum < self.GAP_THRESHOLD else 0.0
+        cal_error_norm = calibrated_error / (ir_sum + 1e-6)
 
-        # Concaténer: 29-dim + 7*3 deltas = 50-dim
-        full_vector = np.concatenate([raw_vector] + all_deltas)
+        # gyro_z_rate (delta gyro_z cumulatif)
+        gyro_z_rate = 0.0
+        if self._prev_gyro_z is not None:
+            rate = gyro_z - self._prev_gyro_z
+            if abs(rate) < 150.0:  # pas une frontiere de sequence
+                gyro_z_rate = rate
+        self._prev_gyro_z = gyro_z
 
-        # Appliquer le masque (retirer les features mortes)
-        if self._feature_mask is not None:
-            full_vector = full_vector[self._feature_mask]
+        heading_drift = gyro_z_rate * (1.0 - line_visible)
 
+        # ir_error_derivative: delta calibrated_error
+        ir_error_derivative = 0.0
+        if self._prev_calibrated_error is not None:
+            ir_error_derivative = calibrated_error - self._prev_calibrated_error
+        self._prev_calibrated_error = calibrated_error
+
+        # ir_error_integral: moyenne glissante sur INTEGRAL_WINDOW pas
+        raw_dim = len(raw_vector)
+        recent_errors = []
+        for vec in list(self._window_buffer)[-(self.INTEGRAL_WINDOW - 1):]:
+            recent_errors.append(vec[raw_dim + 0])  # calibrated_error index
+        recent_errors.append(calibrated_error)
+        ir_error_integral = sum(recent_errors) / len(recent_errors)
+
+        # gyro_z_accel: delta gyro_z_rate
+        gyro_z_accel = 0.0
+        if self._prev_gyro_z_rate is not None:
+            gyro_z_accel = gyro_z_rate - self._prev_gyro_z_rate
+        self._prev_gyro_z_rate = gyro_z_rate
+
+        # lookahead_delta: discordance camera (ligne devant) vs IR (ligne dessous)
+        line_camera_offset = raw_vector[raw_dim - 2] if raw_dim >= 2 else 0.0
+        lookahead_delta = (line_camera_offset - cal_error_norm) * line_visible
+
+        engineered = np.array([
+            calibrated_error, line_visible, cal_error_norm,
+            gyro_z_rate, heading_drift,
+            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
+        ], dtype=np.float32)
+
+        # Exposer les features clés pour le debug logging
+        self._last_step_debug = {
+            'cal_error': float(calibrated_error),
+            'line_visible': float(line_visible),
+            'gyro_z_rate': float(gyro_z_rate),
+            'lookahead_delta': float(lookahead_delta),
+            'ir_error_deriv': float(ir_error_derivative),
+        }
+
+        return np.concatenate([raw_vector, engineered])
+
+    def _build_state_vector(self, state) -> np.ndarray:
+        """Construit le vecteur d'etat complet via fenetre glissante.
+
+        Pipeline: step vector -> window buffer -> decay temporel
+                  -> concatenation -> z-score
+
+        Args:
+            state: SensorState contenant les donnees des capteurs.
+
+        Returns:
+            np.ndarray: Vecteur normalise pret pour l'inference.
+        """
+        # 1. Construire le vecteur du pas actuel
+        step_vector = self._build_step_vector(state)
+
+        # 2. Ajouter au buffer de fenetre
+        self._window_buffer.append(step_vector)
+
+        # 3. Construire la fenetre complete (oldest first, newest last)
+        #    Si le buffer n'est pas encore plein, zero-padder a gauche
+        window_size = self.WINDOW_SIZE
+        feature_dim = len(step_vector)
+        full_vector = np.zeros(window_size * feature_dim, dtype=np.float32)
+
+        n_available = len(self._window_buffer)
+        offset = window_size - n_available  # nombre de pas zero-paddes
+
+        for i, vec in enumerate(self._window_buffer):
+            slot = offset + i  # position dans la fenetre (0=plus ancien)
+            start = slot * feature_dim
+            end = start + feature_dim
+
+            # Appliquer le decay temporel
+            if self._decay_weights is not None:
+                full_vector[start:end] = vec * self._decay_weights[slot]
+            else:
+                full_vector[start:end] = vec
+
+        # 4. Appliquer la normalisation z-score
         return self._apply_zscore(full_vector)
 
     def _inference(self, input_vector: np.ndarray) -> np.ndarray:
@@ -288,6 +398,9 @@ class MLController(ControllerBase):
         Returns:
             MotorCommand: Commande moteur calculée.
         """
+        import time as _time
+        t0 = _time.perf_counter()
+
         # 1. Vectoriser l'état
         input_vector = self._build_state_vector(state)
         self._last_input = input_vector
@@ -298,6 +411,34 @@ class MLController(ControllerBase):
                 output = self._inference(input_vector)
                 self._last_output = output
                 self._inference_count += 1
+
+                # Diagnostic aux premiers ticks
+                if self._inference_count <= 3:
+                    print(f"[MLController] Tick {self._inference_count}: "
+                          f"input_shape={input_vector.shape}, "
+                          f"input_range=[{input_vector.min():.2f}, {input_vector.max():.2f}], "
+                          f"output=[{output[0]:.4f}, {output[1]:.4f}]")
+                    if state.ir_sensors:
+                        ir = state.ir_sensors
+                        print(f"  IR raw: fr={ir[0]}, br={ir[1]}, bkr={ir[2]}, "
+                              f"bl={ir[3]}, bkl={ir[4]}, fl={ir[5]}")
+
+                # Debug logging périodique
+                if self._debug_enabled and self._inference_count % self._debug_interval == 0:
+                    step_ms = (_time.perf_counter() - t0) * 1000
+                    output_delta = float(np.abs(output - self._prev_output).sum()) if self._prev_output is not None else 0.0
+                    self._debug_log.append({
+                        'tick': self._inference_count,
+                        'override': False,
+                        'step_ms': round(step_ms, 1),
+                        'ir': [round(float(x), 1) for x in state.ir_sensors] if state.ir_sensors else None,
+                        'line_offset': round(float(state.line_offset), 3) if getattr(state, 'line_offset', None) is not None else None,
+                        **{k: round(v, 4) for k, v in self._last_step_debug.items()},
+                        'output': [round(float(output[0]), 4), round(float(output[1]), 4)],
+                        'output_delta': round(output_delta, 4),
+                        'input_range': [round(float(input_vector.min()), 2), round(float(input_vector.max()), 2)],
+                    })
+                self._prev_output = output.copy()
 
                 # Dénormaliser: [-1, 1] -> [-MOTOR_SPEED_MAX, MOTOR_SPEED_MAX]
                 left_speed = float(output[0]) * self.MOTOR_SPEED_MAX
@@ -316,18 +457,56 @@ class MLController(ControllerBase):
     def start(self):
         """Démarre le contrôleur ML."""
         self._inference_count = 0
+        self._window_buffer.clear()  # Reset la fenetre glissante
+        self._prev_gyro_z = None
+        self._prev_calibrated_error = None
+        self._prev_gyro_z_rate = None
         if self._interpreter is None and self.model_path:
             self._load_model()
             self._load_normalization_stats()
 
         if self._interpreter:
-            print(f"[MLController] Démarré avec modèle: {self.model_path}")
+            expected_dim = self._input_details[0]['shape'][1]
+            print(f"[MLController] Demarré: {self.model_path}")
+            print(f"[MLController] TFLite input: {expected_dim}-dim, "
+                  f"fenetre={self.WINDOW_SIZE}x{self.WINDOW_FEATURE_DIM}, "
+                  f"decay={self.TEMPORAL_DECAY}, "
+                  f"ir_offset={self.IR_OFFSET_BOTTOM:.1f}")
         else:
             print("[MLController] Démarré SANS modèle (commandes = 0)")
 
     def stop(self):
         """Arrête le contrôleur ML."""
         print(f"[MLController] Arrêté. Inférences effectuées: {self._inference_count}")
+
+        # Sauvegarder et résumer le debug log
+        if self._debug_log:
+            ml_entries = [e for e in self._debug_log if not e.get('override', False)]
+            override_entries = [e for e in self._debug_log if e.get('override', False)]
+
+            if ml_entries:
+                timings = [e['step_ms'] for e in ml_entries]
+                deltas = [e['output_delta'] for e in ml_entries]
+                print(f"  [DEBUG] {len(ml_entries)} entries ML, {len(override_entries)} overrides")
+                print(f"  [DEBUG] Timing: mean={np.mean(timings):.1f}ms, max={np.max(timings):.1f}ms")
+                print(f"  [DEBUG] Output delta: mean={np.mean(deltas):.4f}, max={np.max(deltas):.4f}")
+                if np.mean(deltas) < 0.001:
+                    print(f"  [DEBUG] ALERTE: Le modele donne des sorties quasi-identiques!")
+
+            import json
+            from pathlib import Path
+            log_path = Path(self.model_path).parent / 'debug_log.json'
+            with open(log_path, 'w') as f:
+                json.dump(self._debug_log, f, indent=2)
+            print(f"  [DEBUG] Log sauvegardé: {log_path}")
+
+    def set_debug(self, enabled):
+        """Active ou désactive le debug logging."""
+        self._debug_enabled = enabled
+        if enabled:
+            self._debug_log = []
+            self._prev_output = None
+        print(f"[MLController] Debug {'activé' if enabled else 'désactivé'}")
 
     def get_debug_info(self) -> dict:
         """Retourne les informations de debug pour l'interface."""

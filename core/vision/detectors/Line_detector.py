@@ -28,7 +28,7 @@ class LineDetector(BaseDetector):
         
         Args:
             white_threshold: Seuil pour détecter le blanc (0-255). Plus élevé = plus strict
-            min_area: Aire minimale d'un pointillé (réduit à 50 pour petits pointillés)
+            min_area: Aire minimale d'un pointillé (réduit à 55 pour petits pointillés)
             offset_ratio: Ratio de la hauteur où commencer la détection (0.3 = commence à 30%)
             center_zone_width_ratio: Largeur de la zone centre (ratio 0-1, 1=100% largeur image)
             front_zone_x_ratio: Position X du centre de la zone avant (0.5 = milieu)

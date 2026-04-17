@@ -3,8 +3,8 @@
 
 flask>=3.0,<4.0
 requests>=2.31,<3.0
-numpy>=1.26,<3.0
-opencv-python>=4.8,<5.0
+numpy>=1.26
+opencv-python>=4.8,=<4.10
 zumi
 
 # On Raspberry Pi OS, apt installation (python3-picamera2) is often more reliable.

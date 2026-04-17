@@ -11,7 +11,7 @@ encodage one-hot, bbox relative). Les valeurs numériques (IR, IMU) sont stocké
 en valeurs brutes (raw). La normalisation statistique (z-score) est appliquée
 séparément au moment de l'entraînement et de l'inférence.
 
-Vecteur d'état (24 + N classes):
+Vecteur d'état (26 + N classes):
   [0-5]      : IR sensors (6)             - valeurs brutes 0-255 (8 bits)
   [6]        : IR_diff (1)               - (bottom_left - bottom_right), raw
   [7]        : IR_sum  (1)               - (bottom_left + bottom_right)/2, raw
@@ -19,6 +19,8 @@ Vecteur d'état (24 + N classes):
   [9..9+N]   : class one-hot (N)          - 0 ou 1
   [9+N..13+N]: bbox cx,cy,w,h (4)        - normalisé [0,1] (relatif à l'image)
   [13+N..24+N]: IMU (11 valeurs)          - valeurs brutes (degrés)
+  [24+N]     : line_camera_offset (1)    - position de la ligne blanche [-1, 1]
+  [25+N]     : line_camera_detected (1)  - 0 ou 1 (ligne visible par caméra)
      13+N: gyro_x   (angle gyroscope X, degrés)
      14+N: gyro_y   (angle gyroscope Y)
      15+N: gyro_z   (angle gyroscope Z)
@@ -70,8 +72,8 @@ class VisionAdapter:
     # --- Getter des dimensions de vecteurs ---
     @property
     def state_dim(self) -> int:
-        """Dimension du vecteur d'état (entrée) : 24 + N classes."""
-        return 6 + 2 + 1 + len(self.classes) + 4 + IMU_DIM  # IR(6)+IR_eng(2)+detect(1)+classes(N)+bbox(4)+IMU(11) = 24+N
+        """Dimension du vecteur d'état (entrée) : 26 + N classes."""
+        return 6 + 2 + 1 + len(self.classes) + 4 + IMU_DIM + 2  # +2 pour line_camera_offset + line_camera_detected
 
     @property
     def label_dim(self) -> int:
@@ -82,7 +84,8 @@ class VisionAdapter:
         self,
         vision_result: dict,
         imu_data: dict,
-        ir_data: list          # [front_r, bottom_r, back_r, bottom_l, back_l, front_l]
+        ir_data: list,         # [front_r, bottom_r, back_r, bottom_l, back_l, front_l]
+        line_offset: float = None  # Position de la ligne blanche en pixels (caméra)
     ) -> np.ndarray:
 
         state = np.zeros(self.state_dim, dtype=np.float32)
@@ -122,6 +125,14 @@ class VisionAdapter:
         state[imu_start + 9] = imu_data.get("rot_z", 0.0)
         # État d'inclinaison (1 valeur, -1 à 7)
         state[imu_start + 10] = imu_data.get("tilt_state", 0.0)
+
+        # --- Détection de ligne par caméra (indices 24+N, 25+N) ---
+        line_start = imu_start + IMU_DIM
+        if line_offset is not None:
+            # Normaliser en [-1, 1] relatif à la demi-largeur de l'image
+            state[line_start] = np.clip(line_offset / (self.image_width / 2.0), -1.0, 1.0)
+            state[line_start + 1] = 1.0  # ligne détectée
+        # Sinon : 0.0 par défaut (pas de ligne visible)
 
         return state
 
@@ -224,9 +235,12 @@ class VisionAdapter:
     def validate_imu(self, state: np.ndarray) -> bool:
         imu_start = 13 + len(self.classes)
         imu_values = state[imu_start : imu_start + IMU_DIM]
-        # Les angles IMU sont en degrés bruts, plage raisonnable [-360, 360]
-        if np.any(np.abs(imu_values[:10]) > 360.0):
-            print("[VisionAdapter] Valeurs IMU hors plage (>360 deg) : {}".format(imu_values))
+        # Indices non-cumulatifs: acc_x(3), acc_y(4), comp_x(5), comp_y(6)
+        # Les angles cumulatifs (gyro_x/y/z, rot_x/y/z) peuvent depasser 360 deg
+        non_cumulative = [3, 4, 5, 6]
+        if np.any(np.abs(imu_values[non_cumulative]) > 360.0):
+            print("[VisionAdapter] Valeurs IMU hors plage (>360 deg) : {}".format(
+                imu_values[non_cumulative]))
             return False
         # tilt_state: -1 à 7
         if imu_values[10] < -2.0 or imu_values[10] > 8.0:

@@ -27,7 +27,7 @@ def _verbosity_print(*args, **kwargs):
 
     # Messages essentiels conservés dans tous les modes (Boot et Profilage Système)
     is_essential = any(tag in out_text for tag in [
-        "[Zumi] CPU", "[RAM]", "[Timestamp]", "[BOOT]", 
+        "[Zumi] CPU", "[RAM]", "[Timestamp]", "[BOOT]", "[Battery]",
         "DÉMARRAGE DU ZUMI", "Flask server", "Arrêt propre", "[Exception]"
     ])
 
@@ -103,7 +103,7 @@ def bootstrap():
     from core.vision.detectors.Haar_classifier import HaarDetector
     from core.vision.detectors.Line_detector import LineDetector
 
-    line_detector = LineDetector(white_threshold=180, min_area=50, offset_ratio=0.3)
+    line_detector = LineDetector(white_threshold=180, min_area=65, offset_ratio=0.65)
     draw_progress_bar(zumi.screen, 20)
     
     haar_classifier = HaarDetector()
@@ -133,6 +133,7 @@ def bootstrap():
     vision_pipeline.add_detectors(stop_detector_HSV)
     vision_pipeline.add_detectors(haar_classifier)
     vision_pipeline.add_passive_detectors(haar_classifier)
+    vision_pipeline.add_passive_detectors(line_detector)  # Le line_detector est utilisé à la fois en actif (PID) et passif (MLP)
     draw_progress_bar(zumi.screen, 70)
     
     # Étape 6 : Initialiser Flask et routes
