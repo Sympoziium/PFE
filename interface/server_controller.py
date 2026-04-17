@@ -1279,6 +1279,265 @@ class controller:
             return jsonify({'error': str(e)}), 500
 
 # ----------------------------------------------------------------------------
+#          Fonctions PID legacy (onglet PID — tuning rotation)
+# ----------------------------------------------------------------------------
+
+    def _get_line_detector(self):
+        """Retourne l'instance du LineDetector dans le pipeline vision, ou None."""
+        vp = self.vision_pipeline
+        if vp is None:
+            return None
+        for det in vp.get_detectors():
+            if getattr(det, 'name', '') == 'line':
+                return det
+        return None
+
+    # --- Line Detector params ---------------------------------------------------
+
+    def line_detector_update_params(self):
+        """POST /line_detector/update_params — met à jour les paramètres du détecteur de ligne."""
+        data = request.get_json(silent=True) or {}
+        det = self._get_line_detector()
+        if det is None:
+            return jsonify({'error': 'LineDetector introuvable dans le pipeline'}), 404
+        try:
+            det.update_params(**data)
+            print("[LineDetector] Params mis à jour: {}".format(data))
+            return jsonify(det.get_params())
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    def line_detector_get_params(self):
+        """GET /line_detector/get_params — retourne les paramètres actuels du détecteur de ligne."""
+        det = self._get_line_detector()
+        if det is None:
+            return jsonify({'error': 'LineDetector introuvable dans le pipeline'}), 404
+        return jsonify(det.get_params())
+
+    # --- PID params -------------------------------------------------------------
+
+    def pid_update_params(self):
+        """POST /pid/update_params — met à jour les paramètres du PIDController legacy."""
+        data = request.get_json(silent=True) or {}
+        try:
+            self.pid_controller.update_params(**data)
+            print("[PID] Params mis à jour: {}".format(data))
+            return jsonify(self.pid_controller.get_params())
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    def pid_get_params(self):
+        """GET /pid/get_params — retourne les paramètres actuels du PID."""
+        return jsonify(self.pid_controller.get_params())
+
+    # --- PID start / stop / reset / status --------------------------------------
+
+    def pid_start(self):
+        """POST /pid/start — démarre la boucle PID de tuning (rotation ou avance)."""
+        if self.pid_active:
+            return jsonify({'status': 'already_running'})
+
+        vp = self.vision_pipeline
+        if not vp or not vp.is_running():
+            if vp:
+                vp.start()
+                time.sleep(0.3)
+            else:
+                return jsonify({'error': 'Vision pipeline non initialisé'}), 400
+
+        self.pid_active = True
+        self.pid_controller.reset()
+
+        import threading
+        self.pid_thread = threading.Thread(target=self._pid_loop, daemon=True)
+        self.pid_thread.start()
+        print("[PID] Boucle de tuning démarrée (rotation_mode={})".format(self.pid_controller.rotation_mode))
+        return jsonify({'status': 'started', 'rotation_mode': self.pid_controller.rotation_mode})
+
+    def pid_stop(self):
+        """POST /pid/stop — arrête la boucle PID."""
+        self.pid_active = False
+        # Arrêter les moteurs immédiatement
+        if self.control_manager and self.control_manager._motor_driver:
+            self.control_manager._motor_driver.execute(MotorCommand.stop())
+        self.last_line_offset = 0
+        self.last_correction = 0
+        self.last_left_speed = 0
+        self.last_right_speed = 0
+        print("[PID] Boucle arrêtée")
+        return jsonify({'status': 'stopped'})
+
+    def pid_reset(self):
+        """POST /pid/reset — réinitialise l'état interne du PID."""
+        self.pid_controller.reset()
+        self.last_line_offset = 0
+        self.last_correction = 0
+        self.last_left_speed = 0
+        self.last_right_speed = 0
+        print("[PID] Reset effectué")
+        return jsonify({'status': 'reset'})
+
+    def pid_status(self):
+        """GET /pid/status — retourne l'état courant (offset, correction, vitesses)."""
+        return jsonify({
+            'active': self.pid_active,
+            'error': self.last_line_offset,
+            'correction': self.last_correction,
+            'left_speed': self.last_left_speed,
+            'right_speed': self.last_right_speed,
+            'rotation_mode': self.pid_controller.rotation_mode,
+        })
+
+    def _pid_loop(self):
+        """Boucle de fond pour le tuning PID (rotation ou avance).
+
+        En mode rotation : calcule un angle via compute_rotation_angle() et envoie
+        un MotorCommand.make_turn().
+        En mode avance : calcule left/right via compute() et envoie
+        un MotorCommand.make_speed().
+        """
+        vp = self.vision_pipeline
+        det = self._get_line_detector()
+        if det is None:
+            print("[PID] Aucun LineDetector — boucle abandonnée")
+            self.pid_active = False
+            return
+
+        print("[PID] Boucle PID démarrée — mode={}".format(
+            'ROTATION' if self.pid_controller.rotation_mode else 'AVANCE'))
+
+        while self.pid_active:
+            try:
+                frame = vp.get_last_frame()
+                if frame is None:
+                    time.sleep(0.05)
+                    continue
+
+                result = det.process(frame.copy())
+                line_offset = result.get('line_offset')
+
+                if line_offset is None:
+                    # Ligne perdue — arrêter les moteurs
+                    if self.control_manager and self.control_manager._motor_driver:
+                        self.control_manager._motor_driver.execute(MotorCommand.stop())
+                    self.last_line_offset = 0
+                    time.sleep(0.05)
+                    continue
+
+                self.last_line_offset = line_offset
+
+                if self.pid_controller.rotation_mode:
+                    # --- Mode rotation (tuning) ---
+                    angle = self.pid_controller.compute_rotation_angle(line_offset)
+                    if angle is not None and self.control_manager and self.control_manager._motor_driver:
+                        self.last_correction = angle
+                        self.last_left_speed = 0
+                        self.last_right_speed = 0
+                        self.control_manager._motor_driver.execute(MotorCommand.make_turn(angle))
+                        # Petite pause après la rotation pour laisser le robot se stabiliser
+                        time.sleep(0.15)
+                    else:
+                        self.last_correction = 0
+                else:
+                    # --- Mode avance ---
+                    left, right = self.pid_controller.compute(line_offset)
+                    self.last_correction = left - right
+                    self.last_left_speed = left
+                    self.last_right_speed = right
+                    if self.control_manager and self.control_manager._motor_driver:
+                        self.control_manager._motor_driver.execute(MotorCommand.make_speed(left, right))
+
+                time.sleep(0.05)  # ~20 Hz
+
+            except Exception as e:
+                print("[PID] Erreur dans la boucle: {}".format(e))
+                import traceback
+                traceback.print_exc()
+                time.sleep(0.1)
+
+        # Nettoyage à la sortie
+        if self.control_manager and self.control_manager._motor_driver:
+            self.control_manager._motor_driver.execute(MotorCommand.stop())
+        print("[PID] Boucle de fond terminée")
+
+    # --- Mode Step-by-Step (legacy) -------------------------------------------
+
+    def pid_step_start(self):
+        """POST /pid/step_mode/start — démarre la machine step-by-step."""
+        if self.step_mode_active:
+            return jsonify({'status': 'already_running'})
+
+        vp = self.vision_pipeline
+        if not vp or not vp.is_running():
+            if vp:
+                vp.start()
+                time.sleep(0.3)
+            else:
+                return jsonify({'error': 'Vision pipeline non initialisé'}), 400
+
+        self.step_machine = StepByStepStateMachine(self.robot, vp, self.pid_controller)
+        self.step_machine.start()
+        self.step_mode_active = True
+
+        import threading
+        self.step_mode_thread = threading.Thread(target=self._step_mode_loop, daemon=True)
+        self.step_mode_thread.start()
+        print("[StepMode] Démarré")
+        return jsonify({'status': 'started'})
+
+    def pid_step_stop(self):
+        """POST /pid/step_mode/stop — arrête la machine step-by-step."""
+        self.step_mode_active = False
+        if self.step_machine:
+            self.step_machine.stop()
+        print("[StepMode] Arrêté")
+        return jsonify({'status': 'stopped'})
+
+    def pid_step_approve(self):
+        """POST /pid/step_mode/approve — autorise le prochain pas."""
+        if self.step_machine:
+            self.step_machine.approve_next_step()
+            return jsonify({'status': 'approved'})
+        return jsonify({'error': 'Step machine non active'}), 400
+
+    def pid_step_status(self):
+        """GET /pid/step_mode/status — retourne l'état de la machine step-by-step."""
+        if not self.step_machine:
+            return jsonify({
+                'active': False,
+                'state': 'IDLE',
+                'step_count': 0,
+                'waiting_approval': False,
+            })
+        sm = self.step_machine
+        return jsonify({
+            'active': self.step_mode_active,
+            'state': sm.state.name,
+            'step_count': sm.step_count,
+            'waiting_approval': not sm.approved_to_move and sm.state.name == 'WAITING_APPROVAL',
+            'line_offset': sm.last_line_offset,
+            'left_speed': sm.straight_speed if hasattr(sm, 'straight_speed') else 0,
+            'right_speed': sm.straight_speed if hasattr(sm, 'straight_speed') else 0,
+            'message': getattr(sm, 'current_action_message', ''),
+        })
+
+    def _step_mode_loop(self):
+        """Boucle de fond pour le mode step-by-step."""
+        vp = self.vision_pipeline
+        while self.step_mode_active and self.step_machine:
+            try:
+                frame = vp.get_last_frame() if vp else None
+                if frame is None:
+                    time.sleep(0.05)
+                    continue
+                self.step_machine.step(frame.copy())
+                time.sleep(0.05)
+            except Exception as e:
+                print("[StepMode] Erreur: {}".format(e))
+                time.sleep(0.1)
+        print("[StepMode] Boucle de fond terminée")
+
+# ----------------------------------------------------------------------------
 #          Fonctions pour le contrôle du pont
 # ----------------------------------------------------------------------------
     def bridge_open(self):

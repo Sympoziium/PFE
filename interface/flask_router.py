@@ -67,28 +67,24 @@ def register_routes(ctrl):
     app.add_url_rule('/controller/step', 'controller_step', lambda: ctrl.controller_step(), methods=['POST'])
 
     # Routes PID
-    # app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])
-    # app.add_url_rule('/pid/get_params', 'pid_get_params', lambda: ctrl.pid_get_params())
-    # app.add_url_rule('/pid/start', 'pid_start', lambda: ctrl.pid_start(), methods=['POST'])
-    # app.add_url_rule('/pid/stop', 'pid_stop', lambda: ctrl.pid_stop(), methods=['POST'])
-    # app.add_url_rule('/pid/reset', 'pid_reset', lambda: ctrl.pid_reset(), methods=['POST'])
-    # app.add_url_rule('/pid/status', 'pid_status', lambda: ctrl.pid_status())
+    app.add_url_rule('/pid/update_params', 'pid_update_params', lambda: ctrl.pid_update_params(), methods=['POST'])
+    app.add_url_rule('/pid/get_params', 'pid_get_params', lambda: ctrl.pid_get_params())
+    app.add_url_rule('/pid/start', 'pid_start', lambda: ctrl.pid_start(), methods=['POST'])
+    app.add_url_rule('/pid/stop', 'pid_stop', lambda: ctrl.pid_stop(), methods=['POST'])
+    app.add_url_rule('/pid/reset', 'pid_reset', lambda: ctrl.pid_reset(), methods=['POST'])
+    app.add_url_rule('/pid/status', 'pid_status', lambda: ctrl.pid_status())
     
-    # # Routes pour le mode step-by-step
-    # app.add_url_rule('/pid/step_mode/start', 'pid_step_start', lambda: ctrl.pid_step_start(), methods=['POST'])
-    # app.add_url_rule('/pid/step_mode/stop', 'pid_step_stop', lambda: ctrl.pid_step_stop(), methods=['POST'])
-    # app.add_url_rule('/pid/step_mode/approve', 'pid_step_approve', lambda: ctrl.pid_step_approve(), methods=['POST'])
-    # app.add_url_rule('/pid/step_mode/status', 'pid_step_status', lambda: ctrl.pid_step_status())
+    # Routes pour le mode step-by-step
+    app.add_url_rule('/pid/step_mode/start', 'pid_step_start', lambda: ctrl.pid_step_start(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/stop', 'pid_step_stop', lambda: ctrl.pid_step_stop(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/approve', 'pid_step_approve', lambda: ctrl.pid_step_approve(), methods=['POST'])
+    app.add_url_rule('/pid/step_mode/status', 'pid_step_status', lambda: ctrl.pid_step_status())
     
-    # # Routes pour le détecteur de ligne
-    # app.add_url_rule('/line_detector/update_params', 'line_detector_update_params', 
-    #                 lambda: ctrl.line_detector_update_params(), methods=['POST'])
-    # app.add_url_rule('/line_detector/get_params', 'line_detector_get_params', 
-    #                 lambda: ctrl.line_detector_get_params())
-    
-    # app.add_url_rule('/state_machine/start', 'state_machine_start', lambda: ctrl.state_machine_start(), methods=['POST'])
-    # app.add_url_rule('/state_machine/stop', 'state_machine_stop', lambda: ctrl.state_machine_stop(), methods=['POST'])
-    # app.add_url_rule('/state_machine/status', 'state_machine_status', lambda: ctrl.state_machine_status())
+    # Routes pour le détecteur de ligne
+    app.add_url_rule('/line_detector/update_params', 'line_detector_update_params', 
+                    lambda: ctrl.line_detector_update_params(), methods=['POST'])
+    app.add_url_rule('/line_detector/get_params', 'line_detector_get_params', 
+                    lambda: ctrl.line_detector_get_params())
 
     # Reset capteurs / PID
     app.add_url_rule('/robot/calibrate', 'robot_calibrate', lambda: ctrl.robot_calibrate(), methods=['POST'])
