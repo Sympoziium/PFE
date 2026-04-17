@@ -13,8 +13,8 @@
 
 // --- CONFIGURATION WIFI (MODIFICATION ICI) ---
 // Remplacez ces valeurs par celles de votre réseau (le même que le Zumi)
-const char* ssid = "dlink-8D39";      // ⚠️ Mettre le nom de votre WiFi ici
-const char* password = "xdvxj79799";  // ⚠️ Mettre le mot de passe de votre WiFi ici
+const char* ssid = "zumi-robot";      // ⚠️ Mettre le nom de votre WiFi ici
+const char* password = "zumirobot";  // ⚠️ Mettre le mot de passe de votre WiFi ici
 
 ESP8266WebServer server(80);
 
