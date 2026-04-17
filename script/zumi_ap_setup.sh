@@ -8,7 +8,7 @@
 set -e
 
 AP_PROFILE="ZumiAP"
-AP_SSID="zumi-robot"
+AP_SSID="zumi-robot-B"
 AP_PASSWORD="zumirobot"
 AP_IP="192.168.0.1/24"
 VIRT_IF="wlan1"
