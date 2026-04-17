@@ -493,6 +493,9 @@ class controller:
     def video_feed(self):
         vp = self.vision_pipeline
         if not vp or not vp.is_running(): return "Camera OFF", 503
+        
+        overlay_mode = request.args.get('overlay', '')
+        
         def generate():
             frame_counter  = 0
             previous_distance = None
@@ -558,6 +561,24 @@ class controller:
                         except Exception as e:
                             if self.debug:
                                 print("[VideoFeed] Erreur overlay zones: {}".format(e))
+                elif overlay_mode == 'pid' or getattr(self, 'pid_active', False) or getattr(self, 'step_mode_active', False):
+                    # Overlay spécifique pour l'onglet PID et tuning
+                    line_det = self._get_line_detector()
+                    if line_det is not None:
+                        try:
+                            # Si le PID n'est pas actif (tuning à l'arrêt), on force process() 
+                            # pour avoir les données d'annotation actuelles pour affichage
+                            if not getattr(self, 'pid_active', False) and not getattr(self, 'step_mode_active', False):
+                                line_det.process(frame_bgr.copy())
+                            display_frame = line_det.annotate_detection(frame_bgr.copy())
+                            
+                            # Texte overlay
+                            mode_str = "ROTATION" if self.pid_controller.rotation_mode else "AVANCE"
+                            cv2.putText(display_frame, f"PID TUNING : {mode_str}", (10, 20),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        except Exception as e:
+                            if self.debug:
+                                print("[VideoFeed] Erreur overlay PID: {}".format(e))
 
                 # --- Overlay détection passive sur la frame d'affichage ---
                 if vp._passive_running:

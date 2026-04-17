@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # onglet_pid.py
 # ------------------
@@ -496,7 +496,7 @@ def render_pid_tab(title="Asservissement PID"):
         var placeholder = document.getElementById('videoPlaceholder');
         if (img) {{
             setTimeout(function() {{
-                img.src = '/video?' + Date.now();
+                img.src = '/video?overlay=pid&_=' + Date.now();
                 img.style.display = '';
                 if (placeholder) placeholder.style.display = 'none';
             }}, 500);
