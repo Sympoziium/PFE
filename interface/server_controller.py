@@ -162,7 +162,7 @@ class controller:
         
         # --- CONFIGURATION DU PONT ---
         # ⚠️ REMPLACE CECI PAR L'IP QUE TON ARDUINO A AFFICHÉE
-        self.BRIDGE_IP = "192.168.0.158" 
+        self.BRIDGE_IP = "192.168.0.218" 
         self.BRIDGE_URL = "http://{}".format(self.BRIDGE_IP)
         # Index du détecteur sélectionné côté serveur
         self.selected_detector_index = 0
@@ -1871,8 +1871,9 @@ class controller:
     def bridge_mode_auto(self, etat):
         # etat doit être '1' (true) ou '0' (false)
         try:
-            # On appelle l'URL du pont: http://192.168.X.X/majAutoMoteur?etat=1
+            # On désactive/active le mode auto du moteur ET des lumières
             requests.get("{}/majAutoMoteur?etat={}".format(self.BRIDGE_URL, etat), timeout=1)
+            requests.get("{}/majAutoLed?etat={}".format(self.BRIDGE_URL, etat), timeout=1)
             return ("", 204)
         except Exception as e:
             print("[ERREUR] Pont Mode Auto:", e)
