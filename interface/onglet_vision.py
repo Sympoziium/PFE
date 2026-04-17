@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # onglet_vision.py
 # ------------------
@@ -233,7 +233,28 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     .toast.info    { background: #87C7F1; color: #1a3a5c; box-shadow: 0 4px 0 #6BAED6; }
     .toast.success { background: #A8E6CF; color: #2d6a4f; box-shadow: 0 4px 0 #74C69D; }
 
-	</style>
+    /* --- Panneau paramètres détecteur de ligne --- */
+    .line-params-panel {
+        border: 2px solid #3498db;
+        border-radius: 12px;
+        padding: 14px;
+        background: #f0f8ff;
+        margin-top: 8px;
+    }
+    .line-params-panel .param-row {
+        display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .line-params-panel label {
+        min-width: 140px; font-size: 14px;
+    }
+    .line-params-panel input[type='range'] {
+        flex: 1; max-width: 200px; cursor: pointer;
+    }
+    .line-params-panel input[type='number'] {
+        width: 64px; padding: 4px; border-radius: 6px; border: 1px solid #aaa; font-size: 14px;
+    }
+
+    </style>
     </head>
     <body>
     <div class='container'>
@@ -306,6 +327,27 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                             <div id='stopDetectTerminal' class='log-terminal'>Terminal vide</div>
                         </div>
                     </div>
+                </div>
+                <!-- Panneau paramètres du détecteur de ligne -->
+                <div class='line-params-panel' id='lineParamsPanel'>
+                    <h4 class='tab-subtitle' style='margin-top:0;'>Paramètres du détecteur de ligne</h4>
+                    <div class='param-row'>
+                        <label for='visionWhiteThreshold'>Seuil blanc :</label>
+                        <input type='range' id='visionWhiteThreshold' min='0' max='255' value='150'>
+                        <input type='number' id='visionWhiteThresholdNum' min='0' max='255' value='150'>
+                    </div>
+                    <div class='param-row'>
+                        <label for='visionMinArea'>Aire minimale :</label>
+                        <input type='range' id='visionMinArea' min='10' max='5000' value='300'>
+                        <input type='number' id='visionMinAreaNum' min='10' max='5000' value='300'>
+                    </div>
+                    <div class='param-row'>
+                        <label for='visionOffsetRatio'>Zone de détection :</label>
+                        <input type='range' id='visionOffsetRatio' min='0' max='100' value='50'>
+                        <input type='number' id='visionOffsetRatioNum' min='0' max='100' value='50' step='1'>
+                        <span style='font-size:13px; color:#555;'>%</span>
+                    </div>
+                    <button class='primary-btn' id='applyLineParamsBtn'>Appliquer</button>
                 </div>
             </div>
         </div>
@@ -1011,7 +1053,71 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
                 setPassiveDetectionRate(v);
             });
         }
+
+        // --- Line detector params : sync sliders <-> number inputs ---
+        function syncSliderNum(sliderId, numId) {
+            var slider = document.getElementById(sliderId);
+            var num = document.getElementById(numId);
+            if (!slider || !num) return;
+            slider.addEventListener('input', function() { num.value = slider.value; });
+            num.addEventListener('change', function() {
+                var lo = parseInt(slider.min, 10);
+                var hi = parseInt(slider.max, 10);
+                var v = Math.max(lo, Math.min(hi, parseInt(num.value, 10) || lo));
+                num.value = v;
+                slider.value = v;
+            });
+        }
+        syncSliderNum('visionWhiteThreshold', 'visionWhiteThresholdNum');
+        syncSliderNum('visionMinArea', 'visionMinAreaNum');
+        syncSliderNum('visionOffsetRatio', 'visionOffsetRatioNum');
+
+        // Charger les valeurs actuelles depuis le serveur
+        fetch('/line_detector/get_params')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.white_threshold !== undefined) {
+                    document.getElementById('visionWhiteThreshold').value = data.white_threshold;
+                    document.getElementById('visionWhiteThresholdNum').value = data.white_threshold;
+                }
+                if (data.min_area !== undefined) {
+                    document.getElementById('visionMinArea').value = data.min_area;
+                    document.getElementById('visionMinAreaNum').value = data.min_area;
+                }
+                if (data.offset_ratio !== undefined) {
+                    var pct = Math.round(data.offset_ratio * 100);
+                    document.getElementById('visionOffsetRatio').value = pct;
+                    document.getElementById('visionOffsetRatioNum').value = pct;
+                }
+            })
+            .catch(function(err) { console.warn('line_detector/get_params:', err); });
+
+        // Bouton Appliquer
+        var applyBtn = document.getElementById('applyLineParamsBtn');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', applyLineDetectorParams);
+        }
     });
+
+    function applyLineDetectorParams() {
+        var params = {
+            white_threshold: parseInt(document.getElementById('visionWhiteThresholdNum').value, 10),
+            min_area: parseInt(document.getElementById('visionMinAreaNum').value, 10),
+            offset_ratio: parseInt(document.getElementById('visionOffsetRatioNum').value, 10) / 100.0
+        };
+        fetch('/line_detector/update_params', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+        })
+        .then(function(r) { if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); })
+        .then(function(data) {
+            showToast('Paramètres détecteur mis à jour!', 'success');
+        })
+        .catch(function(err) {
+            showToast('Erreur: ' + err.message, 'error');
+        });
+    }
 
     // --- Exposer les fonctions au scope global pour les onclick inline ---
     window.navigateTo = navigateTo;
@@ -1028,6 +1134,7 @@ def render_vision_tab(title: str = "Vision du Zumi") -> str:
     window.downloadMiningCrops = downloadMiningCrops;
     window.setLivefeedFps = setLivefeedFps;
     window.setPassiveDetectionRate = setPassiveDetectionRate;
+    window.applyLineDetectorParams = applyLineDetectorParams;
     </script>
     </body></html>
     """

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # onglet_control.py
 # ------------------
@@ -601,6 +601,13 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     } else {
                         btn.classList.add('active');
                         btn.textContent = '⏹ Arrêter le contrôleur';
+                        // Activer l'overlay FSM seulement si circuit_fsm est sélectionné
+                        var overlayEnabled = (controllerName === 'circuit_fsm');
+                        fetch('/set_fsm_overlay', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: overlayEnabled })
+                        }).catch(function(e) { console.error('set_fsm_overlay error:', e); });
                     }
                 })
                 .catch(function(e) { console.error('toggleController start error:', e); });
@@ -609,6 +616,12 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 .then(function() {
                     btn.classList.remove('active');
                     btn.textContent = '▶ Activer le contrôleur';
+                    // Toujours désactiver l'overlay FSM à l'arrêt du contrôleur
+                    fetch('/set_fsm_overlay', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: false })
+                    }).catch(function(e) { console.error('set_fsm_overlay error:', e); });
                 })
                 .catch(function(e) { console.error('toggleController stop error:', e); });
         }
@@ -662,6 +675,85 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 {key: 'gap_threshold', label: 'Seuil trou (IR_sum)', min: 150, max: 230, step: 1, type: 'float', input: 'number'},
                 {key: 'heading_kp', label: 'Heading Kp (cap gyro)', min: 0, max: 10, step: 0.1, type: 'float', input: 'number'},
                 {key: 'heading_max_correction', label: 'Heading correction max', min: 0, max: 30, step: 1, type: 'float', input: 'number'}
+            ]
+        },
+        'circuit_fsm': {
+            title: 'Réglages Circuit FSM',
+            endpoint: '/controller/params',
+            sections: [
+                {
+                    label: '📷 Détecteur de ligne (Vision)',
+                    params: [
+                        {key: 'white_threshold', label: 'Seuil blanc (0-255)', min: 0, max: 255, step: 1, type: 'int', input: 'number', source: 'line_detector'},
+                        {key: 'min_area', label: 'Aire min pointillé (px)', min: 1, max: 500, step: 1, type: 'int', input: 'number', source: 'line_detector'},
+                        {key: 'offset_ratio', label: 'ROI offset ratio (Début zone centre Y)', min: 0, max: 1, step: 0.05, type: 'float', input: 'number', source: 'line_detector'}
+                    ]
+                },
+                {
+                    label: '📐 Zone CENTRE (base)',
+                    params: [
+                        {key: 'center_zone_width_ratio', label: 'Largeur zone centre (ratio)', min: 0.1, max: 1, step: 0.05, type: 'float', input: 'number', source: 'line_detector'}
+                    ]
+                },
+                {
+                    label: '📏 Zone AVANT (alignement)',
+                    params: [
+                        {key: 'front_zone_x_ratio', label: 'Position X centre (ratio)', min: 0.1, max: 0.9, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_y_start', label: 'Début Y (ratio, 0=haut)', min: 0.1, max: 0.9, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_y_end', label: 'Fin Y (ratio)', min: 0.2, max: 0.95, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_zone_width_ratio', label: 'Largeur (ratio)', min: 0.02, max: 0.3, step: 0.01, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'front_min_dashes', label: 'Min pointillés pour confirmer', min: 1, max: 10, step: 1, type: 'int', input: 'number', source: 'line_detector'}
+                    ]
+                },
+                {
+                    label: '↗️ Zones COINS (virages)',
+                    params: [
+                        {key: 'corner_zone_width_ratio', label: 'Largeur chaque coin (ratio)', min: 0.05, max: 0.5, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_height_ratio', label: 'Hauteur chaque coin (ratio)', min: 0.05, max: 0.5, step: 0.02, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_zone_y_start', label: 'Début Y coins (ratio)', min: 0.1, max: 0.8, step: 0.05, type: 'float', input: 'number', source: 'line_detector'},
+                        {key: 'corner_slowdown_factor', label: 'Facteur ralentissement virage (0-1)', min: 0.1, max: 1, step: 0.05, type: 'float', input: 'number'},
+                        {key: 'turn_min_area', label: 'Aire min virage (px²)', min: 100, max: 5000, step: 50, type: 'int', input: 'number'}
+                    ]
+                },
+                {
+                    label: '🎯 Correction PID',
+                    params: [
+                        {key: 'base_speed', label: 'Vitesse de base', min: 0, max: 50, step: 1, type: 'int', input: 'number'},
+                        {key: 'kp', label: 'Kp (proportionnel)', min: -1, max: 1, step: 0.01, type: 'float', input: 'number'},
+                        {key: 'ki', label: 'Ki (intégral)', min: -1, max: 1, step: 0.01, type: 'float', input: 'number'},
+                        {key: 'kd', label: 'Kd (dérivé)', min: -2, max: 2, step: 0.01, type: 'float', input: 'number'},
+                        {key: 'max_correction', label: 'Correction max', min: 0, max: 50, step: 1, type: 'int', input: 'number'},
+                        {key: 'turn_threshold', label: 'Seuil rotation (px)', min: 0, max: 200, step: 5, type: 'int', input: 'number'},
+                        {key: 'turn_angle_scale', label: 'Facteur angle rotation (°/px)', min: 0.01, max: 2, step: 0.01, type: 'float', input: 'number'},
+                        {key: 'max_turn_angle', label: 'Angle rotation max (°)', min: 1, max: 90, step: 1, type: 'float', input: 'number'}
+                    ]
+                },
+                {
+                    label: '⏱ Timing FSM',
+                    params: [
+                        {key: 'line_lost_timeout', label: 'Timeout perte ligne (s)', min: 0.1, max: 5, step: 0.1, type: 'float', input: 'number'},
+                        {key: 'search_timeout', label: 'Timeout recherche (s)', min: 1, max: 30, step: 1, type: 'float', input: 'number'},
+                        {key: 'search_spin_speed', label: 'Vitesse pivot recherche', min: 1, max: 20, step: 1, type: 'int', input: 'number'},
+                        {key: 'step_duration', label: 'Durée pas (s)', min: 0.05, max: 2, step: 0.05, type: 'float', input: 'number'},
+                        {key: 'pause_duration', label: 'Durée pause capture (s)', min: 0.05, max: 2, step: 0.05, type: 'float', input: 'number'}
+                    ]
+                },
+                {
+                    label: '🔄 Manœuvre aveugle',
+                    params: [
+                        {key: 'maneuver_forward_cm', label: 'Distance avance (cm)', min: 0, max: 50, step: 1, type: 'float', input: 'number'},
+                        {key: 'maneuver_turn_angle', label: 'Angle virage (°)', min: -180, max: 180, step: 5, type: 'float', input: 'number'},
+                        {key: 'forward_speed', label: 'Vitesse avance aveugle', min: 1, max: 50, step: 1, type: 'int', input: 'number'},
+                        {key: 'cm_per_second', label: 'Calibration cm/s', min: 1, max: 50, step: 0.5, type: 'float', input: 'number'}
+                    ]
+                },
+                {
+                    label: '👣 Mode pas-à-pas',
+                    params: [
+                        {key: 'step_by_step_mode', label: 'Activer mode pas-à-pas', min: 0, max: 1, step: 1, type: 'int', input: 'number'}
+                    ],
+                    extra_html: '<button id="stepNextBtn" class="step-next-btn" onclick="requestNextStep()" style="margin-top:8px; width:100%; padding:10px; font-size:16px; background:#4CAF50; color:white; border:none; border-radius:8px; cursor:pointer; display:none;">⏭️ Prochain pas</button>'
+                }
             ]
         }
     };
@@ -723,7 +815,17 @@ def render_control_tab(title: str = "Contrôle") -> str:
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 var params = data.params || data;
-                renderParamSliders(container, config.params, params);
+                // Fusionner les params du LineDetector si disponibles
+                var lineParams = data.line_detector_params || {};
+                var mergedValues = {};
+                Object.keys(params).forEach(function(k) { mergedValues[k] = params[k]; });
+                Object.keys(lineParams).forEach(function(k) { mergedValues[k] = lineParams[k]; });
+
+                if (config.sections) {
+                    renderSectionedParams(container, config.sections, mergedValues);
+                } else {
+                    renderParamSliders(container, config.params, mergedValues);
+                }
             })
             .catch(function(e) { console.error('load controller params error:', e); });
     }
@@ -752,6 +854,105 @@ def render_control_tab(title: str = "Contrôle") -> str:
             .catch(function(e) {
                 container.innerHTML = '<p style="color:#999;">Aucun paramètre disponible</p>';
             });
+    }
+
+    function renderSectionedParams(container, sections, values) {
+        var html = '';
+        sections.forEach(function(section) {
+            html += '<div style="margin-top:12px; padding:8px 0; border-top:1px solid #eee;">';
+            html += '<div style="font-weight:bold; font-size:0.95rem; margin-bottom:8px; color:#555;">' + section.label + '</div>';
+            section.params.forEach(function(p) {
+                var val = values[p.key];
+                if (val === undefined || val === null) val = p.min;
+                html += '<div class="param-row">';
+                html += '<label for="param_' + p.key + '">' + p.label + '</label>';
+                if (p.input === 'number') {
+                    html += '<input id="param_' + p.key + '" type="number"';
+                    html += ' min="' + p.min + '" max="' + p.max + '" step="' + p.step + '"';
+                    html += ' value="' + val + '"';
+                    html += ' style="flex:2; padding:6px 8px; border-radius:8px; border:2px solid #B5FFFC; font-weight:bold; font-size:0.95rem; text-align:center;">';
+                } else {
+                    var displayVal = p.type === 'float' ? parseFloat(val).toFixed(3) : parseInt(val);
+                    html += '<input id="param_' + p.key + '" type="range"';
+                    html += ' min="' + p.min + '" max="' + p.max + '" step="' + p.step + '"';
+                    html += ' value="' + val + '">';
+                    html += '<span class="param-value" id="param_' + p.key + '_val">' + displayVal + '</span>';
+                }
+                html += '</div>';
+            });
+            // Extra HTML (ex: bouton pas-à-pas)
+            if (section.extra_html) {
+                html += section.extra_html;
+            }
+            html += '</div>';
+        });
+        container.innerHTML = html;
+
+        // Bind live updates pour les sliders
+        sections.forEach(function(section) {
+            section.params.forEach(function(p) {
+                if (p.input === 'number') return;
+                var input = document.getElementById('param_' + p.key);
+                var valEl = document.getElementById('param_' + p.key + '_val');
+                if (!input || !valEl) return;
+                input.addEventListener('input', function() {
+                    valEl.textContent = p.type === 'float'
+                        ? parseFloat(input.value).toFixed(3)
+                        : parseInt(input.value);
+                });
+            });
+        });
+
+        // Afficher/masquer le bouton pas-à-pas selon la valeur
+        var stepBtn = document.getElementById('stepNextBtn');
+        var stepInput = document.getElementById('param_step_by_step_mode');
+        if (stepBtn && stepInput) {
+            stepBtn.style.display = parseInt(stepInput.value) ? 'block' : 'none';
+            stepInput.addEventListener('change', function() {
+                stepBtn.style.display = parseInt(stepInput.value) ? 'block' : 'none';
+            });
+        }
+
+        // Auto-apply: chaque modification déclenche applySettings avec debounce
+        _bindAutoApply(sections);
+    }
+
+    var _autoApplyTimer = null;
+    var _lastAppliedValues = {};
+
+    function _debouncedApply() {
+        if (_autoApplyTimer) clearTimeout(_autoApplyTimer);
+        _autoApplyTimer = setTimeout(function() {
+            console.log('[AutoApply] Envoi des paramètres…');
+            applySettings();
+        }, 250);
+    }
+
+    function _bindAutoApply(sections) {
+        // Bind sur les sections (circuit_fsm)
+        if (sections) {
+            sections.forEach(function(section) {
+                section.params.forEach(function(p) {
+                    var input = document.getElementById('param_' + p.key);
+                    if (!input) return;
+                    input.addEventListener('input', _debouncedApply);
+                    input.addEventListener('change', _debouncedApply);
+                    // Pour type="number": forcer le change sur blur
+                    input.addEventListener('blur', _debouncedApply);
+                });
+            });
+        }
+    }
+
+    function _bindAutoApplyFlat(paramDefs) {
+        // Bind sur les params plats (manual_controller, pid_ir)
+        paramDefs.forEach(function(p) {
+            var input = document.getElementById('param_' + p.key);
+            if (!input) return;
+            input.addEventListener('input', _debouncedApply);
+            input.addEventListener('change', _debouncedApply);
+            input.addEventListener('blur', _debouncedApply);
+        });
     }
 
     function renderParamSliders(container, paramDefs, values) {
@@ -791,6 +992,9 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     : parseInt(input.value);
             });
         });
+
+        // Auto-apply sur tous les inputs
+        _bindAutoApplyFlat(paramDefs);
     }
 
     function applySettings() {
@@ -807,32 +1011,79 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
-            }).catch(function(e) { console.error('apply settings error:', e); });
+            }).then(function(r) {
+                if (!r.ok) console.error('[ApplySettings] manual error HTTP', r.status);
+                return r.json();
+            }).then(function(data) {
+                console.log('[ApplySettings] manual OK:', data);
+            }).catch(function(e) { console.error('[ApplySettings] manual fetch error:', e); });
         } else {
             // Contrôleur générique via /controller/params
             var payload = {name: ctrlName};
-            var paramDefs = config ? config.params : [];
 
-            if (paramDefs.length === 0) {
+            if (config && config.sections) {
+                // Format sectionné (circuit_fsm)
+                config.sections.forEach(function(section) {
+                    section.params.forEach(function(p) {
+                        var input = document.getElementById('param_' + p.key);
+                        if (input) payload[p.key] = parseFloat(input.value);
+                    });
+                });
+            } else if (config && config.params) {
+                config.params.forEach(function(p) {
+                    var input = document.getElementById('param_' + p.key);
+                    if (input) payload[p.key] = parseFloat(input.value);
+                });
+            } else {
                 // Params génériques : lire tous les inputs param_*
-                var inputs = document.querySelectorAll('#settingsContent input[type="range"]');
+                var inputs = document.querySelectorAll('#settingsContent input[type="range"], #settingsContent input[type="number"]');
                 Array.prototype.forEach.call(inputs, function(input) {
                     var key = input.id.replace('param_', '');
                     payload[key] = parseFloat(input.value);
                 });
-            } else {
-                paramDefs.forEach(function(p) {
-                    var input = document.getElementById('param_' + p.key);
-                    if (input) payload[p.key] = parseFloat(input.value);
-                });
             }
 
+            console.log('[ApplySettings] POST payload:', JSON.stringify(payload));
             fetch('/controller/params', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
-            }).catch(function(e) { console.error('apply controller params error:', e); });
+            }).then(function(r) {
+                if (!r.ok) console.error('[ApplySettings] controller error HTTP', r.status);
+                return r.json();
+            }).then(function(data) {
+                console.log('[ApplySettings] controller response:', data);
+                // Re-synchroniser les inputs avec les valeurs retournées par le serveur
+                if (data) {
+                    var serverParams = data.params || {};
+                    var lineParams = data.line_detector_params || {};
+                    var merged = {};
+                    Object.keys(serverParams).forEach(function(k) { merged[k] = serverParams[k]; });
+                    Object.keys(lineParams).forEach(function(k) { merged[k] = lineParams[k]; });
+                    Object.keys(merged).forEach(function(k) {
+                        var input = document.getElementById('param_' + k);
+                        if (input && merged[k] !== undefined) {
+                            input.value = merged[k];
+                            // Mettre à jour aussi le label de valeur pour les sliders
+                            var valEl = document.getElementById('param_' + k + '_val');
+                            if (valEl) valEl.textContent = merged[k];
+                        }
+                    });
+                }
+            }).catch(function(e) { console.error('[ApplySettings] controller fetch error:', e); });
         }
+    }
+
+    function requestNextStep() {
+        fetch('/controller/step', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: 'circuit_fsm'})
+        }).then(function(r) { return r.json(); })
+          .then(function(data) {
+              console.log('Step response:', data);
+          })
+          .catch(function(e) { console.error('step error:', e); });
     }
 
     // --- CONTRÔLE WASD (clavier) ---

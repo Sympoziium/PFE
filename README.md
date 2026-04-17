@@ -242,6 +242,8 @@ python3 main.py
 sudo ~/PFE/script/zumi_wifi_config.sh
 # Le script demande le SSID et le mot de passe du réseau cible.
 # La connexion est persistée dans NetworkManager et s'active automatiquement au boot.
+
+sudo nmcli connection up ZumiSTA
 ```
 
 **Vérification de l'état réseau :**
@@ -250,6 +252,20 @@ sudo ~/PFE/script/zumi_wifi_config.sh
 ip addr show wlan0   # Interface STA — IP dynamique si connecté au réseau externe
 ip addr show wlan1   # Interface AP  — 192.168.0.1 (toujours présente)
 ```
+### 4.2.1 Connection sur un wifi externe
+```bash
+# Configurer la connexion STA (à faire une seule fois, ou après changement de réseau)
+sudo ~/PFE/script/zumi_wifi_config.sh
+# Le script demande le SSID et le mot de passe du réseau cible.
+# La connexion est persistée dans NetworkManager et s'active automatiquement au boot.
+ip -c addr show
+#prendre l'ip du wlan0
+
+http:// ip :5000
+
+
+
+
 
 ### 4.3 — Entraînement d'un modèle (PC-side, commun V1/V2)
 

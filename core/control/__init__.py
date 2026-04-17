@@ -25,6 +25,7 @@ from core.control.IO_drivers.sensor_driver import SensorDriver
 from core.control.IO_drivers.motor_driver import MotorDriver
 from core.control.legacy.pid_line_follower import PIDLineFollowerController
 from core.control.legacy.line_follower_controller import LineFollowerController
+from core.control.controlers.circuit_fsm_controller import CircuitFSMController
 
 __all__ = [
     'ControlManager',
@@ -36,4 +37,5 @@ __all__ = [
     'MotorDriver',
     'PIDLineFollowerController',
     'LineFollowerController',
+    'CircuitFSMController',
 ]

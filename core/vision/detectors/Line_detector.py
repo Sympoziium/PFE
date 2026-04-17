@@ -13,7 +13,16 @@ import cv2
 import numpy as np
 
 class LineDetector(BaseDetector):
-    def __init__(self, white_threshold=150, min_area=55, offset_ratio=0.7):
+    def __init__(self, white_threshold=150, min_area=300, offset_ratio=0.5,
+                 # Zone CENTRE (base) — rectangle au bas de l'image
+                 center_zone_width_ratio=0.70,
+                 # Zone AVANT — rectangle vertical fin et long
+                 front_zone_x_ratio=0.5, front_zone_y_start=0.50,
+                 front_zone_y_end=1, front_zone_width_ratio=0.1,
+                 front_min_dashes=1,
+                 # Zones COINS — rectangles dans les coins gauche et droit
+                 corner_zone_width_ratio=0.25, corner_zone_height_ratio=0.25,
+                 corner_zone_y_start=0.50):
         """
         Initialise le détecteur de ligne.
         
@@ -21,16 +30,50 @@ class LineDetector(BaseDetector):
             white_threshold: Seuil pour détecter le blanc (0-255). Plus élevé = plus strict
             min_area: Aire minimale d'un pointillé (réduit à 55 pour petits pointillés)
             offset_ratio: Ratio de la hauteur où commencer la détection (0.3 = commence à 30%)
+            center_zone_width_ratio: Largeur de la zone centre (ratio 0-1, 1=100% largeur image)
+            front_zone_x_ratio: Position X du centre de la zone avant (0.5 = milieu)
+            front_zone_y_start: Début Y de la zone avant (ratio, 0 = haut de l'image)
+            front_zone_y_end: Fin Y de la zone avant (ratio)
+            front_zone_width_ratio: Largeur de la zone avant (ratio, étroit)
+            front_min_dashes: Nombre min de pointillés dans la zone avant pour confirmer la ligne
+            corner_zone_width_ratio: Largeur de chaque zone coin (ratio)
+            corner_zone_height_ratio: Hauteur de chaque zone coin (ratio)
+            corner_zone_y_start: Début Y des zones coin (ratio)
         """
         self.white_threshold = white_threshold
         self.min_area = min_area
         self.offset_ratio = offset_ratio
+        
+        # Paramètres zone CENTRE
+        self.center_zone_width_ratio = center_zone_width_ratio
+        
+        # Paramètres zone AVANT
+        self.front_zone_x_ratio = front_zone_x_ratio
+        self.front_zone_y_start = front_zone_y_start
+        self.front_zone_y_end = front_zone_y_end
+        self.front_zone_width_ratio = front_zone_width_ratio
+        self.front_min_dashes = front_min_dashes
+        
+        # Paramètres zones COINS
+        self.corner_zone_width_ratio = corner_zone_width_ratio
+        self.corner_zone_height_ratio = corner_zone_height_ratio
+        self.corner_zone_y_start = corner_zone_y_start
+        
         self.CAPTURE_DIR = None
-        self.debug = True  # Mode debug activé pour diagnostiquer le problème
+        self.debug = True
         self.name = "line"
         self.logs = []
         
-    def update_params(self, white_threshold=None, min_area=None, offset_ratio=None):
+        # Résultats multi-zones (mis à jour par process_zones)
+        self._last_zones_result = None
+        
+    def update_params(self, white_threshold=None, min_area=None, offset_ratio=None,
+                      center_zone_width_ratio=None,
+                      front_zone_x_ratio=None, front_zone_y_start=None,
+                      front_zone_y_end=None, front_zone_width_ratio=None,
+                      front_min_dashes=None,
+                      corner_zone_width_ratio=None, corner_zone_height_ratio=None,
+                      corner_zone_y_start=None):
         """Met à jour les paramètres du détecteur."""
         if white_threshold is not None:
             self.white_threshold = int(white_threshold)
@@ -38,13 +81,40 @@ class LineDetector(BaseDetector):
             self.min_area = int(min_area)
         if offset_ratio is not None:
             self.offset_ratio = float(offset_ratio)
+        if center_zone_width_ratio is not None:
+            self.center_zone_width_ratio = float(center_zone_width_ratio)
+        if front_zone_x_ratio is not None:
+            self.front_zone_x_ratio = float(front_zone_x_ratio)
+        if front_zone_y_start is not None:
+            self.front_zone_y_start = float(front_zone_y_start)
+        if front_zone_y_end is not None:
+            self.front_zone_y_end = float(front_zone_y_end)
+        if front_zone_width_ratio is not None:
+            self.front_zone_width_ratio = float(front_zone_width_ratio)
+        if front_min_dashes is not None:
+            self.front_min_dashes = int(front_min_dashes)
+        if corner_zone_width_ratio is not None:
+            self.corner_zone_width_ratio = float(corner_zone_width_ratio)
+        if corner_zone_height_ratio is not None:
+            self.corner_zone_height_ratio = float(corner_zone_height_ratio)
+        if corner_zone_y_start is not None:
+            self.corner_zone_y_start = float(corner_zone_y_start)
             
     def get_params(self):
         """Retourne les paramètres actuels."""
         return {
             'white_threshold': self.white_threshold,
             'min_area': self.min_area,
-            'offset_ratio': self.offset_ratio
+            'offset_ratio': self.offset_ratio,
+            'center_zone_width_ratio': self.center_zone_width_ratio,
+            'front_zone_x_ratio': self.front_zone_x_ratio,
+            'front_zone_y_start': self.front_zone_y_start,
+            'front_zone_y_end': self.front_zone_y_end,
+            'front_zone_width_ratio': self.front_zone_width_ratio,
+            'front_min_dashes': self.front_min_dashes,
+            'corner_zone_width_ratio': self.corner_zone_width_ratio,
+            'corner_zone_height_ratio': self.corner_zone_height_ratio,
+            'corner_zone_y_start': self.corner_zone_y_start,
         }
         
     def process(self, frame):
@@ -168,6 +238,318 @@ class LineDetector(BaseDetector):
         result = self.process(frame)
         result['timestamp'] = time.time()
         return result
+
+    # =================================================================
+    #  DÉTECTION MULTI-ZONES
+    # =================================================================
+
+    def _compute_zone_rects(self, width, height):
+        """Calcule les rectangles des 4 zones de détection en pixels.
+        
+        Returns:
+            dict: {
+                'center': (x1, y1, x2, y2),
+                'front': (x1, y1, x2, y2),
+                'corner_left': (x1, y1, x2, y2),
+                'corner_right': (x1, y1, x2, y2),
+            }
+        """
+        # Zone CENTRE — rectangle en bas de l'image, largeur modulable
+        center_w = int(width * self.center_zone_width_ratio)
+        center_x1 = (width - center_w) // 2
+        center_x2 = center_x1 + center_w
+        center_y1 = int(height * self.offset_ratio)
+        center_y2 = height
+        
+        # Zone AVANT — rectangle vertical fin et long au centre
+        front_w = int(width * self.front_zone_width_ratio)
+        front_cx = int(width * self.front_zone_x_ratio)
+        front_x1 = max(0, front_cx - front_w // 2)
+        front_x2 = min(width, front_cx + front_w // 2)
+        front_y1 = int(height * self.front_zone_y_start)
+        front_y2 = int(height * self.front_zone_y_end)
+        
+        # Zone COIN GAUCHE — rectangle en haut à gauche
+        corner_w = int(width * self.corner_zone_width_ratio)
+        corner_h = int(height * self.corner_zone_height_ratio)
+        corner_y1 = int(height * self.corner_zone_y_start)
+        corner_y2 = min(height, corner_y1 + corner_h)
+        
+        corner_left = (0, corner_y1, corner_w, corner_y2)
+        corner_right = (width - corner_w, corner_y1, width, corner_y2)
+        
+        return {
+            'center': (center_x1, center_y1, center_x2, center_y2),
+            'front': (front_x1, front_y1, front_x2, front_y2),
+            'corner_left': corner_left,
+            'corner_right': corner_right,
+        }
+
+    def _detect_in_zone(self, frame, zone_rect):
+        """Détecte les pointillés dans une zone rectangulaire donnée.
+        
+        Args:
+            frame: Image BGR complète
+            zone_rect: tuple (x1, y1, x2, y2) en pixels
+            
+        Returns:
+            dict: {
+                'detected': bool,
+                'dashes': list of dash dicts,
+                'count': int,
+                'offset': float or None (offset X par rapport au centre de la zone),
+            }
+        """
+        x1, y1, x2, y2 = zone_rect
+        zone_w = x2 - x1
+        zone_h = y2 - y1
+        
+        if zone_w <= 0 or zone_h <= 0:
+            return {'detected': False, 'dashes': [], 'count': 0, 'offset': None}
+        
+        roi = frame[y1:y2, x1:x2]
+        
+        # Prétraitement : filtrer le VRAI blanc (gris clair) en excluant les couleurs
+        # 1. Seuil de luminosité en niveaux de gris
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        _, bright_mask = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        
+        # 2. Filtre de saturation HSV : rejeter les pixels colorés (vert, jaune, etc.)
+        #    Le blanc/gris a une saturation très basse (< 60)
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        _, sat, _ = cv2.split(hsv)
+        _, sat_mask = cv2.threshold(sat, 60, 255, cv2.THRESH_BINARY_INV)  # Garder saturation < 60
+        
+        # 3. Combiner : pixel doit être BRIGHT ET NON-COLORÉ
+        thresh = cv2.bitwise_and(bright_mask, sat_mask)
+        
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        
+        # Détection de contours
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
+        
+        if contours is None:
+            return {'detected': False, 'dashes': [], 'count': 0, 'offset': None}
+        
+        # Filtrer les contours (pointillés valides)
+        valid_dashes = []
+        total_area = 0
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            x, y, w, h = cv2.boundingRect(cnt)
+            
+            if area < self.min_area:
+                continue
+            if w > zone_w * 0.8 or h > zone_h * 0.8:
+                continue
+            
+            # Filtre de solidité : accepte les formes non-rectangulaires
+            # (lignes de virage vues en perspective)
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            solidity = area / hull_area if hull_area > 0 else 0
+            if solidity < 0.4:
+                continue
+            
+            # Aspect ratio large (garde seulement les cas extrêmes)
+            aspect_ratio = float(h) / float(w) if w > 0 else 0
+            if aspect_ratio < 0.1 or aspect_ratio > 15:
+                continue
+            
+            total_area += area
+            valid_dashes.append({
+                'x': x + x1,  # Coordonnées dans l'image complète
+                'y': y + y1,
+                'w': w,
+                'h': h,
+                'area': area,
+                'cx': x + x1 + w / 2,
+                'cy': y + y1 + h / 2,
+            })
+        
+        # Calculer l'offset par rapport au centre de la zone
+        offset = None
+        if valid_dashes:
+            avg_cx = sum(d['cx'] for d in valid_dashes) / len(valid_dashes)
+            zone_center_x = (x1 + x2) / 2.0
+            offset = avg_cx - zone_center_x
+        
+        return {
+            'detected': len(valid_dashes) > 0,
+            'dashes': valid_dashes,
+            'count': len(valid_dashes),
+            'offset': offset,
+            'total_area': total_area,
+        }
+
+    def process_zones(self, frame):
+        """Analyse les 4 zones de détection sur la frame.
+        
+        Returns:
+            dict: {
+                'center': {detected, dashes, count, offset},
+                'front': {detected, dashes, count, offset},
+                'corner_left': {detected, dashes, count, offset},
+                'corner_right': {detected, dashes, count, offset},
+                'zones_rects': dict of (x1,y1,x2,y2),
+                
+                # Compat avec l'ancien format
+                'Object_detected': bool (centre),
+                'line_offset': float or None (centre),
+                
+                # Nouvelles infos
+                'front_line_detected': bool,
+                'front_line_confirmed': bool (True si count >= front_min_dashes),
+                'front_offset': float or None,
+                'corner_left_detected': bool,
+                'corner_right_detected': bool,
+            }
+        """
+        h, w = frame.shape[:2]
+        zones_rects = self._compute_zone_rects(w, h)
+        
+        # Analyser chaque zone
+        center_result = self._detect_in_zone(frame, zones_rects['center'])
+        front_result = self._detect_in_zone(frame, zones_rects['front'])
+        corner_left_result = self._detect_in_zone(frame, zones_rects['corner_left'])
+        corner_right_result = self._detect_in_zone(frame, zones_rects['corner_right'])
+        
+        # Calculer l'offset centre par rapport au centre de l'IMAGE (pas de la zone)
+        center_line_offset = None
+        if center_result['detected']:
+            avg_cx = sum(d['cx'] for d in center_result['dashes']) / len(center_result['dashes'])
+            center_line_offset = avg_cx - (w / 2.0)
+        
+        front_confirmed = front_result['count'] >= self.front_min_dashes
+        
+        result = {
+            'center': center_result,
+            'front': front_result,
+            'corner_left': corner_left_result,
+            'corner_right': corner_right_result,
+            'zones_rects': zones_rects,
+            
+            # Compat ancien format
+            'Object_detected': center_result['detected'],
+            'line_offset': center_line_offset,
+            
+            # Nouvelles infos
+            'front_line_detected': front_result['detected'],
+            'front_line_confirmed': front_confirmed,
+            'front_offset': front_result['offset'],
+            'corner_left_detected': corner_left_result['detected'],
+            'corner_right_detected': corner_right_result['detected'],
+            'corner_left_count': corner_left_result['count'],
+            'corner_right_count': corner_right_result['count'],
+            'corner_left_area': corner_left_result.get('total_area', 0),
+            'corner_right_area': corner_right_result.get('total_area', 0),
+        }
+        
+        self._last_zones_result = result
+        return result
+
+    def annotate_zones(self, frame, zones_result=None):
+        """Dessine les 4 zones de détection sur la frame avec les résultats.
+        
+        Couleurs:
+            - CENTRE: Rouge
+            - AVANT: Bleu
+            - COIN GAUCHE: Jaune
+            - COIN DROIT: Orange
+            - Pointillés détectés: Vert
+        
+        Args:
+            frame: Image BGR à annoter (sera modifiée in-place)
+            zones_result: Résultat de process_zones(). Si None, utilise le dernier résultat.
+            
+        Returns:
+            frame: Image annotée
+        """
+        if zones_result is None:
+            zones_result = self._last_zones_result
+        
+        if zones_result is None:
+            # Pas de résultat → juste dessiner les zones vides
+            h, w = frame.shape[:2]
+            rects = self._compute_zone_rects(w, h)
+            zones_result = {
+                'zones_rects': rects,
+                'center': {'detected': False, 'dashes': [], 'count': 0},
+                'front': {'detected': False, 'dashes': [], 'count': 0},
+                'corner_left': {'detected': False, 'dashes': [], 'count': 0},
+                'corner_right': {'detected': False, 'dashes': [], 'count': 0},
+                'front_line_confirmed': False,
+            }
+        
+        rects = zones_result['zones_rects']
+        
+        # Couleurs des zones (BGR)
+        colors = {
+            'center': (0, 0, 255),       # Rouge
+            'front': (255, 150, 0),      # Bleu
+            'corner_left': (0, 255, 255), # Jaune
+            'corner_right': (0, 165, 255), # Orange
+        }
+        
+        labels = {
+            'center': 'CENTRE',
+            'front': 'AVANT',
+            'corner_left': 'COIN G',
+            'corner_right': 'COIN D',
+        }
+        
+        for zone_name in ['center', 'front', 'corner_left', 'corner_right']:
+            x1, y1, x2, y2 = rects[zone_name]
+            color = colors[zone_name]
+            zone_data = zones_result.get(zone_name, {})
+            detected = zone_data.get('detected', False)
+            count = zone_data.get('count', 0)
+            dashes = zone_data.get('dashes', [])
+            
+            # Dessiner le rectangle de la zone
+            thickness = 2 if detected else 1
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
+            
+            # Label de la zone
+            label = '{} ({})'.format(labels[zone_name], count)
+            cv2.putText(frame, label, (x1 + 2, y1 + 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+            
+            # Dessiner les pointillés détectés en vert
+            for dash in dashes:
+                cv2.rectangle(frame,
+                              (dash['x'], dash['y']),
+                              (dash['x'] + dash['w'], dash['y'] + dash['h']),
+                              (0, 255, 0), 1)
+        
+        # Indicateur d'alignement (zone AVANT confirmée)
+        front_confirmed = zones_result.get('front_line_confirmed', False)
+        if front_confirmed:
+            cv2.putText(frame, 'ALIGNE', (frame.shape[1] - 80, 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+        # Indicateurs coins
+        if zones_result.get('corner_left_detected', False):
+            cv2.putText(frame, '<< VIRAGE G', (5, frame.shape[0] - 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+        if zones_result.get('corner_right_detected', False):
+            cv2.putText(frame, 'VIRAGE D >>', (frame.shape[1] - 120, frame.shape[0] - 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
+        
+        # Ligne de référence centre image
+        cv2.line(frame, (frame.shape[1] // 2, 0), (frame.shape[1] // 2, frame.shape[0]),
+                 (0, 255, 0), 1)
+        
+        # Offset centre si détecté
+        line_offset = zones_result.get('line_offset')
+        if line_offset is not None:
+            text = 'Offset: {:.1f}px'.format(line_offset)
+            cv2.putText(frame, text, (10, 15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
+        
+        return frame
 
     def diagnostique_detecteur(self, filename):
         """
@@ -371,8 +753,16 @@ class LineDetector(BaseDetector):
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # Utiliser le seuil configurable pour détecter les lignes BLANCHES sur fond noir
-        _, thresh = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        # Seuil de luminosité pour détecter les lignes BLANCHES sur fond noir
+        _, bright_mask = cv2.threshold(blur, self.white_threshold, 255, cv2.THRESH_BINARY)
+        
+        # Filtre de saturation HSV : rejeter les pixels colorés (vert, jaune, etc.)
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        _, sat, _ = cv2.split(hsv)
+        _, sat_mask = cv2.threshold(sat, 60, 255, cv2.THRESH_BINARY_INV)
+        
+        # Combiner : pixel doit être BRIGHT ET NON-COLORÉ
+        thresh = cv2.bitwise_and(bright_mask, sat_mask)
         
         # Morphologie légère
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
@@ -412,7 +802,7 @@ class LineDetector(BaseDetector):
         
         # 4. Filtrer les contours pour trouver les POINTILLÉS
         valid_dashes = []
-        rejected_count = {'too_small': 0, 'too_large': 0, 'bad_ratio': 0}
+        rejected_count = {'too_small': 0, 'too_large': 0, 'bad_solidity': 0, 'bad_ratio': 0}
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
@@ -425,9 +815,19 @@ class LineDetector(BaseDetector):
             if w > image_stats['width'] * 0.4 or h > image_stats['roi_height'] * 0.5:
                 rejected_count['too_large'] += 1
                 continue
-                
+            
+            # Filtre de solidité : accepte les formes non-rectangulaires
+            # (lignes de virage vues en perspective = trapézoïdales)
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            solidity = area / hull_area if hull_area > 0 else 0
+            if solidity < 0.4:
+                rejected_count['bad_solidity'] += 1
+                continue
+            
+            # Aspect ratio large (garde seulement les cas extrêmes)
             aspect_ratio = float(h) / float(w) if w > 0 else 0
-            if aspect_ratio < 0.3 or aspect_ratio > 10:
+            if aspect_ratio < 0.1 or aspect_ratio > 15:
                 rejected_count['bad_ratio'] += 1
                 continue
             
@@ -437,6 +837,7 @@ class LineDetector(BaseDetector):
                 'y': y,
                 'w': w,
                 'h': h,
+                'area': area,
                 'cx': x + w / 2,
                 'cy': y + h / 2
             })
@@ -444,8 +845,9 @@ class LineDetector(BaseDetector):
         self.logs.append("[LINE_DETECTOR] Contours valides après filtrage: {}".format(len(valid_dashes))) 
         
         if self.debug:
-            print("[LINE_DETECTOR] Contours rejetés: trop petits={}, trop grands={}, mauvais ratio={}".format(
-                rejected_count['too_small'], rejected_count['too_large'], rejected_count['bad_ratio']
+            print("[LINE_DETECTOR] Contours rejetés: trop petits={}, trop grands={}, solidité={}, ratio={}".format(
+                rejected_count['too_small'], rejected_count['too_large'],
+                rejected_count['bad_solidity'], rejected_count['bad_ratio']
             ))
             print("[LINE_DETECTOR] Contours valides après filtrage: {}".format(len(valid_dashes)))
         
