@@ -167,6 +167,8 @@ class controller:
         self.selected_detector_index = 0
         # Dernière image capturée (nom de fichier) pour la détection à la demande
         self.last_captured_filename = None
+        # Overlay FSM dans le flux vidéo : activé seulement depuis l'onglet contrôle FSM
+        self.fsm_overlay_enabled = False
 
     def attach_pipeline_vision(self, pipeline):
         pipeline.attach_capture_dir(self.CAPTURE_DIR)
@@ -512,55 +514,50 @@ class controller:
                     if frame_counter % vp._detection_rate == 0:
                         vp._detection_trigger.set()  # signal au thread de détection
 
-                # --- Overlay détection multi-zones pour circuit_fsm ---
+                # --- Overlay FSM (zones + état) : actif seulement si activé depuis l'onglet contrôle ---
                 display_frame = frame_bgr
-                
-                # Vérifier si circuit_fsm est actif OU sélectionné (pour le debug visuel)
-                circuit_fsm_active = False
-                if self.control_manager and self.control_manager._active_controller:
-                    active_ctrl = self.control_manager._active_controller
-                    if active_ctrl.name == "circuit_fsm":
-                        circuit_fsm_active = True
 
-                # Trouver le LineDetector dans le pipeline
-                line_det = None
-                if vp:
-                    for det in vp.get_detectors():
-                        if getattr(det, 'name', '') == 'line':
-                            line_det = det
-                            break
+                if self.fsm_overlay_enabled:
+                    # Trouver le contrôleur circuit_fsm actif
+                    fsm_ctrl = None
+                    if self.control_manager and self.control_manager._active_controller:
+                        ctrl = self.control_manager._active_controller
+                        if ctrl.name == "circuit_fsm":
+                            fsm_ctrl = ctrl
 
-                if line_det is not None:
-                    try:
-                        # Exécuter la détection multi-zones sur chaque frame
-                        zones_result = line_det.process_zones(frame_bgr.copy())
-                        display_frame = line_det.annotate_zones(frame_bgr.copy(), zones_result)
+                    # Trouver le LineDetector dans le pipeline
+                    line_det = None
+                    if vp:
+                        for det in vp.get_detectors():
+                            if getattr(det, 'name', '') == 'line':
+                                line_det = det
+                                break
 
-                        if circuit_fsm_active:
-                            # Ajouter l'état FSM en overlay
-                            active_ctrl = self.control_manager._active_controller
-                            fsm_debug = active_ctrl.get_debug_info()
-                            fsm_text = "FSM: {} | {}".format(
-                                fsm_debug.get('fsm_state', '?'),
-                                fsm_debug.get('last_decision', '?'))
-                            cv2.putText(display_frame, fsm_text,
-                                        (10, display_frame.shape[0] - 10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 0), 1)
-                            # Indicateur mode pas-à-pas
-                            if fsm_debug.get('step_by_step_mode'):
-                                step_text = "PAS-A-PAS: {}".format(
-                                    "EN ATTENTE" if fsm_debug.get('fsm_state') == 'ATTENTE_STEP' else "ACTIF")
-                                cv2.putText(display_frame, step_text,
-                                            (10, display_frame.shape[0] - 30),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 200, 255), 1)
-                        else:
-                            # Pas de contrôleur actif — juste afficher les zones pour le debug
-                            cv2.putText(display_frame, "ZONES DETECTEUR (debug)",
-                                        (10, display_frame.shape[0] - 10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
-                    except Exception as e:
-                        if self.debug:
-                            print("[VideoFeed] Erreur overlay zones: {}".format(e))
+                    if line_det is not None:
+                        try:
+                            # Exécuter la détection multi-zones sur chaque frame
+                            zones_result = line_det.process_zones(frame_bgr.copy())
+                            display_frame = line_det.annotate_zones(frame_bgr.copy(), zones_result)
+
+                            if fsm_ctrl is not None:
+                                # Ajouter l'état FSM en overlay
+                                fsm_debug = fsm_ctrl.get_debug_info()
+                                fsm_text = "FSM: {} | {}".format(
+                                    fsm_debug.get('fsm_state', '?'),
+                                    fsm_debug.get('last_decision', '?'))
+                                cv2.putText(display_frame, fsm_text,
+                                            (10, display_frame.shape[0] - 10),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 0), 1)
+                                # Indicateur mode pas-à-pas
+                                if fsm_debug.get('step_by_step_mode'):
+                                    step_text = "PAS-A-PAS: {}".format(
+                                        "EN ATTENTE" if fsm_debug.get('fsm_state') == 'ATTENTE_STEP' else "ACTIF")
+                                    cv2.putText(display_frame, step_text,
+                                                (10, display_frame.shape[0] - 30),
+                                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 200, 255), 1)
+                        except Exception as e:
+                            if self.debug:
+                                print("[VideoFeed] Erreur overlay zones: {}".format(e))
 
                 # --- Overlay détection passive sur la frame d'affichage ---
                 if vp._passive_running:
@@ -599,7 +596,22 @@ class controller:
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+    def set_fsm_overlay(self):
+        """Active ou désactive l'overlay FSM dans le flux vidéo.
+        
+        Appelé par l'onglet contrôle quand le contrôleur circuit_fsm est sélectionné
+        dans la vue vision. Les autres onglets ne touchent jamais à ce flag.
+        
+        Body JSON: {"enabled": true|false}
+        """
+        data = request.get_json(silent=True) or {}
+        enabled = bool(data.get('enabled', False))
+        self.fsm_overlay_enabled = enabled
+        print("[ServerController] FSM overlay: {}".format("activé" if enabled else "désactivé"))
+        return ('', 204)
+
     def _draw_passive_overlay(self, frame, result, approximate_distance=False, previous_distance=None, debug=False):
+
         """
         Dessine les bounding boxes et labels de la détection passive
         directement sur *frame* (qui doit être une copie).

@@ -534,6 +534,13 @@ def render_control_tab(title: str = "Contrôle") -> str:
                     } else {
                         btn.classList.add('active');
                         btn.textContent = '⏹ Arrêter le contrôleur';
+                        // Activer l'overlay FSM seulement si circuit_fsm est sélectionné
+                        var overlayEnabled = (controllerName === 'circuit_fsm');
+                        fetch('/set_fsm_overlay', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: overlayEnabled })
+                        }).catch(function(e) { console.error('set_fsm_overlay error:', e); });
                     }
                 })
                 .catch(function(e) { console.error('toggleController start error:', e); });
@@ -542,6 +549,12 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 .then(function() {
                     btn.classList.remove('active');
                     btn.textContent = '▶ Activer le contrôleur';
+                    // Toujours désactiver l'overlay FSM à l'arrêt du contrôleur
+                    fetch('/set_fsm_overlay', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: false })
+                    }).catch(function(e) { console.error('set_fsm_overlay error:', e); });
                 })
                 .catch(function(e) { console.error('toggleController stop error:', e); });
         }
