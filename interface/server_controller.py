@@ -514,29 +514,30 @@ class controller:
 
                 # --- Overlay détection multi-zones pour circuit_fsm ---
                 display_frame = frame_bgr
-                
-                # Vérifier si circuit_fsm est actif OU sélectionné (pour le debug visuel)
+
+                # Vérifier si circuit_fsm est le contrôleur actif
                 circuit_fsm_active = False
                 if self.control_manager and self.control_manager._active_controller:
                     active_ctrl = self.control_manager._active_controller
                     if active_ctrl.name == "circuit_fsm":
                         circuit_fsm_active = True
 
-                # Trouver le LineDetector dans le pipeline
-                line_det = None
-                if vp:
-                    for det in vp.get_detectors():
-                        if getattr(det, 'name', '') == 'line':
-                            line_det = det
-                            break
+                # L'overlay des zones et l'état FSM ne sont affichés que si circuit_fsm est actif
+                if circuit_fsm_active:
+                    # Trouver le LineDetector dans le pipeline
+                    line_det = None
+                    if vp:
+                        for det in vp.get_detectors():
+                            if getattr(det, 'name', '') == 'line':
+                                line_det = det
+                                break
 
-                if line_det is not None:
-                    try:
-                        # Exécuter la détection multi-zones sur chaque frame
-                        zones_result = line_det.process_zones(frame_bgr.copy())
-                        display_frame = line_det.annotate_zones(frame_bgr.copy(), zones_result)
+                    if line_det is not None:
+                        try:
+                            # Exécuter la détection multi-zones sur chaque frame
+                            zones_result = line_det.process_zones(frame_bgr.copy())
+                            display_frame = line_det.annotate_zones(frame_bgr.copy(), zones_result)
 
-                        if circuit_fsm_active:
                             # Ajouter l'état FSM en overlay
                             active_ctrl = self.control_manager._active_controller
                             fsm_debug = active_ctrl.get_debug_info()
@@ -553,14 +554,9 @@ class controller:
                                 cv2.putText(display_frame, step_text,
                                             (10, display_frame.shape[0] - 30),
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 200, 255), 1)
-                        else:
-                            # Pas de contrôleur actif — juste afficher les zones pour le debug
-                            cv2.putText(display_frame, "ZONES DETECTEUR (debug)",
-                                        (10, display_frame.shape[0] - 10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
-                    except Exception as e:
-                        if self.debug:
-                            print("[VideoFeed] Erreur overlay zones: {}".format(e))
+                        except Exception as e:
+                            if self.debug:
+                                print("[VideoFeed] Erreur overlay zones: {}".format(e))
 
                 # --- Overlay détection passive sur la frame d'affichage ---
                 if vp._passive_running:
