@@ -2267,7 +2267,17 @@ class controller:
 
         ir_data = state.ir_sensors if state.ir_sensors is not None else None
         line_off = state.line_offset if hasattr(state, 'line_offset') else None
-        vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data, line_offset=line_off)
+        vector = adapter.get_state_vector(
+            vision_result=vision_result, imu_data=imu_data, ir_data=ir_data,
+            line_offset=line_off,
+            front_line_detected=getattr(state, 'front_line_detected', False),
+            front_line_confirmed=getattr(state, 'front_line_confirmed', False),
+            front_offset=getattr(state, 'front_offset', None),
+            corner_left_detected=getattr(state, 'corner_left_detected', False),
+            corner_right_detected=getattr(state, 'corner_right_detected', False),
+            corner_left_area=getattr(state, 'corner_left_area', 0),
+            corner_right_area=getattr(state, 'corner_right_area', 0),
+        )
         return vector.tolist()
 
     def _infer_ml_classes(self):

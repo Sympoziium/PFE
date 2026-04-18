@@ -40,7 +40,7 @@ def _recompute_ir_derived(captures: np.ndarray) -> np.ndarray:
     IR_sum  = (ir_bottom_left (3) + ir_bottom_right (1)) / 2
 
     Args:
-        captures: array (N, 29) avec IR modifies aux indices 0-5
+        captures: array (N, 29 ou 36) avec IR modifies aux indices 0-5
 
     Returns:
         captures avec indices 6-7 recalcules (modifie en place et retourne)
@@ -58,7 +58,7 @@ def augment_ir_noise(captures: np.ndarray, labels: np.ndarray,
     puis recalcule IR_diff et IR_sum. Les labels restent identiques.
 
     Args:
-        captures: array (N, 29) — vecteurs bruts
+        captures: array (N, 29 ou 36) — vecteurs bruts
         labels: array (N, 2) — commandes moteur (non modifiees)
         sigma_levels: niveaux de bruit (defaut: [1.5, 3.0, 4.5])
         seed: graine aleatoire pour reproductibilite
@@ -94,7 +94,7 @@ def augment_ir_scaling(captures: np.ndarray, labels: np.ndarray,
     des variations de luminosite ambiante. Clamp a [0, 255].
 
     Args:
-        captures: array (N, 29) — vecteurs bruts
+        captures: array (N, 29 ou 36) — vecteurs bruts
         labels: array (N, 2) — commandes moteur (non modifiees)
         scale_factors: facteurs d'echelle (defaut: [0.85, 0.92, 1.08, 1.15])
         seed: graine aleatoire (non utilise, deterministe)
@@ -130,7 +130,7 @@ def augment_ir_dropout(captures: np.ndarray, labels: np.ndarray,
     Simule une perte momentanee de detection de ligne.
 
     Args:
-        captures: array (N, 29) — vecteurs bruts
+        captures: array (N, 29 ou 36) — vecteurs bruts
         labels: array (N, 2) — commandes moteur (non modifiees)
         dropout_rate: probabilite de dropout par echantillon
         patch_size: nombre de frames consecutives affectees
@@ -167,7 +167,7 @@ def augment_combined(captures: np.ndarray, labels: np.ndarray, seed: int = None)
     Total: 4 variantes supplementaires.
 
     Args:
-        captures: array (N, 29) — vecteurs bruts
+        captures: array (N, 29 ou 36) — vecteurs bruts
         labels: array (N, 2) — commandes moteur (non modifiees)
         seed: graine aleatoire
 
@@ -215,7 +215,7 @@ def augment_combined_extended(captures: np.ndarray, labels: np.ndarray, seed: in
     Les niveaux restent dans la plage physique des capteurs (sigma <= 5, scaling <= 1.2).
 
     Args:
-        captures: array (N, 29) — vecteurs bruts
+        captures: array (N, 29 ou 36) — vecteurs bruts
         labels: array (N, 2) — commandes moteur (non modifiees)
         seed: graine aleatoire
 
