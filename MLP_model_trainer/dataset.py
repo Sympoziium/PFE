@@ -191,11 +191,15 @@ class ZumiControlDataset(Dataset):
             )
 
         # Charger les captures (états)
+        # Gere le melange 29-dim (ancien) et 36-dim (nouveau) en zero-paddant
         with open(captures_path, 'r') as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    self.captures.append(json.loads(line))
+                    row = json.loads(line)
+                    if len(row) == OLD_STATE_DIM:
+                        row = row[:ZONE_INSERT_POS] + [0.0] * ZONE_FEATURES_DIM + row[ZONE_INSERT_POS:]
+                    self.captures.append(row)
 
         # Charger les labels (commandes)
         with open(labels_path, 'r') as f:

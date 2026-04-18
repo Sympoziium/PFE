@@ -257,9 +257,14 @@ def augment_combined_extended(captures: np.ndarray, labels: np.ndarray, seed: in
 def load_raw_data(data_dir: Path):
     """Charge les donnees brutes (captures + labels) depuis le repertoire data/.
 
+    Gere le melange de vecteurs 29-dim (ancien format) et 36-dim (nouveau format)
+    en zero-paddant les anciens vers 36-dim.
+
     Returns:
-        tuple: (captures, labels) — arrays numpy (N, 29) et (N, 2)
+        tuple: (captures, labels) — arrays numpy (N, 36) et (N, 2)
     """
+    from dataset import OLD_STATE_DIM, NEW_STATE_DIM, ZONE_INSERT_POS, ZONE_FEATURES_DIM
+
     captures_path = data_dir / "captures.jsonl"
     labels_path = data_dir / "labels.jsonl"
 
@@ -271,7 +276,11 @@ def load_raw_data(data_dir: Path):
         for line in f:
             line = line.strip()
             if line:
-                captures.append(json.loads(line))
+                row = json.loads(line)
+                if len(row) == OLD_STATE_DIM:
+                    # Zero-pad ancien format: inserer 7 zeros avant les features camera
+                    row = row[:ZONE_INSERT_POS] + [0.0] * ZONE_FEATURES_DIM + row[ZONE_INSERT_POS:]
+                captures.append(row)
 
     labels = []
     with open(labels_path, 'r') as f:
