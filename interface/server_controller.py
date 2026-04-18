@@ -636,7 +636,7 @@ class controller:
         """Active ou désactive l'overlay FSM dans le flux vidéo.
         
         Appelé par l'onglet contrôle quand le contrôleur circuit_fsm est sélectionné
-        dans la vue vision. Les autres onglets ne touchent jamais à ce flag.
+        dans la vue control. Les autres onglets ne touchent jamais à ce flag.
         
         Body JSON: {"enabled": true|false}
         """

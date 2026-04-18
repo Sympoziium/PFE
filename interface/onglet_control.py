@@ -602,7 +602,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         btn.classList.add('active');
                         btn.textContent = '⏹ Arrêter le contrôleur';
                         // Activer l'overlay FSM seulement si circuit_fsm est sélectionné
-                        var overlayEnabled = (controllerName === 'circuit_fsm');
+                        var overlayEnabled = (controllerName === 'circuit_fsm' || controllerName === 'ml_controller');
                         fetch('/set_fsm_overlay', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
