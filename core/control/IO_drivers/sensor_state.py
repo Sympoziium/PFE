@@ -32,6 +32,8 @@ class SensorState:
         battery_voltage:  Tension batterie en volts (max 4.2V).
         
         # Multi-zones (circuit_fsm)
+        center_dash_count:     Nombre de pointillés dans la zone centre (indicateur de confiance).
+        front_dash_count:      Nombre de pointillés dans la zone avant (lookahead).
         front_line_detected:   True si la zone avant voit des pointillés.
         front_line_confirmed:  True si la zone avant a >= front_min_dashes pointillés.
         front_offset:          Offset dans la zone avant (pixels).
@@ -45,6 +47,7 @@ class SensorState:
     __slots__ = (
         'timestamp', 'frame', 'line_offset', 'line_detected', 'detections',
         'gyro_angles', 'orientation', 'ir_sensors', 'battery_voltage',
+        'center_dash_count', 'front_dash_count',
         'front_line_detected', 'front_line_confirmed', 'front_offset',
         'corner_left_detected', 'corner_right_detected',
         'corner_left_count', 'corner_right_count',
@@ -63,6 +66,8 @@ class SensorState:
         # orientation=-1,
         ir_sensors=None,
         # battery_voltage=0.0,
+        center_dash_count=0,
+        front_dash_count=0,
         front_line_detected=False,
         front_line_confirmed=False,
         front_offset=None,
@@ -83,6 +88,8 @@ class SensorState:
         # self.orientation = orientation
         self.ir_sensors = ir_sensors
         # self.battery_voltage = battery_voltage
+        self.center_dash_count = center_dash_count
+        self.front_dash_count = front_dash_count
         self.front_line_detected = front_line_detected
         self.front_line_confirmed = front_line_confirmed
         self.front_offset = front_offset

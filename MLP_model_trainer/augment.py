@@ -257,13 +257,14 @@ def augment_combined_extended(captures: np.ndarray, labels: np.ndarray, seed: in
 def load_raw_data(data_dir: Path):
     """Charge les donnees brutes (captures + labels) depuis le repertoire data/.
 
-    Gere le melange de vecteurs 29-dim (ancien format) et 36-dim (nouveau format)
-    en zero-paddant les anciens vers 36-dim.
+    Gere le melange de vecteurs 29-dim (ancien format), 36-dim (intermediaire)
+    et 38-dim (nouveau format) en zero-paddant aux positions semantiquement correctes.
 
     Returns:
-        tuple: (captures, labels) — arrays numpy (N, 36) et (N, 2)
+        tuple: (captures, labels) — arrays numpy (N, 38) et (N, 2)
     """
-    from dataset import OLD_STATE_DIM, NEW_STATE_DIM, ZONE_INSERT_POS, ZONE_FEATURES_DIM
+    from dataset import (OLD_STATE_DIM, INTERMEDIATE_STATE_DIM, NEW_STATE_DIM,
+                         ZONE_INSERT_POS, ZONE_FEATURES_DIM)
 
     captures_path = data_dir / "captures.jsonl"
     labels_path = data_dir / "labels.jsonl"
@@ -278,8 +279,17 @@ def load_raw_data(data_dir: Path):
             if line:
                 row = json.loads(line)
                 if len(row) == OLD_STATE_DIM:
-                    # Zero-pad ancien format: inserer 7 zeros avant les features camera
-                    row = row[:ZONE_INSERT_POS] + [0.0] * ZONE_FEATURES_DIM + row[ZONE_INSERT_POS:]
+                    # 29 -> 38: inserer 9 zeros avant les features camera
+                    row = (row[:ZONE_INSERT_POS]
+                           + [0.0] * ZONE_FEATURES_DIM
+                           + row[ZONE_INSERT_POS:])
+                elif len(row) == INTERMEDIATE_STATE_DIM:
+                    # 36 -> 38: inserer front_dash_count (pos 30) et center_dash_count (pos 35)
+                    row = (row[:30]           # IR+eng+det+IMU+front_{det,conf,off}
+                           + [0.0]             # front_dash_count_norm
+                           + row[30:34]        # 4 corner features
+                           + [0.0]             # center_dash_count_norm
+                           + row[34:36])       # camera
                 captures.append(row)
 
     labels = []

@@ -11,7 +11,7 @@ encodage one-hot, bbox relative). Les valeurs numériques (IR, IMU) sont stocké
 en valeurs brutes (raw). La normalisation statistique (z-score) est appliquée
 séparément au moment de l'entraînement et de l'inférence.
 
-Vecteur d'état (33 + N classes):
+Vecteur d'état (35 + N classes):
   [0-5]      : IR sensors (6)             - valeurs brutes 0-255 (8 bits)
   [6]        : IR_diff (1)               - (bottom_left - bottom_right), raw
   [7]        : IR_sum  (1)               - (bottom_left + bottom_right)/2, raw
@@ -30,16 +30,18 @@ Vecteur d'état (33 + N classes):
      21+N: rot_y    (rotation accéléromètre Y)
      22+N: rot_z    (rotation accéléromètre Z / heading)
      23+N: tilt_state (état d'inclinaison, -1 à 7)
-  [24+N..30+N]: Zone features (7)         - détection multi-zones caméra
+  [24+N..32+N]: Zone features (9)         - détection multi-zones caméra
      24+N: front_line_detected            - 0 ou 1
      25+N: front_line_confirmed           - 0 ou 1
      26+N: front_offset_norm              - [-1, 1]
-     27+N: corner_left_detected           - 0 ou 1
-     28+N: corner_right_detected          - 0 ou 1
-     29+N: corner_left_area_norm          - [0, 1]
-     30+N: corner_right_area_norm         - [0, 1]
-  [31+N]     : line_camera_offset (1)    - position de la ligne blanche [-1, 1]
-  [32+N]     : line_camera_detected (1)  - 0 ou 1 (ligne visible par caméra)
+     27+N: front_dash_count_norm          - [0, 1] (count / MAX_DASH_COUNT)
+     28+N: corner_left_detected           - 0 ou 1
+     29+N: corner_right_detected          - 0 ou 1
+     30+N: corner_left_area_norm          - [0, 1]
+     31+N: corner_right_area_norm         - [0, 1]
+     32+N: center_dash_count_norm         - [0, 1] (count / MAX_DASH_COUNT)
+  [33+N]     : line_camera_offset (1)    - position de la ligne blanche [-1, 1]
+  [34+N]     : line_camera_detected (1)  - 0 ou 1 (ligne visible par caméra)
 
   IR_diff et IR_sum sont des features engineered à partir des capteurs IR bottom:
     ir_data = [front_r, bottom_r, back_r, bottom_l, back_l, front_l]
@@ -50,8 +52,9 @@ Vecteur d'état (33 + N classes):
   résolution-indépendant). Le z-score appliqué en aval gère toute la normalisation
   statistique.
 
-  Note: les anciennes données (29-dim, sans zone features) sont zero-paddées
-  vers 36-dim par dataset.py:pad_to_new_format() lors de l'entraînement.
+  Note: les anciennes données (29-dim, sans zone features) et intermédiaires
+  (36-dim, sans dash counts) sont zero-paddées vers 38-dim par
+  dataset.py:pad_to_new_format() lors de l'entraînement.
 
 Source des données IMU: zumi.update_angles() retourne 11 valeurs
   [Gyro_x, Gyro_y, Gyro_z, Acc_x, Acc_y, Comp_x, Comp_y, Rot_x, Rot_y, Rot_z, tilt_state]
@@ -83,13 +86,16 @@ class VisionAdapter:
     # Aire maximale d'une zone coin pour normalisation (25% x 25% de l'image)
     CORNER_ZONE_RATIO = 0.25 * 0.25  # fraction de l'aire totale de l'image
 
+    # Nombre maximal de dashes attendus dans une zone (pour normalisation [0,1])
+    MAX_DASH_COUNT = 10.0
+
     # Nombre de features de zone ajoutees au vecteur d'etat
-    ZONE_FEATURES_DIM = 7
+    ZONE_FEATURES_DIM = 9
 
     # --- Getter des dimensions de vecteurs ---
     @property
     def state_dim(self) -> int:
-        """Dimension du vecteur d'état (entrée) : 33 + N classes."""
+        """Dimension du vecteur d'état (entrée) : 35 + N classes."""
         return 6 + 2 + 1 + len(self.classes) + 4 + IMU_DIM + self.ZONE_FEATURES_DIM + 2
 
     @property
@@ -106,10 +112,12 @@ class VisionAdapter:
         front_line_detected: bool = False,
         front_line_confirmed: bool = False,
         front_offset: float = None,
+        front_dash_count: int = 0,
         corner_left_detected: bool = False,
         corner_right_detected: bool = False,
         corner_left_area: float = 0,
         corner_right_area: float = 0,
+        center_dash_count: int = 0,
     ) -> np.ndarray:
 
         state = np.zeros(self.state_dim, dtype=np.float32)
@@ -150,7 +158,7 @@ class VisionAdapter:
         # État d'inclinaison (1 valeur, -1 à 7)
         state[imu_start + 10] = imu_data.get("tilt_state", 0.0)
 
-        # --- Zone features (indices 24+N à 30+N) — détection multi-zones caméra ---
+        # --- Zone features (indices 24+N à 32+N) — détection multi-zones caméra ---
         zone_start = imu_start + IMU_DIM
         max_corner_area = self.image_width * self.image_height * self.CORNER_ZONE_RATIO
         state[zone_start]     = 1.0 if front_line_detected else 0.0
@@ -158,12 +166,14 @@ class VisionAdapter:
         state[zone_start + 2] = np.clip(
             float(front_offset or 0) / (self.image_width / 2.0), -1.0, 1.0
         ) if front_offset is not None else 0.0
-        state[zone_start + 3] = 1.0 if corner_left_detected else 0.0
-        state[zone_start + 4] = 1.0 if corner_right_detected else 0.0
-        state[zone_start + 5] = min(float(corner_left_area) / max_corner_area, 1.0)
-        state[zone_start + 6] = min(float(corner_right_area) / max_corner_area, 1.0)
+        state[zone_start + 3] = min(float(front_dash_count) / self.MAX_DASH_COUNT, 1.0)
+        state[zone_start + 4] = 1.0 if corner_left_detected else 0.0
+        state[zone_start + 5] = 1.0 if corner_right_detected else 0.0
+        state[zone_start + 6] = min(float(corner_left_area) / max_corner_area, 1.0)
+        state[zone_start + 7] = min(float(corner_right_area) / max_corner_area, 1.0)
+        state[zone_start + 8] = min(float(center_dash_count) / self.MAX_DASH_COUNT, 1.0)
 
-        # --- Détection de ligne par caméra (indices 31+N, 32+N) ---
+        # --- Détection de ligne par caméra (indices 33+N, 34+N) ---
         # IMPORTANT: toujours les 2 derniers indices du vecteur.
         # dataset.py utilise raw_dim - 2 pour acceder a line_camera_offset.
         line_start = zone_start + self.ZONE_FEATURES_DIM
@@ -257,13 +267,14 @@ class VisionAdapter:
         print("  [IMU] Comp (deg): {}".format(np.round(comp_vals, 1)))
         print("  [IMU] Rot  (deg): {}, Tilt: {:.0f}".format(np.round(rot_vals, 1), tilt_val))
 
-        # --- Zone features ---
+        # --- Zone features (9 features) ---
         zone_start = imu_start + IMU_DIM
-        print("  [Zones] front_det={:.0f}, front_conf={:.0f}, front_off={:.2f}".format(
-            state[zone_start], state[zone_start + 1], state[zone_start + 2]))
+        print("  [Zones] front_det={:.0f}, front_conf={:.0f}, front_off={:.2f}, front_dash={:.2f}".format(
+            state[zone_start], state[zone_start + 1], state[zone_start + 2], state[zone_start + 3]))
         print("  [Zones] corner_L={:.0f} (area={:.3f}), corner_R={:.0f} (area={:.3f})".format(
-            state[zone_start + 3], state[zone_start + 5],
-            state[zone_start + 4], state[zone_start + 6]))
+            state[zone_start + 4], state[zone_start + 6],
+            state[zone_start + 5], state[zone_start + 7]))
+        print("  [Zones] center_dash={:.2f}".format(state[zone_start + 8]))
 
         # --- Camera line ---
         line_start = zone_start + self.ZONE_FEATURES_DIM

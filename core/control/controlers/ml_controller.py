@@ -31,7 +31,7 @@ class MLController(ControllerBase):
 
     # Fenetre glissante (defauts, ecrases par normalization_stats.json)
     WINDOW_SIZE = 25           # Nombre de pas dans la fenetre (1.25s a 20Hz)
-    WINDOW_FEATURE_DIM = 39    # 28 raw + 11 engineered par pas (detection exclue)
+    WINDOW_FEATURE_DIM = 41    # 30 raw + 11 engineered par pas (detection exclue)
     TEMPORAL_DECAY = 0.85      # Decay exponentiel (1.0 = pas de decay)
     INTEGRAL_WINDOW = 5        # Fenetre pour ir_error_integral
 
@@ -70,7 +70,7 @@ class MLController(ControllerBase):
         self._prev_output = None
         self._last_step_debug = {}
 
-        # Exclusion des features Detection (indices 8-15 dans le vecteur brut 36-dim)
+        # Exclusion des features Detection (indices 8-15 dans le vecteur brut 38-dim)
         self._exclude_detection = False
         self._detection_indices = list(range(8, 16))
         self._decay_weights = None  # Precalcule apres chargement des stats
@@ -227,8 +227,8 @@ class MLController(ControllerBase):
     def _build_step_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'etat pour un seul pas temporel.
 
-        Pipeline: VisionAdapter (36-dim) -> exclusion Detection (28-dim)
-                  -> engineered features (39-dim)
+        Pipeline: VisionAdapter (38-dim) -> exclusion Detection (30-dim)
+                  -> engineered features (41-dim)
 
         Args:
             state: SensorState contenant les donnees des capteurs.
@@ -263,17 +263,19 @@ class MLController(ControllerBase):
             front_line_detected=getattr(state, 'front_line_detected', False),
             front_line_confirmed=getattr(state, 'front_line_confirmed', False),
             front_offset=getattr(state, 'front_offset', None),
+            front_dash_count=getattr(state, 'front_dash_count', 0),
             corner_left_detected=getattr(state, 'corner_left_detected', False),
             corner_right_detected=getattr(state, 'corner_right_detected', False),
             corner_left_area=getattr(state, 'corner_left_area', 0),
             corner_right_area=getattr(state, 'corner_right_area', 0),
+            center_dash_count=getattr(state, 'center_dash_count', 0),
         )
 
-        # Extraire les valeurs avant l'exclusion (indices stables dans le vecteur 36-dim)
+        # Extraire les valeurs avant l'exclusion (indices stables dans le vecteur 38-dim)
         ir_bot_r = raw_vector[1]   # IR_bottom_right
         ir_bot_l = raw_vector[3]   # IR_bottom_left
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
-        gyro_z = raw_vector[18]    # gyro_z cumulatif (toujours index 18 dans le 36-dim)
+        gyro_z = raw_vector[18]    # gyro_z cumulatif (toujours index 18 dans le 38-dim)
 
         # Appliquer le masque d'exclusion Detection
         if self._exclude_detection:

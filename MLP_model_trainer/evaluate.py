@@ -366,18 +366,21 @@ def run_per_category_metrics(model, stats, data_dir: Path):
 def get_feature_groups(exclude_detection: bool = True) -> dict:
     """Retourne les groupes de features selon que Detection est exclue ou non.
 
-    Avec Detection (38-dim/pas):
-        IR bruts 0-5, IR diff/sum 6-7, Detection 8-15, IMU 16-26, Camera 27-28, Engineered 29-37
-    Sans Detection (30-dim/pas):
-        IR bruts 0-5, IR diff/sum 6-7, IMU 8-18, Camera 19-20, Engineered 21-29
+    Avec Detection (49-dim/pas):
+        IR bruts 0-5, IR diff/sum 6-7, Detection 8-15, IMU 16-26,
+        Zone features 27-35 (9), Camera 36-37, Engineered 38-48 (11)
+    Sans Detection (41-dim/pas):
+        IR bruts 0-5, IR diff/sum 6-7, IMU 8-18,
+        Zone features 19-27 (9), Camera 28-29, Engineered 30-40 (11)
     """
     if exclude_detection:
         return {
             'IR bruts (0-5)':     list(range(0, 6)),
             'IR diff/sum (6-7)':  list(range(6, 8)),
             'IMU (8-18)':         list(range(8, 19)),
-            'Camera (19-20)':     list(range(19, 21)),
-            'Engineered (21-29)': list(range(21, 30)),
+            'Zones (19-27)':      list(range(19, 28)),
+            'Camera (28-29)':     list(range(28, 30)),
+            'Engineered (30-40)': list(range(30, 41)),
         }
     else:
         return {
@@ -385,11 +388,12 @@ def get_feature_groups(exclude_detection: bool = True) -> dict:
             'IR diff/sum (6-7)':  list(range(6, 8)),
             'Detection (8-15)':   list(range(8, 16)),
             'IMU (16-26)':        list(range(16, 27)),
-            'Camera (27-28)':     list(range(27, 29)),
-            'Engineered (29-37)': list(range(29, 38)),
+            'Zones (27-35)':      list(range(27, 36)),
+            'Camera (36-37)':     list(range(36, 38)),
+            'Engineered (38-48)': list(range(38, 49)),
         }
 
-# Defaut: detection exclue (coherent avec WINDOW_FEATURE_DIM=30)
+# Defaut: detection exclue (coherent avec WINDOW_FEATURE_DIM=41)
 FEATURE_GROUPS = get_feature_groups(exclude_detection=True)
 
 
