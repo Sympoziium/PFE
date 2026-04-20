@@ -23,11 +23,17 @@ from pathlib import Path
 
 from dataset import (classify_actions, ACTION_NAMES, GYRO_Z_INDEX,
                      IR_OFFSET_DEFAULT, GAP_THRESHOLD, OFF_ROAD_THRESHOLD,
-                     GRASS_THRESHOLD)
+                     GRASS_THRESHOLD,
+                     OLD_STATE_DIM, INTERMEDIATE_STATE_DIM, NEW_STATE_DIM,
+                     ZONE_INSERT_POS, ZONE_FEATURES_DIM)
 
 
 def load_dataset(data_dir: Path):
-    """Charge les fichiers captures.jsonl, labels.jsonl et sequence_ids.jsonl."""
+    """Charge les fichiers captures.jsonl, labels.jsonl et sequence_ids.jsonl.
+
+    Gere le melange de vecteurs 29-dim (ancien), 36-dim (intermediaire) et 38-dim
+    (nouveau) en zero-paddant aux positions semantiquement correctes.
+    """
     captures_file = data_dir / "captures.jsonl"
     labels_file = data_dir / "labels.jsonl"
     seqids_file = data_dir / "sequence_ids.jsonl"
@@ -41,7 +47,20 @@ def load_dataset(data_dir: Path):
     with open(captures_file, 'r') as f:
         for line in f:
             if line.strip():
-                captures.append(json.loads(line))
+                row = json.loads(line)
+                if len(row) == OLD_STATE_DIM:
+                    # 29 -> 38: inserer 9 zeros avant les features camera
+                    row = (row[:ZONE_INSERT_POS]
+                           + [0.0] * ZONE_FEATURES_DIM
+                           + row[ZONE_INSERT_POS:])
+                elif len(row) == INTERMEDIATE_STATE_DIM:
+                    # 36 -> 38: inserer front_dash_count (pos 30) et center_dash_count (pos 35)
+                    row = (row[:30]
+                           + [0.0]
+                           + row[30:34]
+                           + [0.0]
+                           + row[34:36])
+                captures.append(row)
 
     with open(labels_file, 'r') as f:
         for line in f:
