@@ -281,17 +281,14 @@ cd MLP_model_trainer
 # Installer les dépendances
 pip install -r requirements.txt
 
-# Lancer l'entraînement (100 epochs, modèle medium)
-python train.py --epochs 100 --model-size medium
-
-# Convertir vers TFLite pour déploiement sur Pi
-python convert_to_tflite.py --quantize
+# Lancer l'entraînement
+python train.py 
 
 # Déployer sur le robot
 scp export/zumi_mlp_quant.tflite pi@192.168.0.1:~/PFE/core/control/controlers/models/
 ```
 
-Voir [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md) pour le tutoriel complet.
+Voir [MLP_model_trainer/GUIDE_UTILISATION.md](MLP_model_trainer/GUIDE_UTILISATION.md) pour le tutoriel complet.
 
 ---
 
@@ -332,8 +329,6 @@ Consulter [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) et [Doc/Workflow_GIT.md](Doc/Work
 | [MLP_model_trainer/GUIDE_UTILISATION.md](MLP_model_trainer/GUIDE_UTILISATION.md) | Guide d'utilisation du pipeline MLP |
 | [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md) | Tutoriel complet : MLP avec PyTorch et déploiement TFLite |
 | [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) | Guide Git pour les membres de l'équipe |
-| [Doc/AIDE_MEMOIRE_GIT.md](Doc/AIDE_MEMOIRE_GIT.md) | Aide-mémoire Git (référence rapide) |
-| [Doc/Workflow_GIT.md](Doc/Workflow_GIT.md) | Workflow de branches Git pour le projet |
 | [Doc/Procédure serveur flask.md](Doc/Proc%C3%A9dure%20serveur%20flask.md) | Procédure d'ajout d'endpoints au serveur Flask |
 
 ---
@@ -367,17 +362,14 @@ Pour garder le repo léger, les **données d'entraînement** et les **modèles i
 | `MLP_model_trainer/export/` | Modèles ONNX / TFLite | `python convert_to_tflite.py` |
 | `Haar_Classifier_model_trainer/data/` | Images positives/négatives | Voir `Haar_Classifier_model_trainer/README.md` |
 
-> **Pourquoi pas de modèles pré-entraînés ?** Chaque robot Zumi a des biais mécaniques différents (asymétrie moteur, alignement caméra, usure des roues). Repartir de vos propres données garantit un modèle adapté à votre matériel et votre piste. Le pipeline d'entraînement complet est fourni.
+Les derniers modèles entrainé seront déployé mais les artéfacte de modules ne sont pas sauvegarder, vous devrez échantillonner vous même si vous souhaitez entrainer un nouveau modèle. Référez vouz au guide de chacun des modules pour apprendre la procédure.
 
 ### 7.3 — Pistes d'évolution suggérées
 
 Les axes suivants ont été identifiés pendant la session H2026 mais n'ont pas été complétés. Ils constituent de bonnes pistes de départ :
 
-- Caractérisation systématique des capteurs IR (profiler interactif)
-- Fusion de données IR + vision dans le contrôleur MLP
-- Contrôleur PID vision-based (suivi de ligne par caméra)
-- Reconnaissance de panneaux supplémentaires (cédez le passage, limite de vitesse)
-- Migration vers une architecture ROS 2 / micro-ROS
+- Refonte du controleur ML vers un modèle d'architecture CNN : la vision est un concepte ultra important et qui fourni beaucoup plus de contexte que les capteurs. le robot arriverais a naviguer a travers le tapis très facilement si le livefeed vidéo étais directement dans son vecteur d'entrée
+  
 
 ---
 
