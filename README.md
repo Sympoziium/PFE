@@ -359,12 +359,6 @@ git checkout -b main           # nouvelle branche de travail pour votre session
 git push -u origin main
 ```
 
-4. Ajouter le repo d'origine comme remote upstream (utile pour suivre les correctifs futurs) :
-
-```bash
-git remote add upstream https://github.com/Sympoziium/PFE.git
-```
-
 ### 7.2 — Récupérer les artefacts non versionnés
 
 Pour garder le repo léger, les **données d'entraînement** et les **modèles intermédiaires** ne sont pas versionnés (voir `.gitignore`). Les dossiers suivants sont absents du fork et devront être regénérés :

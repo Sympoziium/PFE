@@ -77,8 +77,10 @@ Working Directory → (git add) → Staging Area → (git commit) → Repository
 Pour télécharger le projet depuis GitHub :
 
 ```bash
-# Cloner le dépôt du projet Zumi
-git clone https://github.com/Sympoziium/PFE.git
+# faites un fork du dépôt du projet Zumi puis clonez votre fork
+git clone https://github.com/VOTRE-ORG/PFE.git
+
+
 
 # Se déplacer dans le dossier du projet
 cd PFE
@@ -392,7 +394,7 @@ git push origin votre-branche
 
 ### Créer une Pull Request (sur GitHub)
 
-1. Allez sur https://github.com/Sympoziium/PFE
+1. Allez sur https://github.com/VOTRE-ORG/PFE
 2. Cliquez sur "Pull requests" → "New pull request"
 3. Sélectionnez votre branche
 4. Ajoutez un titre et une description
