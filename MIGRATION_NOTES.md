@@ -428,7 +428,7 @@ ne fournit pas suffisamment de courant pour démarrer le Pi Zero 2W (~350 mA).
 allumer le switch du Zumi board. Les deux alimentations coexistent sans conflit.
 
 **Impact projet :** cette contrainte devra être adressée pour le déploiement
-final (remplacement de la batterie ou régulateur de tension adapté).
+final (remplacement de la batterie).
 
 ---
 
@@ -613,16 +613,6 @@ Le fichier est conservé dans le dépôt pour compatibilité avec les robots V1 
 | Contrôle de la période de détection passive | À valider fonctionnellement avant le merge dans `Migration-Pi_2` |
 | Remplacement de la batterie LiPo | Adressé en phase de déploiement final — hors scope session courante |
 | Connexion USB Ethernet (backdoor réseau) | **Rejeté** — complexité injustifiée au regard de la robustesse du mode AP+STA |
-
-### Stratégie de versionnage post-migration
-
-La migration étant fonctionnelle sur le premier robot, le développement des nouvelles fonctionnalités (contrôle moteur par MLP, etc.) se poursuit sur des branches `feature/*` issues de `Migration-Pi_2`. La branche `main` reste stable pour les équipiers encore sur V1. Le merge de `Migration-Pi_2` vers `main` sera effectué lorsque le second robot aura été migré sur Pi Zero 2W.
-
-| Branche | Base | Objectif |
-|---------|------|----------|
-| `main` | — | Stable V1 — ne pas modifier |
-| `Migration-Pi_2` | `main` | Migration complète V2 — référence |
-| `feature/*` | `Migration-Pi_2` | Nouveaux développements sur V2 |
 
 ---
 

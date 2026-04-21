@@ -11,7 +11,7 @@ encodage one-hot, bbox relative). Les valeurs numériques (IR, IMU) sont stocké
 en valeurs brutes (raw). La normalisation statistique (z-score) est appliquée
 séparément au moment de l'entraînement et de l'inférence.
 
-Vecteur d'état (35 + N classes):
+Vecteur d'état (38 + N classes):
   [0-5]      : IR sensors (6)             - valeurs brutes 0-255 (8 bits)
   [6]        : IR_diff (1)               - (bottom_left - bottom_right), raw
   [7]        : IR_sum  (1)               - (bottom_left + bottom_right)/2, raw
@@ -95,7 +95,7 @@ class VisionAdapter:
     # --- Getter des dimensions de vecteurs ---
     @property
     def state_dim(self) -> int:
-        """Dimension du vecteur d'état (entrée) : 35 + N classes."""
+        """Dimension du vecteur d'état (entrée) : 38 + N classes."""
         return 6 + 2 + 1 + len(self.classes) + 4 + IMU_DIM + self.ZONE_FEATURES_DIM + 2
 
     @property
