@@ -1,17 +1,17 @@
 # Procédure de modification du serveur Flask (mise à jour)
 
-Cette procédure reflète la nouvelle architecture: le backend est géré par la classe `controller` et les routes sont enregistrées via un module routeur (`flask_server.register_routes(ctrl)`). Les pages HTML sont construites dans les onglets (`interface/onglet_*.py`) avec CSS/JS inline.
+Cette procédure reflète la nouvelle architecture: le backend est géré par la classe `controller` et les routes sont enregistrées via un module routeur (`flask_router.register_routes(ctrl)`). Les pages HTML sont construites dans les onglets (`interface/onglet_*.py`) avec CSS/JS inline.
 
 ## Architecture actuelle (résumé)
-- Backend: `interface/controller.py` contient les méthodes de callback (ex.: `start_camera()`, `forward()`, `exit_server()`). Il expose `self.app` et `attach_pipeline_vision(...)`.
-- Routeur: `interface/flask_server.py` fournit `register_routes(ctrl)` et ajoute les endpoints avec `app.add_url_rule(...)` en déléguant à `ctrl`.
+- Backend: `interface/server_controller.py` contient les méthodes de callback (ex.: `start_camera()`, `forward()`, `exit_server()`). Il expose `self.app` et `attach_pipeline_vision(...)`.
+- Routeur: `interface/flask_router.py` fournit `register_routes(ctrl)` et ajoute les endpoints avec `app.add_url_rule(...)` en déléguant à `ctrl`.
 - Entrypoint: `main.py` crée `ctrl`, enregistre les routes (`routes.register_routes(ctrl)`) puis lance `ctrl.app.run(...)`.
 - Frontend: `interface/onglet_acceuil.py`, `interface/onglet_vision.py`, `interface/onglet_template.py` retournent une string HTML; le titre est injecté via `html.replace("{title}", title)` (ne pas utiliser `format()` sur le HTML).
 
 ## Ajout d'un bouton (nouveau flux)
-1) Ajouter la méthode backend dans `controller.py`:
+1) Ajouter la méthode backend dans `server_controller.py`:
     ```python
-    # interface/controller.py
+    # interface/server_controller.py
     class controller:
         # ...
         def toggle_light(self):
@@ -20,9 +20,9 @@ Cette procédure reflète la nouvelle architecture: le backend est géré par la
             return ("", 204)  # ou return jsonify({"ok": True})
     ```
 
-2) Enregistrer la route dans `flask_server.register_routes(ctrl)`:
+2) Enregistrer la route dans `flask_router.register_routes(ctrl)`:
     ```python
-    # interface/flask_server.py
+    # interface/flask_router.py
     def register_routes(ctrl):
         app = ctrl.app
         # ... autres routes ...
@@ -75,7 +75,7 @@ Cette procédure reflète la nouvelle architecture: le backend est géré par la
 - L’arrêt du serveur: utiliser `/EXIT` ou `/exit` avec `POST`, qui appelle `ctrl.exit_server()` et arrête proprement Flask + pipeline.
 
 ## Exemple complet minimal
-Backend (`controller.py`):
+Backend (`server_controller.py`):
 ```python
 def set_red_led(self):
     try:
@@ -86,7 +86,7 @@ def set_red_led(self):
         return jsonify({"error": str(e)}), 500
 ```
 
-Route (`flask_server.py`):
+Route (`flask_router.py`):
 ```python
 app.add_url_rule('/set_red_led', 'set_red_led', lambda: ctrl.set_red_led(), methods=['POST'])
 ```

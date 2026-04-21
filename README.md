@@ -34,18 +34,19 @@ Ce projet s'inscrit dans la continuité d'un PFE multi-session dont l'objectif e
 PFE/
 ├── main.py                          # Point d'entrée principal (robot)
 ├── README.md
+├── LICENSE                          # Licence MIT
 ├── CHANGELOG.md                     # Historique des modifications
 ├── ARCHITECTURE_CONTROLE.md         # Documentation architecture du module de contrôle
 ├── MIGRATION_NOTES.md               # Journal de migration Pi Zero W → Pi Zero 2W
 ├── requirements-robot.txt           # Dépendances Python (robot)
+├── control_module_architecture_v2.svg # Schéma d'architecture du module de contrôle
 │
 ├── script/                          # Scripts système embarqués
 │   ├── zumi_ap_setup.sh             # Configuration initiale du profil AP (une seule fois)
 │   ├── zumi_ap_sta_start.sh         # Démarrage AP+STA au boot (appelé par systemd)
 │   ├── zumi_wifi_config.sh          # Configuration interactive de la connexion STA
 │   ├── setup_dns_rpi.sh             # Configuration DNS du Raspberry Pi
-│   ├── zumi-ap.service              # Service systemd pour le point d'accès
-│   └── zumi_prepare.sh              # [DEPRECATED — V1 uniquement]
+│   └── zumi-ap.service              # Service systemd pour le point d'accès
 │
 ├── core/                            # Couche métier embarquée
 │   ├── camera/
@@ -55,18 +56,22 @@ PFE/
 │   │
 │   ├── control/
 │   │   ├── control_manager.py       # Orchestrateur pluggable des contrôleurs
+│   │   ├── sensor_profiler.py       # Utilitaires de profilage des capteurs
 │   │   ├── controlers/              # Implémentations concrètes (pattern Strategy)
 │   │   │   ├── controller_base.py   # Interface abstraite contrôleur (ABC)
 │   │   │   ├── manual_controller.py # Contrôle manuel (joystick)
 │   │   │   ├── ml_controller.py     # Contrôleur prédictif MLP (TFLite)
 │   │   │   ├── pid_ir_controller.py # Contrôleur PID par capteurs infrarouges
-│   │   │   └── models/              # Modèles TFLite + stats de normalisation
-│   │   ├── IO_drivers/              # Couche traductrice robotique/framework (DTOs)
-│   │   │   ├── motor_command.py
-│   │   │   ├── motor_driver.py
-│   │   │   ├── sensor_driver.py
-│   │   │   └── sensor_state.py
-│   │   └── legacy/                  # Anciennes implémentations retirées
+│   │   │   ├── circuit_fsm_controller.py # Contrôleur state-machine pour parcours complet
+│   │   │   └── models/              # Artefacts de déploiement du MLP
+│   │   │       ├── zumi_mlp.tflite           # Modèle TFLite déployé
+│   │   │       ├── normalization_stats.json  # Stats z-score pour normalisation
+│   │   │       └── environment_config.json   # Config d'environnement du modèle
+│   │   └── IO_drivers/              # Couche traductrice robotique/framework (DTOs)
+│   │       ├── motor_command.py
+│   │       ├── motor_driver.py
+│   │       ├── sensor_driver.py
+│   │       └── sensor_state.py
 │   │
 │   ├── hardware/
 │   │   ├── boot.py                  # Handshake Pi ↔ ATmega (patch compatibilité V2)
@@ -76,8 +81,7 @@ PFE/
 │   │
 │   ├── robot/
 │   │   ├── robot_base.py            # Interface abstraite robot
-│   │   ├── robot_zumi.py            # Implémentation Zumi (moteurs, capteurs)
-│   │   └── Archive/                 # Code legacy conservé pour référence
+│   │   └── robot_zumi.py            # Implémentation Zumi (moteurs, capteurs)
 │   │
 │   └── vision/
 │       ├── vision_adapter.py        # Vectorisateur numérique (inférences ML)
@@ -90,7 +94,7 @@ PFE/
 │           ├── Stop_detector_cv.py
 │           ├── Stop_detector_matt.py
 │           ├── Haar_classifier.py
-│           └── models/              # Fichiers .xml des cascades entraînées
+│           └── models/              # Cascades entraînées (LBP_*.xml, stop_sign_classifier_2.xml)
 │
 ├── interface/                       # Serveur Flask (UI opérateur)
 │   ├── flask_router.py
@@ -104,20 +108,24 @@ PFE/
 │   └── onglet_template.py
 │
 ├── Haar_Classifier_model_trainer/   # Pipeline d'entraînement Haar/LBP (PC-side)
-│   └── ...                          # Voir Haar_Classifier_model_trainer/README.md
+│   ├── train_cascade.py             # Point d'entrée — menu interactif
+│   ├── positive_image_downloader.py # Téléchargement d'images positives
+│   ├── cascade/                     # Modules du pipeline (config, data_prep, training, evaluation, mining, analysis)
+│   ├── requirements.txt
+│   └── README.md                    # Guide complet du pipeline Haar — à lire avant utilisation
 │
 ├── MLP_model_trainer/               # Pipeline d'entraînement MLP PyTorch (PC-side)
-│   ├── sequences/                   # Séquences de conduite (captures.jsonl + labels.jsonl)
-│   ├── checkpoints/                 # Modèles sauvegardés (.pt)
-│   ├── export/                      # Modèles convertis (.onnx, .tflite)
+│   ├── train.py                     # Script d'entraînement interactif avec validation
+│   ├── evaluate.py                  # Évaluation du modèle sur jeu de test
 │   ├── dataset.py                   # Chargement JSONL → PyTorch DataLoader
 │   ├── model.py                     # Architecture MLP (Small/Medium/Large)
-│   ├── train.py                     # Script d'entraînement interactif avec validation
-│   ├── convert_to_tflite.py         # Conversion PyTorch → ONNX → TFLite
-│   ├── validate_env.py              # Validation de l'environnement d'entraînement
+│   ├── augment.py                   # Augmentation de données
 │   ├── aggregate_sequences.py       # Agrégation des séquences de conduite
 │   ├── analyze_dataset.py           # Analyse statistique du dataset
-│   ├── requirements.txt             # Dépendances Python
+│   ├── convert_to_tflite.py         # Conversion PyTorch → ONNX → TFLite
+│   ├── simulator_2d.py              # Simulateur 2D pour validation offline
+│   ├── validate_env.py              # Validation de l'environnement d'entraînement
+│   ├── requirements.txt
 │   ├── GUIDE_UTILISATION.md         # Guide d'utilisation complet
 │   └── TUTORIAL_MLP_PYTORCH.md      # Tutoriel complet PyTorch/MLP
 │
@@ -127,11 +135,12 @@ PFE/
 └── Doc/                             # Documentation interne
     ├── AIDE_MEMOIRE_GIT.md
     ├── GUIDE_GIT.md
-    ├── GUIDE_GIT.pdf
     ├── Workflow_GIT.md
     ├── Procédure serveur flask.md
     └── Procédure test zumi.md
 ```
+
+> **Non versionnés** (voir `.gitignore`) : `MLP_model_trainer/{sequences,checkpoints,export,Incubator}/`, caches Python, environnements virtuels. Ces dossiers sont régénérés par les équipes via le pipeline d'entraînement — voir section 7.2.
 
 ### Principes d'architecture
 
@@ -192,27 +201,17 @@ PFE/
 
 ## 4. Démarrage rapide
 
-### 4.1 — Pi Zero W V1 (configuration Robolink originale)
+### 4.1 — Pi Zero W V1 (configuration Robolink originale — historique)
 
-> ⚠️ `zumi_prepare.sh` est **deprecated** et réservé au V1. Ne pas utiliser sur le V2.
+> La plateforme V1 (Pi Zero W, Python 3.5) n'est plus maintenue. Le code spécifique au V1 et le script `zumi_prepare.sh` sont disponibles sur le tag `V1.0` du repo :
+>
+> ```bash
+> git checkout V1.0
+> ```
+>
+> Pour toute nouvelle session, **utiliser la procédure V2 ci-dessous**.
 
-```bash
-# 1. Se connecter au Wi-Fi natif du Zumi (mot de passe = SSID)
-#    SSID connus : zumi3257, zumi4585
-
-# 2. Connexion SSH
-ssh pi@192.168.10.1
-# Mot de passe : pi
-
-# 3. Arrêter les services Robolink et connecter au Wi-Fi de développement
-sudo ~/PFE/zumi_prepare.sh full
-
-# 4. Se reconnecter via l'IP Wi-Fi affichée par le script, puis lancer le programme
-cd ~/PFE
-python3 main.py
-```
-
-### 4.2 — Pi Zero 2W V2 (nouvelle configuration)
+### 4.2 — Pi Zero 2W V2 (configuration active)
 
 Le V2 démarre automatiquement en mode **AP+STA simultané** via le service `zumi-ap.service`.
 
@@ -252,19 +251,15 @@ sudo nmcli connection up ZumiSTA
 ip addr show wlan0   # Interface STA — IP dynamique si connecté au réseau externe
 ip addr show wlan1   # Interface AP  — 192.168.0.1 (toujours présente)
 ```
-### 4.2.1 Connection sur un wifi externe
+### 4.2.1 — Accès au serveur Flask via le réseau externe
+
 ```bash
-# Configurer la connexion STA (à faire une seule fois, ou après changement de réseau)
-sudo ~/PFE/script/zumi_wifi_config.sh
-# Le script demande le SSID et le mot de passe du réseau cible.
-# La connexion est persistée dans NetworkManager et s'active automatiquement au boot.
-ip -c addr show
-#prendre l'ip du wlan0
+# Récupérer l'IP STA (wlan0) assignée par le réseau
+ip -c addr show wlan0
 
-http:// ip :5000
-
-
-
+# Depuis un navigateur sur la même machine ou le même réseau :
+# http://<ip_wlan0>:5000
+```
 
 
 ### 4.3 — Entraînement d'un modèle (PC-side, commun V1/V2)
@@ -303,20 +298,26 @@ Voir [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_
 
 ---
 
-## 5. Gestion des branches
+## 5. Gestion des branches et tags
 
-La migration V1 → V2 est complétée. La branche `main` est désormais la référence pour le Pi Zero 2W.
+Tags de référence :
+
+| Tag | Description |
+|-----|-------------|
+| `V0.1` | Première version fonctionnelle |
+| `V1.0` | Dernière version Pi Zero W (32-bit, Python 3.5) — contient `zumi_prepare.sh` et le code V1 |
+| `V2.0.0` | **Release finale PFE H2026** — plateforme Pi Zero 2W, architecture modulaire, contrôleurs MLP + PID + manuel |
+
+Branche active :
 
 | Branche | Description |
 |---------|-------------|
-| `main` | Branche stable — plateforme V2 (Pi Zero 2W, Bookworm 64-bit) |
-| `feature/*` | Développement de nouvelles fonctionnalités — partir de `main` |
+| `main` | État de `V2.0.0` — point de départ recommandé pour forks et nouvelles sessions |
 
 ```bash
-# Démarrage d'une nouvelle feature
+# Démarrer une feature à partir de main
 git checkout main
 git checkout -b feature/ma-fonctionnalite
-git push -u origin feature/ma-fonctionnalite
 ```
 
 Consulter [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) et [Doc/Workflow_GIT.md](Doc/Workflow_GIT.md) pour les conventions complètes.
@@ -333,15 +334,64 @@ Consulter [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) et [Doc/Workflow_GIT.md](Doc/Work
 | [Haar_Classifier_model_trainer/README.md](Haar_Classifier_model_trainer/README.md) | Guide complet du pipeline d'entraînement Haar/LBP |
 | [MLP_model_trainer/GUIDE_UTILISATION.md](MLP_model_trainer/GUIDE_UTILISATION.md) | Guide d'utilisation du pipeline MLP |
 | [MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md](MLP_model_trainer/TUTORIAL_MLP_PYTORCH.md) | Tutoriel complet : MLP avec PyTorch et déploiement TFLite |
-| [core/control/controlers/PID_IR_TUNING.md](core/control/controlers/PID_IR_TUNING.md) | Guide de réglage du contrôleur PID infrarouge |
 | [Doc/GUIDE_GIT.md](Doc/GUIDE_GIT.md) | Guide Git pour les membres de l'équipe |
 | [Doc/AIDE_MEMOIRE_GIT.md](Doc/AIDE_MEMOIRE_GIT.md) | Aide-mémoire Git (référence rapide) |
 | [Doc/Workflow_GIT.md](Doc/Workflow_GIT.md) | Workflow de branches Git pour le projet |
-| [Doc/Procédure serveur flask.md](Doc/Proc%C3%A9dure%20serveur%20flask.md) | Procédure de déploiement du serveur Flask |
-| [Doc/Procédure test zumi.md](Doc/Proc%C3%A9dure%20test%20zumi.md) | Procédure de test sur le robot Zumi |
+| [Doc/Procédure serveur flask.md](Doc/Proc%C3%A9dure%20serveur%20flask.md) | Procédure d'ajout d'endpoints au serveur Flask |
 
 ---
 
-## 7. Licence
+## 7. Continuer ce projet — équipes futures
 
-Projet académique — ÉTS, Département de génie de la production automatisée.
+Ce repo est livré au tag **V2.0.0** comme état final du PFE Hiver 2026. Il est destiné à servir de base de départ propre aux prochaines équipes qui poursuivront le développement du véhicule autonome Zumi.
+
+### 7.1 — Forker le repo au tag V2.0.0
+
+1. Aller sur [https://github.com/Sympoziium/PFE](https://github.com/Sympoziium/PFE)
+2. Cliquer **Fork** (en haut à droite) pour créer votre propre copie du repo.
+3. Cloner votre fork localement et se positionner sur le tag V2.0.0 :
+
+```bash
+git clone https://github.com/VOTRE-ORG/PFE.git
+cd PFE
+git checkout V2.0.0
+git checkout -b main           # nouvelle branche de travail pour votre session
+git push -u origin main
+```
+
+4. Ajouter le repo d'origine comme remote upstream (utile pour suivre les correctifs futurs) :
+
+```bash
+git remote add upstream https://github.com/Sympoziium/PFE.git
+```
+
+### 7.2 — Récupérer les artefacts non versionnés
+
+Pour garder le repo léger, les **données d'entraînement** et les **modèles intermédiaires** ne sont pas versionnés (voir `.gitignore`). Les dossiers suivants sont absents du fork et devront être regénérés :
+
+| Dossier | Contenu | Comment le regénérer |
+|---------|---------|----------------------|
+| `MLP_model_trainer/sequences/` | Séquences de conduite brutes (JSONL) | Mode manuel du serveur Flask + enregistrement |
+| `MLP_model_trainer/checkpoints/` | Modèles PyTorch entraînés | `python train.py` (voir `MLP_model_trainer/GUIDE_UTILISATION.md`) |
+| `MLP_model_trainer/export/` | Modèles ONNX / TFLite | `python convert_to_tflite.py` |
+| `Haar_Classifier_model_trainer/data/` | Images positives/négatives | Voir `Haar_Classifier_model_trainer/README.md` |
+
+> **Pourquoi pas de modèles pré-entraînés ?** Chaque robot Zumi a des biais mécaniques différents (asymétrie moteur, alignement caméra, usure des roues). Repartir de vos propres données garantit un modèle adapté à votre matériel et votre piste. Le pipeline d'entraînement complet est fourni.
+
+### 7.3 — Pistes d'évolution suggérées
+
+Les axes suivants ont été identifiés pendant la session H2026 mais n'ont pas été complétés. Ils constituent de bonnes pistes de départ :
+
+- Caractérisation systématique des capteurs IR (profiler interactif)
+- Fusion de données IR + vision dans le contrôleur MLP
+- Contrôleur PID vision-based (suivi de ligne par caméra)
+- Reconnaissance de panneaux supplémentaires (cédez le passage, limite de vitesse)
+- Migration vers une architecture ROS 2 / micro-ROS
+
+---
+
+## 8. Licence
+
+Ce projet est distribué sous licence **MIT** — voir [LICENSE](LICENSE) pour les termes complets.
+
+Projet académique initial — ÉTS, Département de génie de la production automatisée, GPA 793 (Hiver 2026).
