@@ -108,14 +108,12 @@ pip install -r requirements.txt
 ### 2.2 Installation des dépendances côté Raspberry Pi Zero 2
 
 ```bash
-
 cd PFE/
-
-pip install requirements-robot.txt
+pip install -r requirements-robot.txt
 ```
 
 
-### 2.2 Imports de base PyTorch
+### 2.3 Imports de base PyTorch
 
 ```python
 import torch
@@ -1413,7 +1411,7 @@ print(f"Commandes: left={commands[0]:.3f}, right={commands[1]:.3f}")
 
 ### 10.3 Intégration dans le contrôleur
 
-Voir `ml_controller.py` pour l'implémentation complète intégrée au système de contrôle du robot.
+Voir [`core/control/controlers/ml_controller.py`](../core/control/controlers/ml_controller.py) pour l'implémentation complète intégrée au système de contrôle du robot.
 
 ### 10.4 Considérations de performance
 

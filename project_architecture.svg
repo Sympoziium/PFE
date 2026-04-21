@@ -1,0 +1,206 @@
+<svg width="100%" viewBox="0 0 920 820" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+  <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+
+<style>
+  .sw-fill { fill: rgb(8, 80, 65); }
+  .sw-stroke { stroke: rgb(93, 202, 165); }
+  .sw-title { fill: rgb(159, 225, 203); }
+  .sw-subtitle { fill: rgb(93, 202, 165); }
+
+  .hw-fill { fill: rgb(68, 68, 65); }
+  .hw-stroke { stroke: rgb(180, 178, 169); }
+  .hw-title { fill: rgb(211, 209, 199); }
+  .hw-subtitle { fill: rgb(180, 178, 169); }
+
+  .pc-fill { fill: rgb(55, 45, 85); }
+  .pc-stroke { stroke: rgb(175, 145, 220); }
+  .pc-title { fill: rgb(210, 190, 240); }
+  .pc-subtitle { fill: rgb(175, 145, 220); }
+
+  .label { fill: rgb(194, 192, 182); font-size: 12px; }
+  .flowlabel { fill: rgb(194, 192, 182); font-size: 11px; font-style: italic; }
+  .arrow { stroke: rgb(156, 154, 146); stroke-width: 1.5; fill: none; }
+  .title-big { fill: rgb(211, 209, 199); font-size: 15px; font-weight: 600; }
+  .text { font-family: "Anthropic Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .t14 { font-size: 14px; font-weight: 500; }
+  .t12 { font-size: 12px; font-weight: 400; }
+  .t11 { font-size: 11px; font-weight: 400; }
+</style>
+
+<!-- Document title -->
+<text x="460" y="22" text-anchor="middle" class="text title-big">PFE Zumi — Architecture globale du projet</text>
+
+<!-- ====================================================================== -->
+<!-- Section A: PC off-robot (training pipelines)                            -->
+<!-- ====================================================================== -->
+<rect x="30" y="40" width="860" height="125" rx="10" fill="none" class="pc-stroke" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="46" y="60" class="text t12 pc-title" font-weight="500">PC — Off-robot · Pipelines d'entraînement</text>
+
+<!-- Haar trainer -->
+<rect x="60" y="75" width="380" height="70" rx="8" class="pc-fill pc-stroke" stroke-width="0.5"/>
+<text x="250" y="97" text-anchor="middle" class="text t14 pc-title">Haar_Classifier_model_trainer</text>
+<text x="250" y="117" text-anchor="middle" class="text t12 pc-subtitle">OpenCV traincascade · hard negative/positive mining</text>
+<text x="250" y="133" text-anchor="middle" class="text t11 pc-subtitle">train_cascade.py · menu interactif</text>
+
+<!-- MLP trainer -->
+<rect x="480" y="75" width="380" height="70" rx="8" class="pc-fill pc-stroke" stroke-width="0.5"/>
+<text x="670" y="97" text-anchor="middle" class="text t14 pc-title">MLP_model_trainer</text>
+<text x="670" y="117" text-anchor="middle" class="text t12 pc-subtitle">PyTorch → ONNX → TFLite · z-score · sliding window</text>
+<text x="670" y="133" text-anchor="middle" class="text t11 pc-subtitle">train.py · simulator_2d.py · convert_to_tflite.py</text>
+
+<!-- ====================================================================== -->
+<!-- Deployment arrows                                                        -->
+<!-- ====================================================================== -->
+<line x1="250" y1="145" x2="250" y2="205" marker-end="url(#arrow)" class="arrow"/>
+<line x1="670" y1="145" x2="670" y2="205" marker-end="url(#arrow)" class="arrow"/>
+<text x="250" y="160" text-anchor="middle" class="text flowlabel">LBP_*.xml</text>
+<text x="670" y="160" text-anchor="middle" class="text flowlabel">zumi_mlp.tflite</text>
+<text x="460" y="195" text-anchor="middle" class="text label">Déploiement (scp / git) : artefacts → /core/vision/detectors/models/ &amp; /core/control/controlers/models/</text>
+
+<!-- ====================================================================== -->
+<!-- Section B: Robot (Pi Zero 2W)                                           -->
+<!-- ====================================================================== -->
+<rect x="30" y="215" width="860" height="580" rx="10" fill="none" class="sw-stroke" stroke-width="1" stroke-dasharray="6 4"/>
+<text x="46" y="235" class="text t12 sw-title" font-weight="500">ROBOT — Pi Zero 2W (Bookworm 64-bit · Python 3.11)</text>
+
+<!-- B1: Browser + Flask server -->
+<rect x="50" y="250" width="160" height="55" rx="6" class="hw-fill hw-stroke" stroke-width="0.5"/>
+<text x="130" y="272" text-anchor="middle" class="text t14 hw-title">Browser</text>
+<text x="130" y="290" text-anchor="middle" class="text t12 hw-subtitle">opérateur · WASD</text>
+
+<line x1="210" y1="277" x2="280" y2="277" marker-start="url(#arrow)" marker-end="url(#arrow)" class="arrow"/>
+<text x="245" y="271" text-anchor="middle" class="text flowlabel">HTTP</text>
+
+<rect x="280" y="250" width="580" height="55" rx="8" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="570" y="272" text-anchor="middle" class="text t14 sw-title">Flask server (interface/)</text>
+<text x="570" y="290" text-anchor="middle" class="text t12 sw-subtitle">flask_router.py · server_controller.py · onglet_*.py</text>
+
+<!-- B2: Flask → ControlManager -->
+<line x1="570" y1="305" x2="570" y2="330" marker-end="url(#arrow)" class="arrow"/>
+
+<!-- B3: ControlManager -->
+<rect x="240" y="330" width="620" height="60" rx="8" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="550" y="352" text-anchor="middle" class="text t14 sw-title">ControlManager (core/control/)</text>
+<text x="550" y="370" text-anchor="middle" class="text t12 sw-subtitle">registre pluggable · thread 20–30 Hz · sampling callback · manual override</text>
+
+<!-- B4: Arrows from ControlManager to the 3 pipeline stages -->
+<line x1="130" y1="410" x2="130" y2="440" marker-end="url(#arrow)" class="arrow"/>
+<line x1="500" y1="410" x2="500" y2="440" marker-end="url(#arrow)" class="arrow"/>
+<line x1="790" y1="410" x2="790" y2="440" marker-end="url(#arrow)" class="arrow"/>
+<path d="M 280,390 L 280,400 L 130,400 L 130,410" class="arrow"/>
+<path d="M 550,390 L 550,400 L 500,400 L 500,410" class="arrow"/>
+<path d="M 820,390 L 820,400 L 790,400 L 790,410" class="arrow"/>
+
+<text x="130" y="428" text-anchor="middle" class="text flowlabel">1. read()</text>
+<text x="500" y="428" text-anchor="middle" class="text flowlabel">2. step(state)</text>
+<text x="790" y="428" text-anchor="middle" class="text flowlabel">3. execute(cmd)</text>
+
+<!-- B5: Three-column pipeline -->
+
+<!-- Left column: SensorDriver -->
+<rect x="55" y="440" width="150" height="60" rx="8" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="130" y="462" text-anchor="middle" class="text t14 sw-title">SensorDriver</text>
+<text x="130" y="480" text-anchor="middle" class="text t12 sw-subtitle">IO_drivers/</text>
+<text x="130" y="494" text-anchor="middle" class="text t11 sw-subtitle">→ SensorState DTO</text>
+
+<!-- Middle column: Controllers cluster -->
+<rect x="240" y="440" width="520" height="155" rx="8" fill="none" class="sw-stroke" stroke-width="0.5" stroke-dasharray="3 3"/>
+<rect x="260" y="455" width="480" height="30" rx="5" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="500" y="474" text-anchor="middle" class="text t12 sw-title">ControllerBase (ABC) — step(SensorState) → MotorCommand</text>
+
+<!-- 4 concrete controllers -->
+<rect x="260" y="500" width="110" height="85" rx="6" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="315" y="520" text-anchor="middle" class="text t12 sw-title">ManualCtrl</text>
+<text x="315" y="540" text-anchor="middle" class="text t11 sw-subtitle">WASD</text>
+<text x="315" y="556" text-anchor="middle" class="text t11 sw-subtitle">+ heading hold</text>
+<text x="315" y="572" text-anchor="middle" class="text t11 sw-subtitle">30 Hz</text>
+
+<rect x="385" y="500" width="110" height="85" rx="6" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="440" y="520" text-anchor="middle" class="text t12 sw-title">PIDIRCtrl</text>
+<text x="440" y="540" text-anchor="middle" class="text t11 sw-subtitle">PID IR</text>
+<text x="440" y="556" text-anchor="middle" class="text t11 sw-subtitle">+ heading hold</text>
+<text x="440" y="572" text-anchor="middle" class="text t11 sw-subtitle">(pointillés)</text>
+
+<rect x="510" y="500" width="110" height="85" rx="6" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="565" y="520" text-anchor="middle" class="text t12 sw-title">MLCtrl</text>
+<text x="565" y="540" text-anchor="middle" class="text t11 sw-subtitle">TFLite inf.</text>
+<text x="565" y="556" text-anchor="middle" class="text t11 sw-subtitle">window 25 pas</text>
+<text x="565" y="572" text-anchor="middle" class="text t11 sw-subtitle">z-score</text>
+
+<rect x="635" y="500" width="110" height="85" rx="6" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="690" y="520" text-anchor="middle" class="text t12 sw-title">CircuitFSMCtrl</text>
+<text x="690" y="540" text-anchor="middle" class="text t11 sw-subtitle">FSM multi-zones</text>
+<text x="690" y="556" text-anchor="middle" class="text t11 sw-subtitle">parcours école</text>
+<text x="690" y="572" text-anchor="middle" class="text t11 sw-subtitle">pas-à-pas</text>
+
+<!-- Right column: MotorDriver -->
+<rect x="795" y="440" width="70" height="60" rx="8" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="830" y="462" text-anchor="middle" class="text t12 sw-title">MotorDrv</text>
+<text x="830" y="480" text-anchor="middle" class="text t11 sw-subtitle">IO_drivers/</text>
+<text x="830" y="494" text-anchor="middle" class="text t11 sw-subtitle">← MotorCmd</text>
+
+<!-- Pipeline arrows: SensorDriver → Controllers → MotorDriver -->
+<line x1="205" y1="470" x2="260" y2="470" marker-end="url(#arrow)" class="arrow"/>
+<text x="232" y="462" text-anchor="middle" class="text flowlabel">state</text>
+
+<line x1="740" y1="470" x2="795" y2="470" marker-end="url(#arrow)" class="arrow"/>
+<text x="768" y="462" text-anchor="middle" class="text flowlabel">cmd</text>
+
+<!-- B6: Vision pipeline (feeds SensorDriver) -->
+<rect x="55" y="615" width="290" height="50" rx="8" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="200" y="634" text-anchor="middle" class="text t14 sw-title">VisionPipeline (core/vision/)</text>
+<text x="200" y="652" text-anchor="middle" class="text t11 sw-subtitle">Line_detector · Haar · Stop · Luminosity · vision_adapter</text>
+
+<line x1="130" y1="615" x2="130" y2="502" marker-end="url(#arrow)" class="arrow"/>
+
+<!-- B7: RobotZumi (feeds sensors, receives motor commands) -->
+<rect x="570" y="615" width="290" height="50" rx="8" class="sw-fill sw-stroke" stroke-width="0.5"/>
+<text x="715" y="634" text-anchor="middle" class="text t14 sw-title">RobotZumi (core/robot/)</text>
+<text x="715" y="652" text-anchor="middle" class="text t11 sw-subtitle">control_motors · get_ir_data · get_angles · turn · stop</text>
+
+<!-- RobotZumi → SensorDriver (IR/IMU read) -->
+<path d="M 570,640 L 380,640 L 380,490 L 205,490" marker-end="url(#arrow)" class="arrow"/>
+<text x="390" y="655" class="text flowlabel">IR · IMU</text>
+
+<!-- MotorDriver → RobotZumi -->
+<line x1="830" y1="500" x2="830" y2="615" marker-end="url(#arrow)" class="arrow"/>
+
+<!-- B8: Physical hardware row -->
+<rect x="55" y="695" width="130" height="55" rx="6" class="hw-fill hw-stroke" stroke-width="0.5"/>
+<text x="120" y="717" text-anchor="middle" class="text t12 hw-title">Caméra</text>
+<text x="120" y="735" text-anchor="middle" class="text t11 hw-subtitle">PiCamera2 HD</text>
+
+<rect x="210" y="695" width="130" height="55" rx="6" class="hw-fill hw-stroke" stroke-width="0.5"/>
+<text x="275" y="717" text-anchor="middle" class="text t12 hw-title">OLED</text>
+<text x="275" y="735" text-anchor="middle" class="text t11 hw-subtitle">personality · screen</text>
+
+<rect x="570" y="695" width="130" height="55" rx="6" class="hw-fill hw-stroke" stroke-width="0.5"/>
+<text x="635" y="717" text-anchor="middle" class="text t12 hw-title">IR ×6 · IMU</text>
+<text x="635" y="735" text-anchor="middle" class="text t11 hw-subtitle">capteurs bord/avant</text>
+
+<rect x="725" y="695" width="135" height="55" rx="6" class="hw-fill hw-stroke" stroke-width="0.5"/>
+<text x="792" y="717" text-anchor="middle" class="text t12 hw-title">Moteurs DC + Pont</text>
+<text x="792" y="735" text-anchor="middle" class="text t11 hw-subtitle">ATmega (Pont/)</text>
+
+<!-- Hardware → abstraction arrows -->
+<line x1="120" y1="695" x2="120" y2="665" marker-end="url(#arrow)" class="arrow"/>
+<line x1="275" y1="695" x2="275" y2="665" marker-end="url(#arrow)" class="arrow"/>
+<line x1="635" y1="695" x2="635" y2="665" marker-end="url(#arrow)" class="arrow"/>
+<line x1="792" y1="695" x2="792" y2="665" marker-end="url(#arrow)" class="arrow"/>
+
+<!-- ====================================================================== -->
+<!-- Legend                                                                   -->
+<!-- ====================================================================== -->
+<rect x="20" y="795" width="12" height="12" class="pc-fill pc-stroke" stroke-width="0.5" rx="2"/>
+<text x="38" y="805" class="text label">Outils PC off-robot</text>
+
+<rect x="200" y="795" width="12" height="12" class="sw-fill sw-stroke" stroke-width="0.5" rx="2"/>
+<text x="218" y="805" class="text label">Logiciel robot (core/, interface/)</text>
+
+<rect x="440" y="795" width="12" height="12" class="hw-fill hw-stroke" stroke-width="0.5" rx="2"/>
+<text x="458" y="805" class="text label">Matériel / interface externe</text>
+</svg>

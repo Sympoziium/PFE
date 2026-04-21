@@ -122,7 +122,7 @@ séparés — ils ne sont pas inclus dans le package `opencv-python`.
 
 **Linux / Mac** :
 
-Compiler à partir des sources (voir [PLAN_DEVELOPPEMENT.md](/PLAN_DEVELOPPEMENT.md#installation-des-outils-cli))
+Compiler OpenCV 3.4 depuis les sources avec les modules CLI `opencv_traincascade` et `opencv_createsamples` (voir la [documentation officielle OpenCV 3.4](https://docs.opencv.org/3.4/d7/d9f/tutorial_linux_install.html)). Les outils ne sont plus distribués dans OpenCV 4.x.
 
 ---
 
@@ -413,7 +413,6 @@ R: Oui, c'est le but du module. Placez vos images croppées dans `data/positive/
 
 - [Documentation OpenCV 3.4 — Cascade Classifier](https://docs.opencv.org/3.4/dc/d88/tutorial_traincascade.html)
 - [Algorithme Viola-Jones (2001)](https://www.cs.cmu.edu/~efros/courses/LBMV07/Papers/viola-cvpr-01.pdf)
-- [PLAN_DEVELOPPEMENT.md](PLAN_DEVELOPPEMENT.md) — Documentation technique détaillée
 
 ---
 

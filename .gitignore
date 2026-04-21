@@ -1,20 +1,37 @@
+# Python
 __pycache__/
-*.pdf
-*.jpg
-*.md
-*.png
-*.bmp
-*.tiff
-*.jpeg
-*.txt
-*.log
-*.vec
-*.jsonl
-*.json
-LBP_*.xml
-stage*.xml
-cascade.xml
-params.xml
-oli readme.md
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+
+# IDE / OS
 .vscode/
+.idea/
 .DS_Store
+
+# ML training artefacts (reproductibles — voir MLP_model_trainer/GUIDE_UTILISATION.md)
+MLP_model_trainer/sequences/
+MLP_model_trainer/checkpoints/
+MLP_model_trainer/export/
+MLP_model_trainer/Incubator/
+*.json
+*.jsonl
+
+# Haar training artefacts (intermédiaires — les cascades finales .xml du repo sont versionnées)
+Haar_Classifier_model_trainer/.venv/
+*.vec
+stage*.xml
+params.xml
+
+# Logs
+*.log
+
+# MISC
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
