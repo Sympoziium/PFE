@@ -27,8 +27,8 @@ Ce projet s'inscrit dans la continuité d'un PFE multi-session dont l'objectif e
 
 ## 2. Architecture logicielle
 
-![Architecture du module de contrôle v2](control_module_architecture_v2.svg)
-*Aperçu du module de contrôle (v2) réécrit en utilisant le pattern Strategy pour garantir isolation et flexibilité.*
+![Architecture globale du projet PFE Zumi](project_architecture.svg)
+*Vue d'ensemble du projet : pipelines d'entraînement PC (Haar et MLP) en haut, plateforme robot Pi Zero 2W en bas (UI web Flask → ControlManager → contrôleurs pluggables → robot). Complémentaire à l'arborescence ci-dessous.*
 
 ```
 PFE/
@@ -36,10 +36,8 @@ PFE/
 ├── README.md
 ├── LICENSE                          # Licence MIT
 ├── CHANGELOG.md                     # Historique des modifications
-├── ARCHITECTURE_CONTROLE.md         # Documentation architecture du module de contrôle
-├── MIGRATION_NOTES.md               # Journal de migration Pi Zero W → Pi Zero 2W
 ├── requirements-robot.txt           # Dépendances Python (robot)
-├── control_module_architecture_v2.svg # Schéma d'architecture du module de contrôle
+├── project_architecture.svg        # Schéma d'architecture globale (inséré en tête de section)
 │
 ├── script/                          # Scripts système embarqués
 │   ├── zumi_ap_setup.sh             # Configuration initiale du profil AP (une seule fois)
@@ -133,11 +131,10 @@ PFE/
 │   └── Pont.ino
 │
 └── Doc/                             # Documentation interne
-    ├── AIDE_MEMOIRE_GIT.md
     ├── GUIDE_GIT.md
-    ├── Workflow_GIT.md
-    ├── Procédure serveur flask.md
-    └── Procédure test zumi.md
+    ├── ARCHITECTURE_CONTROLE.md         # Documentation architecture du module de contrôle
+    ├── MIGRATION_NOTES.md               # Journal de migration Pi Zero W → Pi Zero 2W
+    └── Procédure serveur flask.md
 ```
 
 > **Non versionnés** (voir `.gitignore`) : `MLP_model_trainer/{sequences,checkpoints,export,Incubator}/`, caches Python, environnements virtuels. Ces dossiers sont régénérés par les équipes via le pipeline d'entraînement — voir section 7.2.
