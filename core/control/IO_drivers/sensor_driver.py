@@ -55,6 +55,8 @@ class SensorDriver:
         detections = None
         
         # Multi-zones
+        center_dash_count = 0
+        front_dash_count = 0
         front_line_detected = False
         front_line_confirmed = False
         front_offset = None
@@ -75,10 +77,13 @@ class SensorDriver:
                     # Utiliser process_zones() pour la détection multi-zones
                     line_det = self.vision_pipeline.detectors[self._line_detector_index]
                     zones_result = line_det.process_zones(frame.copy())
-                    
+
                     if zones_result:
                         line_offset = zones_result.get('line_offset')
                         line_detected = line_offset is not None
+                        # Dash counts depuis les zones centre et avant
+                        center_dash_count = zones_result.get('center', {}).get('count', 0)
+                        front_dash_count = zones_result.get('front', {}).get('count', 0)
                         front_line_detected = zones_result.get('front_line_detected', False)
                         front_line_confirmed = zones_result.get('front_line_confirmed', False)
                         front_offset = zones_result.get('front_offset')
@@ -124,6 +129,8 @@ class SensorDriver:
             detections=detections,
             gyro_angles=gyro_angles,
             ir_sensors=ir_sensors,
+            center_dash_count=center_dash_count,
+            front_dash_count=front_dash_count,
             front_line_detected=front_line_detected,
             front_line_confirmed=front_line_confirmed,
             front_offset=front_offset,

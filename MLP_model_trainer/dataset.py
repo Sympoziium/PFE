@@ -26,9 +26,18 @@ GAP_THRESHOLD = 210.8        # ir_sum sous lequel la ligne blanche est visible
 OFF_ROAD_THRESHOLD = 165.9   # ir_sum sous lequel on est hors piste (gazon)
 GRASS_THRESHOLD = 140.0      # capteurs front sous ce seuil = gazon devant
 
+# Dimensions du vecteur de base
+OLD_STATE_DIM = 29           # ancien format (sans zone features)
+INTERMEDIATE_STATE_DIM = 36  # format intermediaire (7 zone features, sans dash counts)
+NEW_STATE_DIM = 38           # nouveau format (9 zone features, avec dash counts)
+ZONE_FEATURES_DIM = 9        # nombre de features de zone ajoutees
+ZONE_INSERT_POS = 27         # position d'insertion des zone features (avant camera, pour 29 -> 38)
+FRONT_DASH_INSERT_POS = 30   # position d'insertion du front_dash_count_norm (pour 36 -> 38)
+CENTER_DASH_INSERT_POS = 35  # position d'insertion du center_dash_count_norm (pour 36 -> 38)
+
 # Features engineered ajoutees au vecteur de base
-# Le vecteur de base est 29-dim (27 + 2 features camera: line_offset, line_detected)
-# ou 21-dim si les features Detection (8-15) sont exclues.
+# Le vecteur de base est 36-dim (nouveau) ou 29-dim (ancien, zero-padde automatiquement)
+# ou 28-dim / 21-dim si les features Detection (8-15) sont exclues.
 # Les features engineered sont toujours ajoutees a la fin.
 ENGINEERED_FEATURE_NAMES = [
     'calibrated_error',   # (ir_bot_r - ir_bot_l) - ir_offset
@@ -40,6 +49,8 @@ ENGINEERED_FEATURE_NAMES = [
     'ir_error_integral',  # moyenne glissante calibrated_error sur 5 pas (biais persistant)
     'gyro_z_accel',       # delta gyro_z_rate (virage qui s'intensifie ou se relache)
     'lookahead_delta',    # (line_camera_offset - cal_error_norm) * line_visible (anticipation)
+    'ir_sum_accel',       # d²(ir_sum)/dt² : acceleration du signal IR global (transition ligne)
+    'line_lost_duration', # compteur de ticks sans ligne visible, normalise par WINDOW_SIZE
 ]
 
 INTEGRAL_WINDOW = 5  # Taille de la fenetre pour ir_error_integral
@@ -53,9 +64,9 @@ DETECTION_INDICES = list(range(8, 16))  # 8 features: flag + 3 one-hot + 4 bbox
 WINDOW_SIZE = 25
 
 # Dimension par pas de fenetre (calculee dynamiquement selon exclude_detection)
-# 38 = 29 raw + 9 engineered (detection incluse)
-# 30 = 21 raw + 9 engineered (detection exclue)
-WINDOW_FEATURE_DIM = 30  # defaut: detection exclue
+# 49 = 38 raw + 11 engineered (detection incluse)
+# 41 = 30 raw + 11 engineered (detection exclue)
+WINDOW_FEATURE_DIM = 41  # defaut: detection exclue (mis a jour dynamiquement)
 
 # Ponderation temporelle exponentielle de la fenetre glissante.
 # Chaque frame t est multiplie par alpha^(window_size - 1 - t):
@@ -183,11 +194,26 @@ class ZumiControlDataset(Dataset):
             )
 
         # Charger les captures (états)
+        # Gere le melange 29-dim (ancien), 36-dim (intermediaire) et 38-dim (nouveau)
+        # en zero-paddant aux positions semantiquement correctes.
         with open(captures_path, 'r') as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    self.captures.append(json.loads(line))
+                    row = json.loads(line)
+                    if len(row) == OLD_STATE_DIM:
+                        # 29 -> 38: insere 9 zeros avant camera
+                        row = (row[:ZONE_INSERT_POS]
+                               + [0.0] * ZONE_FEATURES_DIM
+                               + row[ZONE_INSERT_POS:])
+                    elif len(row) == INTERMEDIATE_STATE_DIM:
+                        # 36 -> 38: insere front_dash_count (pos 30) et center_dash_count (pos 35)
+                        row = (row[:30]           # IR+eng+det+IMU+front_{det,conf,off}
+                               + [0.0]             # front_dash_count_norm
+                               + row[30:34]        # 4 corner features
+                               + [0.0]             # center_dash_count_norm
+                               + row[34:36])       # camera
+                    self.captures.append(row)
 
         # Charger les labels (commandes)
         with open(labels_path, 'r') as f:
@@ -422,14 +448,65 @@ class ZumiControlDataset(Dataset):
               f"(n_straight={int(straight_mask.sum()) if straight_mask.sum() >= 10 else len(ir_diff_straight)})")
         return offset
 
+    def pad_to_new_format(self):
+        """Zero-pad les vecteurs aux formats anciens vers le nouveau format (38-dim).
+
+        Gere 3 cas:
+          - 29-dim (ancien): pas de zone features, pas de dash counts
+              -> insere 9 zeros a position 27 (avant camera)
+          - 36-dim (intermediaire): 7 zone features sans dash counts
+              -> insere 2 zeros aux positions 30 (front_dash) et 35 (center_dash)
+              pour preserver l'alignement semantique avec les features existantes
+          - 38-dim (nouveau): no-op
+
+        Doit etre appelee AVANT exclude_detection_features().
+        """
+        current_dim = self.captures.shape[1]
+        n = len(self.captures)
+
+        if current_dim == NEW_STATE_DIM:
+            return  # deja au nouveau format
+
+        if current_dim == OLD_STATE_DIM:
+            zeros = np.zeros((n, ZONE_FEATURES_DIM), dtype=np.float32)
+            self.captures = np.hstack([
+                self.captures[:, :ZONE_INSERT_POS],   # IR + Detection + IMU
+                zeros,                                 # 9 zone features (zero-filled)
+                self.captures[:, ZONE_INSERT_POS:],    # camera features (2)
+            ])
+            print(f"[Dataset] Zero-pad: {OLD_STATE_DIM}-dim -> {NEW_STATE_DIM}-dim "
+                  f"({ZONE_FEATURES_DIM} zone features inserees a pos {ZONE_INSERT_POS})")
+
+        elif current_dim == INTERMEDIATE_STATE_DIM:
+            # Format 36-dim: zone OK mais dash counts manquants.
+            # Inserer 2 zeros aux bonnes positions semantiques:
+            #   - position 30: front_dash_count_norm (apres front_offset_norm)
+            #   - position 35: center_dash_count_norm (juste avant camera)
+            # Layout 36-dim: [0..29, cL_det, cR_det, cL_area, cR_area, cam_off, cam_det]
+            # Layout 38-dim: [0..29, front_dash, cL_det, cR_det, cL_area, cR_area, center_dash, cam_off, cam_det]
+            zero_col = np.zeros((n, 1), dtype=np.float32)
+            self.captures = np.hstack([
+                self.captures[:, :30],       # IR + eng + detection + IMU + front_{det,conf,off}
+                zero_col,                     # front_dash_count_norm (NEW)
+                self.captures[:, 30:34],      # 4 corner features
+                zero_col,                     # center_dash_count_norm (NEW)
+                self.captures[:, 34:36],      # camera (2)
+            ])
+            print(f"[Dataset] Zero-pad dash counts: {INTERMEDIATE_STATE_DIM}-dim -> {NEW_STATE_DIM}-dim "
+                  f"(2 zeros inseres aux positions {FRONT_DASH_INSERT_POS}, {CENTER_DASH_INSERT_POS})")
+
+        else:
+            print(f"[Dataset] WARNING: dimension inattendue ({current_dim}), "
+                  f"attendu {OLD_STATE_DIM}, {INTERMEDIATE_STATE_DIM} ou {NEW_STATE_DIM}")
+
     def exclude_detection_features(self):
         """Retire les features Detection (indices 8-15) du vecteur brut.
 
         Doit etre appelee AVANT compute_engineered_features().
         Re-mappe les indices pour que les features suivantes gardent
-        leur semantique (IR 0-7 inchanges, IMU 16-26 -> 8-18, Camera 27-28 -> 19-20).
+        leur semantique (IR 0-7 inchanges, IMU decale, zones decalees, camera en fin).
 
-        Reversible: ne pas appeler cette methode pour garder les 29 features.
+        Reversible: ne pas appeler cette methode pour garder toutes les features.
         """
         global GYRO_Z_INDEX, WINDOW_FEATURE_DIM
 
@@ -523,10 +600,36 @@ class ZumiControlDataset(Dataset):
         # lookahead_delta: discordance entre camera (ligne devant) et IR (ligne dessous)
         lookahead_delta = (line_camera_offset - cal_error_norm) * line_visible
 
+        # --- Features DSP ---
+
+        # ir_sum_accel: 2eme derivee de ir_sum (acceleration du signal IR global)
+        # Detecte les transitions rapides entree/sortie de ligne (front montant/descendant)
+        ir_sum_delta = np.zeros(n, dtype=np.float32)
+        ir_sum_delta[1:] = ir_sum[1:] - ir_sum[:-1]
+        ir_sum_delta[boundaries] = 0.0
+
+        ir_sum_accel = np.zeros(n, dtype=np.float32)
+        ir_sum_accel[1:] = ir_sum_delta[1:] - ir_sum_delta[:-1]
+        ir_sum_accel[boundaries] = 0.0
+        ir_sum_accel[boundary_plus1] = 0.0
+
+        # line_lost_duration: compteur de ticks consecutifs sans ligne visible
+        # Normalise par WINDOW_SIZE pour rester dans [0, 1]
+        line_lost_duration = np.zeros(n, dtype=np.float32)
+        for s, e in zip(seg_starts, seg_ends):
+            counter = 0
+            for i in range(s, e):
+                if line_visible[i] > 0.5:
+                    counter = 0
+                else:
+                    counter += 1
+                line_lost_duration[i] = counter / WINDOW_SIZE
+
         new_features = np.column_stack([
             calibrated_error, line_visible, cal_error_norm,
             gyro_z_rate, heading_drift,
-            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
+            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta,
+            ir_sum_accel, line_lost_duration
         ]).astype(np.float32)
 
         original_dim = self.captures.shape[1]
@@ -704,6 +807,9 @@ def _prepare_dataset(dataset, deduplicate, trim_stops, exclude_detection,
     dataset.remove_pwm_stops()
     if trim_stops is not None:
         dataset.trim_stops(max_consecutive=trim_stops)
+
+    # Zero-pad ancien format 29-dim -> 36-dim (avant exclusion detection)
+    dataset.pad_to_new_format()
 
     if exclude_detection:
         dataset.exclude_detection_features()

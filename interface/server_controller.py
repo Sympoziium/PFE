@@ -636,7 +636,7 @@ class controller:
         """Active ou désactive l'overlay FSM dans le flux vidéo.
         
         Appelé par l'onglet contrôle quand le contrôleur circuit_fsm est sélectionné
-        dans la vue vision. Les autres onglets ne touchent jamais à ce flag.
+        dans la vue control. Les autres onglets ne touchent jamais à ce flag.
         
         Body JSON: {"enabled": true|false}
         """
@@ -1937,6 +1937,22 @@ class controller:
         self.sampling_vectors = []
         self.sampling_labels = []
         self.sampling_active = True
+
+        # Log de la dimension attendue pour validation rapide
+        try:
+            state = self.sensor_driver.read()
+            adapter = self._get_ml_adapter(state)
+            expected_dim = adapter.state_dim
+            test_vec = self._vectorize_state_with_adapter(state, adapter)
+            actual_dim = len(test_vec) if test_vec else 0
+            status = "OK" if actual_dim == expected_dim else "MISMATCH"
+            print(f"[Sampling] Demarre. Dim attendue: {expected_dim}, "
+                  f"dim actuelle: {actual_dim} [{status}]")
+            if actual_dim == expected_dim and actual_dim == 38:
+                print(f"[Sampling] Format 38-dim confirme (9 zone features dont dash counts)")
+        except Exception as e:
+            print(f"[Sampling] Erreur validation dim: {e}")
+
         return jsonify({'status': 'sampling started'})
     
     def stop_sampling(self):
@@ -2267,7 +2283,19 @@ class controller:
 
         ir_data = state.ir_sensors if state.ir_sensors is not None else None
         line_off = state.line_offset if hasattr(state, 'line_offset') else None
-        vector = adapter.get_state_vector(vision_result=vision_result, imu_data=imu_data, ir_data=ir_data, line_offset=line_off)
+        vector = adapter.get_state_vector(
+            vision_result=vision_result, imu_data=imu_data, ir_data=ir_data,
+            line_offset=line_off,
+            front_line_detected=getattr(state, 'front_line_detected', False),
+            front_line_confirmed=getattr(state, 'front_line_confirmed', False),
+            front_offset=getattr(state, 'front_offset', None),
+            front_dash_count=getattr(state, 'front_dash_count', 0),
+            corner_left_detected=getattr(state, 'corner_left_detected', False),
+            corner_right_detected=getattr(state, 'corner_right_detected', False),
+            corner_left_area=getattr(state, 'corner_left_area', 0),
+            corner_right_area=getattr(state, 'corner_right_area', 0),
+            center_dash_count=getattr(state, 'center_dash_count', 0),
+        )
         return vector.tolist()
 
     def _infer_ml_classes(self):

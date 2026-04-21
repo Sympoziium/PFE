@@ -602,7 +602,7 @@ def render_control_tab(title: str = "Contrôle") -> str:
                         btn.classList.add('active');
                         btn.textContent = '⏹ Arrêter le contrôleur';
                         // Activer l'overlay FSM seulement si circuit_fsm est sélectionné
-                        var overlayEnabled = (controllerName === 'circuit_fsm');
+                        var overlayEnabled = (controllerName === 'circuit_fsm' || controllerName === 'ml_controller' || controllerName === 'manual_controller');
                         fetch('/set_fsm_overlay', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -657,7 +657,8 @@ def render_control_tab(title: str = "Contrôle") -> str:
                 {key: 'turn_speed', label: 'Vitesse rotation', min: 0, max: 60, step: 1, type: 'int'},
                 {key: 'steering_ratio', label: 'Ratio virage arc', min: 0, max: 1, step: 0.05, type: 'float'},
                 {key: 'heading_kp', label: 'PID cap Kp', min: 0, max: 5, step: 0.1, type: 'float'},
-                {key: 'heading_max_correction', label: 'Correction cap max', min: 0, max: 30, step: 1, type: 'int'}
+                {key: 'heading_max_correction', label: 'Correction cap max', min: 0, max: 30, step: 1, type: 'int'},
+                {key: 'white_threshold', label: 'Seuil blanc (vision)', min: 100, max: 220, step: 5, type: 'int', source: 'line_detector'}
             ]
         },
         'pid_ir': {
@@ -802,10 +803,21 @@ def render_control_tab(title: str = "Contrôle") -> str:
     }
 
     function loadManualSettings(container, config) {
-        fetch('/manual/settings')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                renderParamSliders(container, config.params, data);
+        // Fusionner les valeurs du controleur manuel et du line_detector
+        // (certains params comme white_threshold viennent du line_detector).
+        var needsLineDetector = config.params.some(function(p) { return p.source === 'line_detector'; });
+
+        var manualPromise = fetch('/manual/settings').then(function(r) { return r.json(); });
+        var linePromise = needsLineDetector
+            ? fetch('/line_detector/get_params').then(function(r) { return r.json(); }).catch(function() { return {}; })
+            : Promise.resolve({});
+
+        Promise.all([manualPromise, linePromise])
+            .then(function(results) {
+                var merged = {};
+                Object.keys(results[0]).forEach(function(k) { merged[k] = results[0][k]; });
+                Object.keys(results[1]).forEach(function(k) { merged[k] = results[1][k]; });
+                renderParamSliders(container, config.params, merged);
             })
             .catch(function(e) { console.error('load settings error:', e); });
     }
@@ -1002,21 +1014,46 @@ def render_control_tab(title: str = "Contrôle") -> str:
         var config = CONTROLLER_PARAMS[ctrlName];
 
         if (ctrlName === 'manual_controller' && config) {
-            var payload = {};
+            // Separer les params entre /manual/settings et /line_detector/update_params
+            var manualPayload = {};
+            var linePayload = {};
             config.params.forEach(function(p) {
                 var input = document.getElementById('param_' + p.key);
-                if (input) payload[p.key] = parseFloat(input.value);
+                if (!input) return;
+                if (p.source === 'line_detector') {
+                    linePayload[p.key] = parseFloat(input.value);
+                } else {
+                    manualPayload[p.key] = parseFloat(input.value);
+                }
             });
-            fetch('/manual/settings', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            }).then(function(r) {
-                if (!r.ok) console.error('[ApplySettings] manual error HTTP', r.status);
-                return r.json();
-            }).then(function(data) {
-                console.log('[ApplySettings] manual OK:', data);
-            }).catch(function(e) { console.error('[ApplySettings] manual fetch error:', e); });
+
+            // POST manual settings
+            if (Object.keys(manualPayload).length > 0) {
+                fetch('/manual/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(manualPayload)
+                }).then(function(r) {
+                    if (!r.ok) console.error('[ApplySettings] manual error HTTP', r.status);
+                    return r.json();
+                }).then(function(data) {
+                    console.log('[ApplySettings] manual OK:', data);
+                }).catch(function(e) { console.error('[ApplySettings] manual fetch error:', e); });
+            }
+
+            // POST line_detector params (white_threshold, etc.)
+            if (Object.keys(linePayload).length > 0) {
+                fetch('/line_detector/update_params', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(linePayload)
+                }).then(function(r) {
+                    if (!r.ok) console.error('[ApplySettings] line_detector error HTTP', r.status);
+                    return r.json();
+                }).then(function(data) {
+                    console.log('[ApplySettings] line_detector OK:', data);
+                }).catch(function(e) { console.error('[ApplySettings] line_detector fetch error:', e); });
+            }
         } else {
             // Contrôleur générique via /controller/params
             var payload = {name: ctrlName};

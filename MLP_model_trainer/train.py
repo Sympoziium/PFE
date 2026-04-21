@@ -1151,7 +1151,7 @@ def run_training(script_dir: Path, state: dict):
             'gap_threshold': GAP_THRESHOLD,
             'off_road_threshold': OFF_ROAD_THRESHOLD,
             'grass_threshold': GRASS_THRESHOLD,
-            'feature_version': 2,
+            'feature_version': 3,
             # Metadonnees fenetre glissante
             'mode': 'sliding_window',
             'window_size': getattr(dataset, 'window_size', WINDOW_SIZE),

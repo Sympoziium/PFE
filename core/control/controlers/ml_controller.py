@@ -31,7 +31,7 @@ class MLController(ControllerBase):
 
     # Fenetre glissante (defauts, ecrases par normalization_stats.json)
     WINDOW_SIZE = 25           # Nombre de pas dans la fenetre (1.25s a 20Hz)
-    WINDOW_FEATURE_DIM = 30    # 21 raw + 9 engineered par pas (detection exclue)
+    WINDOW_FEATURE_DIM = 41    # 30 raw + 11 engineered par pas (detection exclue)
     TEMPORAL_DECAY = 0.85      # Decay exponentiel (1.0 = pas de decay)
     INTEGRAL_WINDOW = 5        # Fenetre pour ir_error_integral
 
@@ -58,6 +58,11 @@ class MLController(ControllerBase):
         self._prev_calibrated_error = None  # Pour ir_error_derivative
         self._prev_gyro_z_rate = None  # Pour gyro_z_accel
 
+        # DSP features
+        self._prev_ir_sum = None         # Pour ir_sum_accel (1ere derivee)
+        self._prev_ir_sum_delta = None   # Pour ir_sum_accel (2eme derivee)
+        self._line_lost_counter = 0      # Pour line_lost_duration
+
         # Debug logging (activé via UI ou set_debug())
         self._debug_enabled = False
         self._debug_log = []
@@ -65,7 +70,7 @@ class MLController(ControllerBase):
         self._prev_output = None
         self._last_step_debug = {}
 
-        # Exclusion des features Detection (indices 8-15 dans le vecteur brut 29-dim)
+        # Exclusion des features Detection (indices 8-15 dans le vecteur brut 38-dim)
         self._exclude_detection = False
         self._detection_indices = list(range(8, 16))
         self._decay_weights = None  # Precalcule apres chargement des stats
@@ -222,8 +227,8 @@ class MLController(ControllerBase):
     def _build_step_vector(self, state) -> np.ndarray:
         """Construit le vecteur d'etat pour un seul pas temporel.
 
-        Pipeline: VisionAdapter (29-dim) -> exclusion Detection (21-dim)
-                  -> engineered features (26-dim)
+        Pipeline: VisionAdapter (38-dim) -> exclusion Detection (30-dim)
+                  -> engineered features (41-dim)
 
         Args:
             state: SensorState contenant les donnees des capteurs.
@@ -252,13 +257,25 @@ class MLController(ControllerBase):
 
         ir_data = state.ir_sensors if state.ir_sensors else [0] * 6
         line_off = state.line_offset if hasattr(state, 'line_offset') else None
-        raw_vector = self.vision_adapter.get_state_vector(vision_result, imu_data, ir_data, line_offset=line_off)
+        raw_vector = self.vision_adapter.get_state_vector(
+            vision_result, imu_data, ir_data,
+            line_offset=line_off,
+            front_line_detected=getattr(state, 'front_line_detected', False),
+            front_line_confirmed=getattr(state, 'front_line_confirmed', False),
+            front_offset=getattr(state, 'front_offset', None),
+            front_dash_count=getattr(state, 'front_dash_count', 0),
+            corner_left_detected=getattr(state, 'corner_left_detected', False),
+            corner_right_detected=getattr(state, 'corner_right_detected', False),
+            corner_left_area=getattr(state, 'corner_left_area', 0),
+            corner_right_area=getattr(state, 'corner_right_area', 0),
+            center_dash_count=getattr(state, 'center_dash_count', 0),
+        )
 
-        # Extraire les valeurs avant l'exclusion (indices stables dans le vecteur 29-dim)
+        # Extraire les valeurs avant l'exclusion (indices stables dans le vecteur 38-dim)
         ir_bot_r = raw_vector[1]   # IR_bottom_right
         ir_bot_l = raw_vector[3]   # IR_bottom_left
         ir_sum = (ir_bot_l + ir_bot_r) / 2.0
-        gyro_z = raw_vector[18]    # gyro_z cumulatif (toujours index 18 dans le 29-dim)
+        gyro_z = raw_vector[18]    # gyro_z cumulatif (toujours index 18 dans le 38-dim)
 
         # Appliquer le masque d'exclusion Detection
         if self._exclude_detection:
@@ -304,10 +321,30 @@ class MLController(ControllerBase):
         line_camera_offset = raw_vector[raw_dim - 2] if raw_dim >= 2 else 0.0
         lookahead_delta = (line_camera_offset - cal_error_norm) * line_visible
 
+        # --- Features DSP ---
+
+        # ir_sum_accel: 2eme derivee de ir_sum
+        ir_sum_delta = 0.0
+        ir_sum_accel = 0.0
+        if self._prev_ir_sum is not None:
+            ir_sum_delta = ir_sum - self._prev_ir_sum
+            if self._prev_ir_sum_delta is not None:
+                ir_sum_accel = ir_sum_delta - self._prev_ir_sum_delta
+        self._prev_ir_sum = ir_sum
+        self._prev_ir_sum_delta = ir_sum_delta
+
+        # line_lost_duration: compteur de ticks sans ligne visible, normalise
+        if line_visible > 0.5:
+            self._line_lost_counter = 0
+        else:
+            self._line_lost_counter += 1
+        line_lost_duration = self._line_lost_counter / self.WINDOW_SIZE
+
         engineered = np.array([
             calibrated_error, line_visible, cal_error_norm,
             gyro_z_rate, heading_drift,
-            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta
+            ir_error_derivative, ir_error_integral, gyro_z_accel, lookahead_delta,
+            ir_sum_accel, line_lost_duration
         ], dtype=np.float32)
 
         # Exposer les features clés pour le debug logging
@@ -461,6 +498,9 @@ class MLController(ControllerBase):
         self._prev_gyro_z = None
         self._prev_calibrated_error = None
         self._prev_gyro_z_rate = None
+        self._prev_ir_sum = None
+        self._prev_ir_sum_delta = None
+        self._line_lost_counter = 0
         if self._interpreter is None and self.model_path:
             self._load_model()
             self._load_normalization_stats()

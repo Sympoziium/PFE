@@ -23,11 +23,88 @@ from pathlib import Path
 
 from dataset import (classify_actions, ACTION_NAMES, GYRO_Z_INDEX,
                      IR_OFFSET_DEFAULT, GAP_THRESHOLD, OFF_ROAD_THRESHOLD,
-                     GRASS_THRESHOLD)
+                     GRASS_THRESHOLD,
+                     OLD_STATE_DIM, INTERMEDIATE_STATE_DIM, NEW_STATE_DIM,
+                     ZONE_INSERT_POS, ZONE_FEATURES_DIM)
+
+
+# ============================================================
+# Noms des features du vecteur brut 38-dim (produit par VisionAdapter)
+# Source de verite unique pour tous les rapports d'analyse.
+# Format: [IR(6), IR_eng(2), Detection(8), IMU(11), Zones(9), Camera(2)] = 38
+# ============================================================
+RAW_FEATURE_NAMES = [
+    # IR raw (0-5)
+    "IR_front_right",       # 0
+    "IR_bottom_right",      # 1
+    "IR_back_right",        # 2
+    "IR_bottom_left",       # 3
+    "IR_back_left",         # 4
+    "IR_front_left",        # 5
+    # IR engineered (6-7)
+    "IR_diff",              # 6  (bot_left - bot_right)
+    "IR_sum",               # 7  (bot_left + bot_right) / 2
+    # Detection Haar (8-15, exclue en pratique)
+    "detect_flag",          # 8
+    "class_stop_sign",      # 9
+    "class_pieton",         # 10
+    "class_pompier",        # 11
+    "bbox_cx",              # 12
+    "bbox_cy",              # 13
+    "bbox_w",               # 14
+    "bbox_h",               # 15
+    # IMU (16-26)
+    "imu_gyro_x",           # 16
+    "imu_gyro_y",           # 17
+    "imu_gyro_z",           # 18
+    "imu_acc_x",            # 19
+    "imu_acc_y",            # 20
+    "imu_comp_x",           # 21
+    "imu_comp_y",           # 22
+    "imu_rot_x",            # 23
+    "imu_rot_y",            # 24
+    "imu_rot_z",            # 25
+    "imu_tilt_state",       # 26
+    # Zone features multi-cameras (27-35)
+    "front_line_detected",  # 27
+    "front_line_confirmed", # 28
+    "front_offset_norm",    # 29
+    "front_dash_count",     # 30
+    "corner_left_detected", # 31
+    "corner_right_detected",# 32
+    "corner_left_area",     # 33
+    "corner_right_area",    # 34
+    "center_dash_count",    # 35
+    # Ligne camera centre (36-37)
+    "line_camera_offset",   # 36
+    "line_camera_detected", # 37
+]
+
+# Version courte pour les graphiques (axes, legendes)
+RAW_FEATURE_NAMES_SHORT = [
+    "IR_fr_R", "IR_bot_R", "IR_bck_R", "IR_bot_L", "IR_bck_L", "IR_fr_L",
+    "IR_diff", "IR_sum",
+    "detect", "cls_stop", "cls_piet", "cls_pomp",
+    "bbox_cx", "bbox_cy", "bbox_w", "bbox_h",
+    "gyro_x", "gyro_y", "gyro_z", "acc_x", "acc_y",
+    "comp_x", "comp_y", "rot_x", "rot_y", "rot_z", "tilt",
+    "fr_det", "fr_conf", "fr_off", "fr_dash",
+    "cL_det", "cR_det", "cL_area", "cR_area", "ctr_dash",
+    "cam_off", "cam_det",
+]
+
+assert len(RAW_FEATURE_NAMES) == 38, \
+    f"RAW_FEATURE_NAMES doit avoir 38 entrees, a {len(RAW_FEATURE_NAMES)}"
+assert len(RAW_FEATURE_NAMES_SHORT) == 38, \
+    f"RAW_FEATURE_NAMES_SHORT doit avoir 38 entrees, a {len(RAW_FEATURE_NAMES_SHORT)}"
 
 
 def load_dataset(data_dir: Path):
-    """Charge les fichiers captures.jsonl, labels.jsonl et sequence_ids.jsonl."""
+    """Charge les fichiers captures.jsonl, labels.jsonl et sequence_ids.jsonl.
+
+    Gere le melange de vecteurs 29-dim (ancien), 36-dim (intermediaire) et 38-dim
+    (nouveau) en zero-paddant aux positions semantiquement correctes.
+    """
     captures_file = data_dir / "captures.jsonl"
     labels_file = data_dir / "labels.jsonl"
     seqids_file = data_dir / "sequence_ids.jsonl"
@@ -41,7 +118,20 @@ def load_dataset(data_dir: Path):
     with open(captures_file, 'r') as f:
         for line in f:
             if line.strip():
-                captures.append(json.loads(line))
+                row = json.loads(line)
+                if len(row) == OLD_STATE_DIM:
+                    # 29 -> 38: inserer 9 zeros avant les features camera
+                    row = (row[:ZONE_INSERT_POS]
+                           + [0.0] * ZONE_FEATURES_DIM
+                           + row[ZONE_INSERT_POS:])
+                elif len(row) == INTERMEDIATE_STATE_DIM:
+                    # 36 -> 38: inserer front_dash_count (pos 30) et center_dash_count (pos 35)
+                    row = (row[:30]
+                           + [0.0]
+                           + row[30:34]
+                           + [0.0]
+                           + row[34:36])
+                captures.append(row)
 
     with open(labels_file, 'r') as f:
         for line in f:
@@ -111,50 +201,8 @@ def analyze_dataset(captures, labels, save_dir=None, sequence_ids=None):
     # === ANALYSE DES CAPTURES (FEATURES ENTREE) ===
     n_features = captures.shape[1]
     print(f"[STATS] Features d'entree (Captures) - {n_features} dimensions:")
-    # 27 raw features (indices 0-26)
-    feature_names = [
-        "IR_front_right",       # 0
-        "IR_bottom_right",      # 1
-        "IR_back_right",        # 2
-        "IR_bottom_left",       # 3
-        "IR_back_left",         # 4
-        "IR_front_left",        # 5
-        "IR_diff",              # 6  (bot_left - bot_right)
-        "IR_sum",               # 7  (bot_left + bot_right) / 2
-        "detect_flag",          # 8
-        "class_stop_sign",      # 9
-        "class_pieton",         # 10
-        "class_pompier",        # 11
-        "bbox_cx",              # 12
-        "bbox_cy",              # 13
-        "bbox_w",               # 14
-        "bbox_h",               # 15
-        "imu_gyro_x",           # 16
-        "imu_gyro_y",           # 17
-        "imu_gyro_z",           # 18
-        "imu_acc_x",            # 19
-        "imu_acc_y",            # 20
-        "imu_comp_x",           # 21
-        "imu_comp_y",           # 22
-        "imu_rot_x",            # 23
-        "imu_rot_y",            # 24
-        "imu_rot_z",            # 25
-        "imu_tilt_state",       # 26
-        # First 5 of 9 engineered features (indices 27-31)
-        "calibrated_error",     # 27
-        "line_visible",         # 28
-        "cal_error_norm",       # 29
-        "gyro_z_rate",          # 30
-        "heading_drift",        # 31
-    ]
-    # 45 delta features (indices 32-76): 9 features x 5 steps
-    _delta_source_names = [
-        "IR_bot_R", "IR_bot_L", "IR_diff", "IR_sum", "gyro_z",
-        "cal_error", "cal_err_norm", "gyro_z_rate", "heading_drift",
-    ]
-    for _step in range(1, 6):
-        for _src in _delta_source_names:
-            feature_names.append(f"d{_step}_{_src}")  # 32..76
+    # Utilise le mapping centralise pour le vecteur brut 38-dim
+    feature_names = list(RAW_FEATURE_NAMES)
 
     # Support des anciens datasets (sans all engineered features)
     for i in range(captures.shape[1]):
@@ -234,7 +282,47 @@ def analyze_dataset(captures, labels, save_dir=None, sequence_ids=None):
     out_of_bounds += tilt_oob
     if tilt_oob > 0:
         out_of_bounds_details.append(f"Tilt state (-1 à 7): {tilt_oob}")
-    
+
+    # === Zone features (indices 27-35) — plages attendues ===
+    # Verifie seulement si le vecteur est au nouveau format 38-dim
+    if captures.shape[1] >= 38:
+        # Booleens {0, 1} : front_det(27), front_conf(28), cL_det(31), cR_det(32)
+        bool_indices = [27, 28, 31, 32]
+        bool_oob = 0
+        for idx in bool_indices:
+            bool_oob += int(np.sum((captures[:, idx] < -0.01) | (captures[:, idx] > 1.01)))
+        if bool_oob > 0:
+            out_of_bounds_details.append(f"Zone booleens {{0,1}}: {bool_oob}")
+            out_of_bounds += bool_oob
+
+        # front_offset_norm (29): [-1, 1]
+        front_off_oob = int(np.sum((captures[:, 29] < -1.01) | (captures[:, 29] > 1.01)))
+        if front_off_oob > 0:
+            out_of_bounds_details.append(f"front_offset_norm [-1,1]: {front_off_oob}")
+            out_of_bounds += front_off_oob
+
+        # Aires et dash counts normalises [0, 1] : indices 30, 33, 34, 35
+        norm_indices = [30, 33, 34, 35]
+        norm_oob = 0
+        for idx in norm_indices:
+            norm_oob += int(np.sum((captures[:, idx] < -0.01) | (captures[:, idx] > 1.01)))
+        if norm_oob > 0:
+            out_of_bounds_details.append(f"Zone aires/counts [0,1]: {norm_oob}")
+            out_of_bounds += norm_oob
+
+        # === Line camera (indices 36-37) ===
+        # line_camera_offset (36): [-1, 1]
+        cam_off_oob = int(np.sum((captures[:, 36] < -1.01) | (captures[:, 36] > 1.01)))
+        if cam_off_oob > 0:
+            out_of_bounds_details.append(f"line_camera_offset [-1,1]: {cam_off_oob}")
+            out_of_bounds += cam_off_oob
+
+        # line_camera_detected (37): {0, 1}
+        cam_det_oob = int(np.sum((captures[:, 37] < -0.01) | (captures[:, 37] > 1.01)))
+        if cam_det_oob > 0:
+            out_of_bounds_details.append(f"line_camera_detected {{0,1}}: {cam_det_oob}")
+            out_of_bounds += cam_det_oob
+
     print(f"  Valeurs hors limites attendues: {out_of_bounds}")
     if out_of_bounds_details:
         print(f"  [WARN] Valeurs aberrantes detectees:")
@@ -708,15 +796,8 @@ def analyze_dataset(captures, labels, save_dir=None, sequence_ids=None):
 def plot_analysis(captures, labels, save_dir=None, sequence_ids=None):
     """Crée des visualisations du dataset."""
 
-    feature_names = [
-        "IR_front_R", "IR_bot_R", "IR_back_R", "IR_bot_L", "IR_back_L", "IR_front_L",
-        "IR_diff", "IR_sum",
-        "detect", "cls_stop", "cls_piet", "cls_pomp",
-        "bbox_cx", "bbox_cy", "bbox_w", "bbox_h",
-        "gyro_x", "gyro_y", "gyro_z", "acc_x", "acc_y",
-        "comp_x", "comp_y", "rot_x", "rot_y", "rot_z", "tilt",
-        "d_bot_R", "d_bot_L", "d_IR_diff", "d_IR_sum", "d_gyro_z",
-    ]
+    # Utilise les noms courts centralises (38-dim)
+    feature_names = list(RAW_FEATURE_NAMES_SHORT)
 
     if save_dir:
         save_dir = Path(save_dir)
