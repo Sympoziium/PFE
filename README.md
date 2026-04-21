@@ -191,7 +191,7 @@ PFE/
 | **Caméra** | Pixy-like camera, flux 480p (V1) / HD (V2) |
 | **Moteurs** | 2× moteurs DC (différentiel) |
 | **Capteurs** | IR frontaux et arrière, accéléromètre, gyroscope |
-| **Alimentation** | Batterie LiPo rechargeable (V2 : alimentation USB externe requise) |
+| **Alimentation** | Batterie LiPo rechargeable |
 | **API Python** | [Documentation Robolink](https://docs.robolink.com/docs/Zumi/Python/Function-Documentation) |
 
 ---
